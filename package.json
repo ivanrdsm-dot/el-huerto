@@ -1,0 +1,13 @@
+{
+  "name": "el-huerto-sistema",
+  "version": "1.0.0",
+  "description": "Sistema de control interno para El Huerto - caja, nómina, proveedores, suscriptores e inventario",
+  "private": true,
+  "scripts": {
+    "start": "npx serve .",
+    "dev": "npx serve ."
+  },
+  "keywords": ["restaurante", "control", "nomina", "caja"],
+  "author": "El Huerto",
+  "license": "UNLICENSED"
+}
