@@ -360,75 +360,150 @@ tr:hover td{background:var(--surface2);}
 
 </main>
 <div class="toast" id="toast"></div>
-<script>
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[]};
-function save(){try{localStorage.setItem('huerto3',JSON.stringify(D));}catch(e){}}
-function load(){try{const s=localStorage.getItem('huerto3');if(s)D={...D,...JSON.parse(s)};}catch(e){}}
-const fmt=n=>'$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
-const today=()=>new Date().toISOString().split('T')[0];
-const mOf=d=>d?d.slice(0,7):'';
-const curM=()=>today().slice(0,7);
-const $=id=>document.getElementById(id);
-const dayN=['Lun','Mar','Mié','Jue','Vie'];
-function toast(msg,ms=2600){const t=$('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),ms);}
-function go(p){
+<script type="module">
+// ══════════════════════════════════════════════════════
+//  FIREBASE CONFIG — EL HUERTO
+// ══════════════════════════════════════════════════════
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",
+  authDomain: "el-huerto-95801.firebaseapp.com",
+  projectId: "el-huerto-95801",
+  storageBucket: "el-huerto-95801.firebasestorage.app",
+  messagingSenderId: "907900755611",
+  appId: "1:907900755611:web:fc6ad8c32211158​80fb03e",
+  measurementId: "G-PMBM72YQWN"
+};
+
+const app = initializeApp(firebaseConfig);
+const db  = getFirestore(app);
+
+// ══════════════════════════════════════════════════════
+//  DATA EN MEMORIA (se sincroniza con Firestore)
+// ══════════════════════════════════════════════════════
+let D = { caja:[], gastos:[], pedidos:[], subs:[], inventario:[], nomPagos:[] };
+let DB_READY = false;
+
+// ─── Helpers Firestore ───
+const colRef  = col => collection(db, col);
+const docRef  = (col, id) => doc(db, col, String(id));
+
+async function fsSet(col, item) {
+  try { await setDoc(docRef(col, item.id), item); } catch(e){ toast('⚠ Error guardando: '+e.message,4000); }
+}
+async function fsDel(col, id) {
+  try { await deleteDoc(docRef(col, String(id))); } catch(e){ toast('⚠ Error borrando: '+e.message,4000); }
+}
+
+// ─── Escuchar cambios en tiempo real ───
+function listenAll() {
+  const cols = ['caja','gastos','pedidos','subs','inventario','nomPagos'];
+  let loaded = 0;
+  cols.forEach(col => {
+    onSnapshot(colRef(col), snap => {
+      D[col] = snap.docs.map(d => d.data());
+      loaded++;
+      if(loaded >= cols.length) { DB_READY = true; initD(); renderAll(); }
+      else if(DB_READY) renderAll();
+    });
+  });
+}
+
+// ══════════════════════════════════════════════════════
+//  UTILS
+// ══════════════════════════════════════════════════════
+const fmt   = n => '$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
+const today = () => new Date().toISOString().split('T')[0];
+const mOf   = d => d ? d.slice(0,7) : '';
+const curM  = () => today().slice(0,7);
+const $     = id => document.getElementById(id);
+const dayN  = ['Lun','Mar','Mié','Jue','Vie'];
+
+function toast(msg, ms=2600) {
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+function go(p) {
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
   document.querySelectorAll('.nav-tab').forEach(e=>e.classList.remove('active'));
   $('page-'+p).classList.add('active');
   const lb={dashboard:'Dashboard',caja:'Caja del Día',gastos:'Gastos',nomina:'Nómina',proveedores:'Proveedores',suscriptores:'Suscriptores',inventario:'Inventario',reportes:'Reportes'};
-  document.querySelectorAll('.nav-tab').forEach(e=>{if(e.textContent.trim()===lb[p])e.classList.add('active');});
+  document.querySelectorAll('.nav-tab').forEach(e=>{ if(e.textContent.trim()===lb[p]) e.classList.add('active'); });
   renderAll();
 }
-function getWDays(ref){
+// expose go globally for onclick handlers
+window.go = go;
+
+function getWDays(ref) {
   const d=ref?new Date(ref+'T12:00:00'):new Date();
-  const day=d.getDay();const mon=new Date(d);mon.setDate(d.getDate()-(day===0?6:day-1));
-  const r=[];for(let i=0;i<5;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);r.push(dd.toISOString().split('T')[0]);}
+  const day=d.getDay(); const mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
+  const r=[]; for(let i=0;i<5;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);r.push(dd.toISOString().split('T')[0]);}
   return r;
 }
-const catL={proveedor:'🚚 Proveedor',costco:'🛒 Costco',servicios:'💡 Servicios',renta:'🏠 Renta',mantenimiento:'🔧 Mant.',marketing:'📣 Marketing',sub_neg:'📱 Suscripción',varios:'📦 Varios'};
-const pvL={semanal:'📅 Semanal',costco:'🛒 Costco',emergencia:'⚡ Emergencia',otro:'Otro'};
-const ivL={verduras:'🥬 Verduras',lacteos:'🧀 Lácteos',granos:'🌾 Granos',bebidas:'🥤 Bebidas',limpieza:'🧴 Limpieza',empaque:'📦 Empaque',otros:'Otros'};
 
-// ─── CAJA ───
-function calcT(){const ef=parseFloat($('cef').value)||0;const tc=parseFloat($('ctc').value)||0;$('ctp').textContent=fmt(ef+tc);}
-function guardarCaja(){
-  const fecha=$('cf').value||today();
-  const ef=parseFloat($('cef').value)||0;const tc=parseFloat($('ctc').value)||0;
-  if(ef+tc<=0){toast('⚠ Ingresa al menos un monto');return;}
-  const entry={id:Date.now(),fecha,ef,tc,total:ef+tc,nota:$('cnota').value.trim(),dC:$('cdc').checked,cC:$('ccc').checked,subId:$('css').value||null};
-  const idx=D.caja.findIndex(c=>c.fecha===fecha);
-  if(idx>=0){entry.id=D.caja[idx].id;D.caja[idx]=entry;toast('✓ Corte actualizado: '+fmt(ef+tc));}
-  else{D.caja.push(entry);toast('✓ Corte guardado: '+fmt(ef+tc));}
-  if(entry.subId){const sub=D.subs.find(s=>s.id==entry.subId);if(sub&&!sub.pagos.includes(mOf(fecha))){sub.pagos.push(mOf(fecha));toast('✓ Cobro de suscripción '+sub.nombre+' registrado',3500);}}
-  save();
-  $('cef').value='';$('ctc').value='';$('cnota').value='';$('cdc').checked=false;$('ccc').checked=false;$('ctp').textContent='$0.00';
-  renderAll();
+const catL = {proveedor:'🚚 Proveedor',costco:'🛒 Costco',servicios:'💡 Servicios',renta:'🏠 Renta',mantenimiento:'🔧 Mant.',marketing:'📣 Marketing',sub_neg:'📱 Suscripción',varios:'📦 Varios'};
+const pvL  = {semanal:'📅 Semanal',costco:'🛒 Costco',emergencia:'⚡ Emergencia',otro:'Otro'};
+const ivL  = {verduras:'🥬 Verduras',lacteos:'🧀 Lácteos',granos:'🌾 Granos',bebidas:'🥤 Bebidas',limpieza:'🧴 Limpieza',empaque:'📦 Empaque',otros:'Otros'};
+
+// ══════════════════════════════════════════════════════
+//  CAJA
+// ══════════════════════════════════════════════════════
+function calcT() {
+  const ef=parseFloat($('cef').value)||0; const tc=parseFloat($('ctc').value)||0;
+  $('ctp').textContent=fmt(ef+tc);
 }
-function delCaja(id){D.caja=D.caja.filter(c=>c.id!=id);save();renderAll();}
-function prefill(d){
+window.calcT = calcT;
+
+async function guardarCaja() {
+  const fecha=$('cf').value||today();
+  const ef=parseFloat($('cef').value)||0; const tc=parseFloat($('ctc').value)||0;
+  if(ef+tc<=0){toast('⚠ Ingresa al menos un monto');return;}
+  const existing = D.caja.find(c=>c.fecha===fecha);
+  const entry = { id: existing ? existing.id : Date.now(), fecha, ef, tc, total:ef+tc,
+    nota:$('cnota').value.trim(), dC:$('cdc').checked, cC:$('ccc').checked, subId:$('css').value||null };
+  await fsSet('caja', entry);
+  if(entry.subId) {
+    const sub = D.subs.find(s=>s.id==entry.subId);
+    if(sub && !sub.pagos.includes(mOf(fecha))) {
+      sub.pagos.push(mOf(fecha));
+      await fsSet('subs', sub);
+      toast('✓ Cobro suscripción '+sub.nombre,3500);
+    }
+  }
+  $('cef').value=''; $('ctc').value=''; $('cnota').value='';
+  $('cdc').checked=false; $('ccc').checked=false; $('ctp').textContent='$0.00';
+  toast('✓ Corte guardado: '+fmt(ef+tc));
+}
+window.guardarCaja = guardarCaja;
+
+async function delCaja(id) { await fsDel('caja', id); toast('✓ Registro eliminado'); }
+window.delCaja = delCaja;
+
+function prefill(d) {
   $('cf').value=d;
   const e=D.caja.find(c=>c.fecha===d);
   if(e){$('cef').value=e.ef||'';$('ctc').value=e.tc||'';$('cnota').value=e.nota||'';$('cdc').checked=e.dC||false;$('ccc').checked=e.cC||false;calcT();}
   else{$('cef').value='';$('ctc').value='';$('cnota').value='';$('cdc').checked=false;$('ccc').checked=false;$('ctp').textContent='$0.00';}
 }
-function renderCaja(){
-  const td=today();const wd=getWDays(td);
-  // populate sub select
-  const ss=$('css');const pv=ss.value;
+window.prefill = prefill;
+
+function renderCaja() {
+  const td=today(); const wd=getWDays(td);
+  const ss=$('css'); const pv=ss.value;
   ss.innerHTML='<option value="">— No —</option>'+D.subs.filter(s=>s.activo).map(s=>`<option value="${s.id}">${s.nombre} (${fmt(s.monto)})</option>`).join('');
-  if(pv)ss.value=pv;
-  // week strip
+  if(pv) ss.value=pv;
   $('caja-wstrip').innerHTML='<div class="wstrip">'+wd.map((d,i)=>{
-    const c=D.caja.find(x=>x.fecha===d);const it=d===td;
+    const c=D.caja.find(x=>x.fecha===d); const it=d===td;
     return `<div class="wday ${it?'today':''} ${c?'has':''}" onclick="prefill('${d}')">
       <div class="wdl">${dayN[i]}</div><div class="wdd">${d.slice(8)}</div>
-      <div class="${c?'wda':'wde'}">${c?fmt(c.total):'—'}</div>
-    </div>`;
+      <div class="${c?'wda':'wde'}">${c?fmt(c.total):'—'}</div></div>`;
   }).join('')+'</div>';
-  // semana detalle
   const wEf=wd.reduce((s,d)=>{const c=D.caja.find(x=>x.fecha===d);return s+(c?c.ef:0);},0);
   const wTc=wd.reduce((s,d)=>{const c=D.caja.find(x=>x.fecha===d);return s+(c?c.tc:0);},0);
-  const wTot=wEf+wTc;const wDias=wd.filter(d=>D.caja.find(c=>c.fecha===d)).length;
+  const wTot=wEf+wTc; const wDias=wd.filter(d=>D.caja.find(c=>c.fecha===d)).length;
   $('caja-sem').innerHTML=`
     <div style="display:flex;gap:10px;margin-bottom:14px">
       <div style="flex:1;background:var(--surface2);border-radius:8px;padding:12px;text-align:center"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:4px">💵 Efectivo</div><div class="mono ag" style="font-size:18px">${fmt(wEf)}</div></div>
@@ -436,125 +511,158 @@ function renderCaja(){
       <div style="flex:1;background:var(--surface3);border-radius:8px;padding:12px;text-align:center;border:1px solid var(--border)"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:4px">Total Semana</div><div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--accent2)">${fmt(wTot)}</div></div>
     </div>
     <div style="font-size:12px;color:var(--text2)">${wDias}/5 días registrados &nbsp;·&nbsp; Promedio: <span class="mono ag">${fmt(wDias?wTot/wDias:0)}/día</span></div>`;
-  // hist
   const rec=[...D.caja].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,15);
   $('caja-hist').innerHTML=rec.length===0?`<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:20px">Sin registros</td></tr>`:
     rec.map(r=>`<tr><td class="mono">${r.fecha}</td><td class="mono ag">${fmt(r.ef)}</td><td class="mono ab">${fmt(r.tc)}</td><td class="mono fw7">${fmt(r.total)}</td><td style="font-size:11px;color:var(--text3)">${r.dC?'Diana ':''}${r.cC?'Clau':''}</td><td><button class="btn bd bxs" onclick="delCaja(${r.id})">✕</button></td></tr>`).join('');
 }
 
-// ─── GASTOS ───
-function addGasto(){
-  const fecha=$('gf').value||today();const monto=parseFloat($('gm').value);
+// ══════════════════════════════════════════════════════
+//  GASTOS
+// ══════════════════════════════════════════════════════
+async function addGasto() {
+  const fecha=$('gf').value||today(); const monto=parseFloat($('gm').value);
   if(!monto||monto<=0){toast('⚠ Monto inválido');return;}
-  D.gastos.push({id:Date.now(),fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim()});
-  save();$('gm').value='';$('gprov').value='';$('gtk').value='';$('gnota').value='';
-  toast('✓ Gasto: '+fmt(monto));renderAll();
+  const g={id:Date.now(),fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim()};
+  await fsSet('gastos',g);
+  $('gm').value='';$('gprov').value='';$('gtk').value='';$('gnota').value='';
+  toast('✓ Gasto: '+fmt(monto));
 }
-function delGasto(id){D.gastos=D.gastos.filter(x=>x.id!=id);save();renderAll();}
-function renderGastos(){
+window.addGasto = addGasto;
+
+async function delGasto(id) { await fsDel('gastos',id); toast('✓ Gasto eliminado'); }
+window.delGasto = delGasto;
+
+function renderGastos() {
   const fc=$('gfcat')?.value||'';
   let rows=[...D.gastos].sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  if(fc)rows=rows.filter(r=>r.cat===fc);
+  if(fc) rows=rows.filter(r=>r.cat===fc);
   const mi={efectivo:'💵',tarjeta:'💳',transferencia:'📲'};
   $('gtable').innerHTML=rows.length===0?`<tr><td colspan="7" style="color:var(--text3);text-align:center;padding:20px">Sin gastos</td></tr>`:
     rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td><span class="badge xr">${catL[r.cat]||r.cat}</span></td><td>${r.prov||'—'}</td><td class="mono" style="color:var(--text2)">${r.ticket||'—'}</td><td>${mi[r.metodo]||''}</td><td class="mono ar fw7">${fmt(r.monto)}</td><td><button class="btn bd bxs" onclick="delGasto(${r.id})">✕</button></td></tr>`).join('');
   const cm=D.gastos.filter(r=>mOf(r.fecha)===curM());
-  const bC={};cm.forEach(r=>{bC[r.cat]=(bC[r.cat]||0)+r.monto;});
+  const bC={}; cm.forEach(r=>{bC[r.cat]=(bC[r.cat]||0)+r.monto;});
   const totG=Object.values(bC).reduce((s,v)=>s+v,0);
   $('gcats').innerHTML=Object.entries(bC).length===0?`<p style="color:var(--text3);font-size:13px">Sin gastos este mes</p>`:
     Object.entries(bC).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:11px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:12.5px">${catL[c]||c}</span><span class="mono ar" style="font-size:12px">${fmt(v)} <span style="color:var(--text3)">(${totG?Math.round(v/totG*100):0}%)</span></span></div><div class="prog"><div class="pf" style="background:var(--red);width:${totG?Math.round(v/totG*100):0}%"></div></div></div>`).join('')+
     `<div class="div"></div><div class="sr fw7"><span>Total</span><span class="mono ar" style="font-size:15px">${fmt(totG)}</span></div>`;
 }
 
-// ─── NÓMINA ───
-const getDC=()=>D.caja.filter(c=>mOf(c.fecha)===curM()&&c.dC).length;
-const getCC=()=>D.caja.filter(c=>mOf(c.fecha)===curM()&&c.cC).length;
-function renderNomina(){
-  const dC=getDC();const cC=getCC();
-  const cBono=cC*700;const cTot=11000+cBono;const nomTot=11700+cTot;
-  $('dsal').textContent=fmt(11700);$('csal').textContent=fmt(cTot);
-  $('cn').textContent=cC;$('cbono').textContent=fmt(cBono);$('ctotal').textContent=fmt(cTot);
+// ══════════════════════════════════════════════════════
+//  NÓMINA
+// ══════════════════════════════════════════════════════
+const getDC = () => D.caja.filter(c=>mOf(c.fecha)===curM()&&c.dC).length;
+const getCC = () => D.caja.filter(c=>mOf(c.fecha)===curM()&&c.cC).length;
+
+function renderNomina() {
+  const dC=getDC(); const cC=getCC();
+  const cBono=cC*700; const cTot=11000+cBono; const nomTot=11700+cTot;
+  $('dsal').textContent=fmt(11700); $('csal').textContent=fmt(cTot);
+  $('cn').textContent=cC; $('cbono').textContent=fmt(cBono); $('ctotal').textContent=fmt(cTot);
   $('d-caja-n').textContent=dC;
-  const dg=$('dgrid');dg.innerHTML='';for(let i=1;i<=8;i++){const d=document.createElement('div');d.className='cd on';d.textContent=i;dg.appendChild(d);}
-  const cg=$('cgrid');cg.innerHTML='';for(let i=1;i<=8;i++){const d=document.createElement('div');d.className='cd'+(i<=cC?' on':'');d.textContent=i;cg.appendChild(d);}
-  // semana
+  const dg=$('dgrid'); dg.innerHTML='';
+  for(let i=1;i<=8;i++){const d=document.createElement('div');d.className='cd on';d.textContent=i;dg.appendChild(d);}
+  const cg=$('cgrid'); cg.innerHTML='';
+  for(let i=1;i<=8;i++){const d=document.createElement('div');d.className='cd'+(i<=cC?' on':'');d.textContent=i;cg.appendChild(d);}
   $('nsem').innerHTML=`<div class="nwg">
     <div class="nwc"><div class="nwl">Pago semanal total</div><div class="nwv">${fmt(Math.round(nomTot/4))}</div></div>
     <div class="nwc"><div class="nwl">Diana / semana</div><div class="nwv ay">${fmt(Math.round(11700/4))}</div></div>
     <div class="nwc"><div class="nwl">Clau / semana</div><div class="nwv ag">${fmt(Math.round(cTot/4))}</div></div>
-    <div class="nwc"><div class="nwl">Cierres Clau (mes)</div><div class="nwv ag">${cC}/8</div></div>
-  </div>`;
+    <div class="nwc"><div class="nwl">Cierres Clau (mes)</div><div class="nwv ag">${cC}/8</div></div></div>`;
   $('ncomp').innerHTML=`
-    <div class="sr"><span>Diana — base mensual</span><span class="mono ay">${fmt(11000)}</span></div>
-    <div class="sr"><span>Diana — bono cierres (8 × $700)</span><span class="mono ay">${fmt(5600)}</span></div>
+    <div class="sr"><span>Diana — base</span><span class="mono ay">${fmt(11000)}</span></div>
+    <div class="sr"><span>Diana — bono (8×$700)</span><span class="mono ay">${fmt(5600)}</span></div>
     <div class="sr fw7"><span>Diana total</span><span class="mono ay" style="font-size:15px">${fmt(11700)}</span></div>
     <div class="div"></div>
-    <div class="sr"><span>Clau — base mensual</span><span class="mono ag">${fmt(11000)}</span></div>
-    <div class="sr"><span>Clau — bono (${cC} × $700)</span><span class="mono ag">${fmt(cBono)}</span></div>
+    <div class="sr"><span>Clau — base</span><span class="mono ag">${fmt(11000)}</span></div>
+    <div class="sr"><span>Clau — bono (${cC}×$700)</span><span class="mono ag">${fmt(cBono)}</span></div>
     <div class="sr fw7"><span>Clau total</span><span class="mono ag" style="font-size:15px">${fmt(cTot)}</span></div>
     <div class="div"></div>
     <div class="sr fw7" style="font-size:15px"><span>NÓMINA MENSUAL TOTAL</span><span class="mono ag" style="font-size:18px">${fmt(nomTot)}</span></div>
-    <div class="sr"><span style="color:var(--text2);font-size:12px">Equivalente semanal (÷4)</span><span class="mono" style="color:var(--text2)">${fmt(Math.round(nomTot/4))}</span></div>`;
+    <div class="sr"><span style="color:var(--text2);font-size:12px">Equiv. semanal</span><span class="mono" style="color:var(--text2)">${fmt(Math.round(nomTot/4))}</span></div>`;
   $('nhist').innerHTML=D.nomPagos.length===0?`<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:16px">Sin pagos</td></tr>`:
-    [...D.nomPagos].reverse().map(p=>`<tr><td class="mono">${p.mes}</td><td class="mono ay">${fmt(p.diana)}</td><td class="mono ag">${fmt(p.clau)}</td><td class="mono fw7">${fmt(p.total)}</td><td><span class="badge xg">✓ ${p.fecha}</span></td></tr>`).join('');
-}
-function pagarNom(){
-  const mes=$('nmes').value||curM();const cC=getCC();const clau=11000+cC*700;
-  D.nomPagos.push({mes,diana:11700,clau,total:11700+clau,fecha:today()});
-  save();toast('✓ Nómina '+mes+' pagada');renderNomina();
+    [...D.nomPagos].sort((a,b)=>b.mes.localeCompare(a.mes)).map(p=>`<tr><td class="mono">${p.mes}</td><td class="mono ay">${fmt(p.diana)}</td><td class="mono ag">${fmt(p.clau)}</td><td class="mono fw7">${fmt(p.total)}</td><td><span class="badge xg">✓ ${p.fecha}</span></td></tr>`).join('');
 }
 
-// ─── PROVEEDORES ───
-function addPedido(){
-  const fecha=$('pvf').value||today();const nombre=$('pvn').value.trim();const total=parseFloat($('pvt').value);
-  if(!nombre){toast('⚠ Ingresa proveedor');return;}if(!total||total<=0){toast('⚠ Ingresa total');return;}
-  const tipo=$('pvtipo').value;const ticket=$('pvtk').value.trim();const detalle=$('pvdet').value.trim();
-  D.pedidos.push({id:Date.now(),fecha,nombre,tipo,total,ticket,detalle});
-  const cm={semanal:'proveedor',costco:'costco',emergencia:'varios',otro:'proveedor'};
-  D.gastos.push({id:Date.now()+1,fecha,cat:cm[tipo]||'proveedor',prov:nombre,monto:total,ticket,metodo:'transferencia',notas:detalle});
-  save();$('pvn').value='';$('pvt').value='';$('pvtk').value='';$('pvdet').value='';
-  toast('✓ Pedido + gasto aplicado: '+fmt(total));renderAll();
+async function pagarNom() {
+  const mes=$('nmes').value||curM(); const cC=getCC(); const clau=11000+cC*700;
+  const p={id:Date.now(),mes,diana:11700,clau,total:11700+clau,fecha:today()};
+  await fsSet('nomPagos',p);
+  toast('✓ Nómina '+mes+' pagada');
 }
-function delPed(id){D.pedidos=D.pedidos.filter(x=>x.id!=id);save();renderAll();}
-function renderProv(){
+window.pagarNom = pagarNom;
+
+// ══════════════════════════════════════════════════════
+//  PROVEEDORES
+// ══════════════════════════════════════════════════════
+async function addPedido() {
+  const fecha=$('pvf').value||today(); const nombre=$('pvn').value.trim(); const total=parseFloat($('pvt').value);
+  if(!nombre){toast('⚠ Ingresa proveedor');return;} if(!total||total<=0){toast('⚠ Ingresa total');return;}
+  const tipo=$('pvtipo').value; const ticket=$('pvtk').value.trim(); const detalle=$('pvdet').value.trim();
+  const p={id:Date.now(),fecha,nombre,tipo,total,ticket,detalle};
+  const cm={semanal:'proveedor',costco:'costco',emergencia:'varios',otro:'proveedor'};
+  const g={id:Date.now()+1,fecha,cat:cm[tipo]||'proveedor',prov:nombre,monto:total,ticket,metodo:'transferencia',notas:detalle};
+  await Promise.all([fsSet('pedidos',p), fsSet('gastos',g)]);
+  $('pvn').value='';$('pvt').value='';$('pvtk').value='';$('pvdet').value='';
+  toast('✓ Pedido + gasto: '+fmt(total));
+}
+window.addPedido = addPedido;
+
+async function delPed(id) { await fsDel('pedidos',id); toast('✓ Pedido eliminado'); }
+window.delPed = delPed;
+
+function renderProv() {
   const rows=[...D.pedidos].sort((a,b)=>b.fecha.localeCompare(a.fecha));
   $('pvtable').innerHTML=rows.length===0?`<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:20px">Sin pedidos</td></tr>`:
     rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${r.nombre}</td><td><span class="badge xb">${pvL[r.tipo]||r.tipo}</span></td><td class="mono" style="color:var(--text2)">${r.ticket||'—'}</td><td class="mono ar fw7">${fmt(r.total)}</td><td><button class="btn bd bxs" onclick="delPed(${r.id})">✕</button></td></tr>`).join('');
-  const freq={};D.pedidos.forEach(p=>{freq[p.nombre]=(freq[p.nombre]||0)+p.total;});
+  const freq={}; D.pedidos.forEach(p=>{freq[p.nombre]=(freq[p.nombre]||0)+p.total;});
   $('pvfreq').innerHTML=Object.entries(freq).length===0?`<p style="color:var(--text3);font-size:13px">Sin historial</p>`:
     Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([n,v])=>`<div class="sr"><span>${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
-  const bP={};D.pedidos.filter(p=>mOf(p.fecha)===curM()).forEach(p=>{bP[p.nombre]=(bP[p.nombre]||0)+p.total;});
+  const bP={}; D.pedidos.filter(p=>mOf(p.fecha)===curM()).forEach(p=>{bP[p.nombre]=(bP[p.nombre]||0)+p.total;});
   $('pvmes').innerHTML=Object.entries(bP).length===0?`<p style="color:var(--text3);font-size:13px">Sin pedidos este mes</p>`:
     Object.entries(bP).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="sr"><span>${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
   $('pvlist').innerHTML=[...new Set(D.pedidos.map(p=>p.nombre))].map(n=>`<option value="${n}">`).join('');
 }
 
-// ─── SUSCRIPTORES ───
-function addSub(){
-  const nombre=$('sbn').value.trim();const monto=parseFloat($('sbm').value);
-  if(!nombre){toast('⚠ Ingresa nombre');return;}if(!monto){toast('⚠ Ingresa monto');return;}
-  D.subs.push({id:Date.now(),nombre,tel:$('sbtel').value.trim(),plan:$('sbplan').value.trim(),monto,dia:parseInt($('sbd').value)||1,inicio:$('sbi').value||today(),activo:true,pagos:[]});
-  save();$('sbn').value='';$('sbtel').value='';$('sbplan').value='';$('sbm').value='';$('sbd').value='';
-  toast('✓ Suscriptor: '+nombre);renderAll();
+// ══════════════════════════════════════════════════════
+//  SUSCRIPTORES
+// ══════════════════════════════════════════════════════
+async function addSub() {
+  const nombre=$('sbn').value.trim(); const monto=parseFloat($('sbm').value);
+  if(!nombre){toast('⚠ Ingresa nombre');return;} if(!monto){toast('⚠ Ingresa monto');return;}
+  const s={id:Date.now(),nombre,tel:$('sbtel').value.trim(),plan:$('sbplan').value.trim(),monto,dia:parseInt($('sbd').value)||1,inicio:$('sbi').value||today(),activo:true,pagos:[]};
+  await fsSet('subs',s);
+  $('sbn').value='';$('sbtel').value='';$('sbplan').value='';$('sbm').value='';$('sbd').value='';
+  toast('✓ Suscriptor: '+nombre);
 }
-function tPago(id){
-  const s=D.subs.find(x=>x.id==id);if(!s)return;const mes=curM();
-  if(s.pagos.includes(mes)){s.pagos=s.pagos.filter(m=>m!==mes);}else{s.pagos.push(mes);toast('✓ Cobro '+s.nombre+': '+fmt(s.monto));}
-  save();renderSubs();
+window.addSub = addSub;
+
+async function tPago(id) {
+  const s=D.subs.find(x=>x.id==id); if(!s) return;
+  const mes=curM();
+  if(s.pagos.includes(mes)){ s.pagos=s.pagos.filter(m=>m!==mes); }
+  else { s.pagos.push(mes); toast('✓ Cobro '+s.nombre+': '+fmt(s.monto)); }
+  await fsSet('subs',s);
 }
-function delSub(id){D.subs=D.subs.filter(x=>x.id!=id);save();renderAll();}
-function renderSubs(){
-  const mes=curM();const act=D.subs.filter(s=>s.activo);
+window.tPago = tPago;
+
+async function delSub(id) { await fsDel('subs',id); toast('✓ Suscriptor eliminado'); }
+window.delSub = delSub;
+
+function renderSubs() {
+  const mes=curM(); const act=D.subs.filter(s=>s.activo);
   const totM=act.reduce((s,x)=>s+x.monto,0);
-  const pag=act.filter(s=>s.pagos.includes(mes));const pend=act.filter(s=>!s.pagos.includes(mes));
+  const pag=act.filter(s=>s.pagos.includes(mes)); const pend=act.filter(s=>!s.pagos.includes(mes));
   $('sbest').innerHTML=`
     <div class="sr"><span>Total suscriptores</span><span class="mono">${act.length}</span></div>
     <div class="sr"><span>Ingreso mensual total</span><span class="mono ag fw7">${fmt(totM)}</span></div>
     <div class="sr"><span>✓ Cobrados este mes</span><span class="mono ag">${pag.length}</span></div>
     <div class="sr"><span>⏳ Pendientes</span><span class="mono ar">${pend.length}</span></div>
-    ${pend.length>0?`<div style="margin-top:10px;background:var(--surface2);border-radius:8px;padding:12px"><div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Por cobrar este mes</div>${pend.map(s=>`<div class="sr"><span>${s.nombre}</span><span class="mono ay">día ${s.dia} — ${fmt(s.monto)}</span></div>`).join('')}</div>`:''}`;
+    ${pend.length>0?`<div style="margin-top:10px;background:var(--surface2);border-radius:8px;padding:12px">
+      <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px">Por cobrar</div>
+      ${pend.map(s=>`<div class="sr"><span>${s.nombre}</span><span class="mono ay">día ${s.dia} — ${fmt(s.monto)}</span></div>`).join('')}
+    </div>`:''}`;
   $('sbcards').innerHTML=act.length===0?`<p style="color:var(--text3)">Sin suscriptores</p>`:
-    act.map(s=>{const pg=s.pagos.includes(mes);return `<div style="display:flex;gap:14px;align-items:flex-start;padding:14px;background:var(--surface2);border-radius:10px;margin-bottom:10px;border:1px solid var(--border)">
+    act.map(s=>{const pg=s.pagos.includes(mes); return `<div style="display:flex;gap:14px;align-items:flex-start;padding:14px;background:var(--surface2);border-radius:10px;margin-bottom:10px;border:1px solid var(--border)">
       <div style="flex:1"><div style="font-family:'Playfair Display',serif;font-size:16px;font-weight:700">${s.nombre} ${pg?'<span class="badge xg">✓ Cobrado</span>':'<span class="badge xr">Pendiente</span>'}</div>
       <div style="font-size:11.5px;color:var(--text2);margin-top:3px">${s.tel||''}</div>
       <div style="font-size:12px;color:var(--text2);margin-top:6px">📦 ${s.plan||'—'}</div>
@@ -562,81 +670,83 @@ function renderSubs(){
       <div style="text-align:right;min-width:110px"><div class="mono ag" style="font-size:20px;font-weight:700">${fmt(s.monto)}<span style="font-size:10px;color:var(--text3)">/mes</span></div>
       <button class="btn bsm ${pg?'bs':'bp'}" style="margin-top:8px;width:100%" onclick="tPago(${s.id})">${pg?'✓ Cobrado':'Marcar Cobrado'}</button>
       <button class="btn bd bxs" style="margin-top:6px" onclick="delSub(${s.id})">✕</button></div>
-    </div>`;}).join('');
+    </div>`; }).join('');
 }
 
-// ─── INVENTARIO ───
-function addInv(){
-  const nombre=$('ivn').value.trim();if(!nombre){toast('⚠ Ingresa nombre');return;}
-  const qty=parseFloat($('ivq').value)||0;const min=parseFloat($('ivmin').value)||0;const precio=parseFloat($('ivp').value)||0;
+// ══════════════════════════════════════════════════════
+//  INVENTARIO
+// ══════════════════════════════════════════════════════
+async function addInv() {
+  const nombre=$('ivn').value.trim(); if(!nombre){toast('⚠ Ingresa nombre');return;}
+  const qty=parseFloat($('ivq').value)||0; const min=parseFloat($('ivmin').value)||0; const precio=parseFloat($('ivp').value)||0;
   const ex=D.inventario.find(x=>x.nombre.toLowerCase()===nombre.toLowerCase());
-  if(ex){ex.qty=qty;ex.precio=precio;ex.min=min;toast('✓ Actualizado: '+nombre);}
-  else{D.inventario.push({id:Date.now(),nombre,cat:$('ivc').value,qty,unit:$('ivu').value.trim(),min,precio});toast('✓ Agregado: '+nombre);}
-  save();$('ivn').value='';$('ivq').value='';$('ivu').value='';$('ivmin').value='';$('ivp').value='';
-  renderAll();
+  const item={ id: ex?ex.id:Date.now(), nombre, cat:$('ivc').value, qty, unit:$('ivu').value.trim(), min, precio };
+  await fsSet('inventario',item);
+  $('ivn').value='';$('ivq').value='';$('ivu').value='';$('ivmin').value='';$('ivp').value='';
+  toast(ex?'✓ Actualizado: '+nombre:'✓ Agregado: '+nombre);
 }
-function delInv(id){D.inventario=D.inventario.filter(x=>x.id!=id);save();renderAll();}
-function renderInv(){
+window.addInv = addInv;
+
+async function delInv(id) { await fsDel('inventario',id); toast('✓ Producto eliminado'); }
+window.delInv = delInv;
+
+function renderInv() {
   const bajos=D.inventario.filter(x=>x.min>0&&x.qty<=x.min);
   const nb=$('nav-alerta');
   if(bajos.length>0){nb.style.display='';nb.textContent=bajos.length+' ⚠';}else{nb.style.display='none';}
   $('ivalert').innerHTML=bajos.length>0?`<div class="astrip">⚠ <strong>${bajos.length} producto(s) bajo mínimo:</strong> ${bajos.map(x=>x.nombre).join(', ')}</div>`:'';
   $('ivbajo').innerHTML=bajos.length===0?`<p style="color:var(--accent);font-size:13px">✓ Todo en orden</p>`:
     bajos.map(x=>`<div style="display:flex;justify-content:space-between;padding:8px 11px;background:#3a2a0a;border-radius:6px;margin-bottom:5px;font-size:13px"><span>${x.nombre}</span><span class="mono ay">${x.qty} ${x.unit} / mín ${x.min}</span></div>`).join('');
-  const fc=$('ivfcat')?.value||'';let items=D.inventario.filter(x=>!fc||x.cat===fc);
+  const fc=$('ivfcat')?.value||''; let items=D.inventario.filter(x=>!fc||x.cat===fc);
   $('ivtable').innerHTML=items.length===0?`<tr><td colspan="9" style="color:var(--text3);text-align:center;padding:20px">Sin productos</td></tr>`:
-    items.map(x=>{const b=x.min>0&&x.qty<=x.min;return `<tr><td>${x.nombre}</td><td style="font-size:12px">${ivL[x.cat]||x.cat}</td><td class="mono">${x.qty}</td><td style="font-size:12px;color:var(--text2)">${x.unit||'—'}</td><td class="mono">${x.min||'—'}</td><td class="mono">${x.precio?fmt(x.precio):'—'}</td><td class="mono">${x.precio&&x.qty?fmt(x.precio*x.qty):'—'}</td><td>${b?'<span class="badge xy">⚠ Bajo</span>':'<span class="badge xg">OK</span>'}</td><td><button class="btn bd bxs" onclick="delInv(${x.id})">✕</button></td></tr>`;}).join('');
+    items.map(x=>{const b=x.min>0&&x.qty<=x.min; return `<tr><td>${x.nombre}</td><td style="font-size:12px">${ivL[x.cat]||x.cat}</td><td class="mono">${x.qty}</td><td style="font-size:12px;color:var(--text2)">${x.unit||'—'}</td><td class="mono">${x.min||'—'}</td><td class="mono">${x.precio?fmt(x.precio):'—'}</td><td class="mono">${x.precio&&x.qty?fmt(x.precio*x.qty):'—'}</td><td>${b?'<span class="badge xy">⚠ Bajo</span>':'<span class="badge xg">OK</span>'}</td><td><button class="btn bd bxs" onclick="delInv(${x.id})">✕</button></td></tr>`;}).join('');
 }
 
-// ─── DASHBOARD ───
-function renderDashboard(){
-  const td=today();const cm=curM();const wd=getWDays(td);
+// ══════════════════════════════════════════════════════
+//  DASHBOARD
+// ══════════════════════════════════════════════════════
+function renderDashboard() {
+  const td=today(); const cm=curM(); const wd=getWDays(td);
   const hoy=D.caja.find(c=>c.fecha===td);
   $('k-hoy').textContent=fmt(hoy?hoy.total:0);
-  $('k-hef').textContent=fmt(hoy?hoy.ef:0);$('k-htc').textContent=fmt(hoy?hoy.tc:0);
+  $('k-hef').textContent=fmt(hoy?hoy.ef:0); $('k-htc').textContent=fmt(hoy?hoy.tc:0);
   const semT=wd.reduce((s,d)=>{const c=D.caja.find(x=>x.fecha===d);return s+(c?c.total:0);},0);
   const semD=wd.filter(d=>D.caja.find(c=>c.fecha===d)).length;
-  $('k-sem').textContent=fmt(semT);$('k-semd').textContent=semD+'/5 días registrados';
+  $('k-sem').textContent=fmt(semT); $('k-semd').textContent=semD+'/5 días registrados';
   const cajaMes=D.caja.filter(c=>mOf(c.fecha)===cm).reduce((s,c)=>s+c.total,0);
   const subsMesIng=D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0);
   const ingMes=cajaMes+subsMesIng;
   const gasMes=D.gastos.filter(g=>mOf(g.fecha)===cm).reduce((s,g)=>s+g.monto,0);
-  const cC=getCC();const nomMes=11700+(11000+cC*700);const util=ingMes-gasMes-nomMes;
-  $('k-ing').textContent=fmt(ingMes);$('k-gas').textContent=fmt(gasMes);
-  $('k-util').textContent=fmt(util);$('k-util').className='kv '+(util>=0?'gold':'red');
-  // week strip
+  const cC=getCC(); const nomMes=11700+(11000+cC*700); const util=ingMes-gasMes-nomMes;
+  $('k-ing').textContent=fmt(ingMes); $('k-gas').textContent=fmt(gasMes);
+  $('k-util').textContent=fmt(util); $('k-util').className='kv '+(util>=0?'gold':'red');
   $('d-wstrip').innerHTML='<div class="wstrip">'+wd.map((d,i)=>{
-    const c=D.caja.find(x=>x.fecha===d);const it=d===td;
+    const c=D.caja.find(x=>x.fecha===d); const it=d===td;
     return `<div class="wday ${it?'today':''} ${c?'has':''}" onclick="go('caja');setTimeout(()=>prefill('${d}'),80)">
       <div class="wdl">${dayN[i]}</div><div class="wdd">${d.slice(8)}</div>
-      <div class="${c?'wda':'wde'}">${c?fmt(c.total):'registrar'}</div>
-    </div>`;
+      <div class="${c?'wda':'wde'}">${c?fmt(c.total):'registrar'}</div></div>`;
   }).join('')+'</div>';
-  // resumen
   $('d-resumen').innerHTML=`
     <div class="sr"><span>Ventas en caja</span><span class="mono ag">${fmt(cajaMes)}</span></div>
     <div class="sr"><span>Suscripciones cobradas</span><span class="mono ab">${fmt(subsMesIng)}</span></div>
     <div class="sr fw7"><span>= Total ingresos</span><span class="mono ag" style="font-size:15px">${fmt(ingMes)}</span></div>
     <div class="div"></div>
     <div class="sr"><span>Gastos operativos</span><span class="mono ar">− ${fmt(gasMes)}</span></div>
-    <div class="sr"><span>Nómina (Diana + Clau)</span><span class="mono ar">− ${fmt(nomMes)}</span></div>
+    <div class="sr"><span>Nómina</span><span class="mono ar">− ${fmt(nomMes)}</span></div>
     <div class="div"></div>
     <div class="sr fw7" style="font-size:15px"><span>Utilidad Neta</span><span class="mono ${util>=0?'ay':'ar'}" style="font-size:17px">${fmt(util)}</span></div>`;
-  // nomina mini
   const cTot=11000+cC*700;
   $('d-nomina').innerHTML=`<div style="display:flex;gap:8px;margin-bottom:10px">
-    <div style="flex:1;background:var(--surface2);border-radius:7px;padding:10px;text-align:center"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:3px">Diana</div><div class="mono ay" style="font-size:15px;font-weight:700">${fmt(11700)}</div><div style="font-size:10px;color:var(--text3)">fijo</div></div>
+    <div style="flex:1;background:var(--surface2);border-radius:7px;padding:10px;text-align:center"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:3px">Diana</div><div class="mono ay" style="font-size:15px;font-weight:700">${fmt(11700)}</div></div>
     <div style="flex:1;background:var(--surface2);border-radius:7px;padding:10px;text-align:center"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:3px">Clau (${cC} cierres)</div><div class="mono ag" style="font-size:15px;font-weight:700">${fmt(cTot)}</div></div>
   </div><div class="sr fw7"><span>Total nómina/mes</span><span class="mono ag">${fmt(nomMes)}</span></div>`;
-  // subs mini
-  const subAct=D.subs.filter(s=>s.activo);const subPend=subAct.filter(s=>!s.pagos.includes(cm));
+  const subAct=D.subs.filter(s=>s.activo); const subPend=subAct.filter(s=>!s.pagos.includes(cm));
   $('d-subs').innerHTML=`<div style="display:flex;gap:8px">
     <div style="flex:1;background:var(--surface2);border-radius:7px;padding:10px;text-align:center"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:3px">Activos</div><div class="mono ag" style="font-size:18px;font-weight:700">${subAct.length}</div></div>
     <div style="flex:1;background:var(--surface2);border-radius:7px;padding:10px;text-align:center"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:3px">Ingreso/mes</div><div class="mono ab" style="font-size:15px;font-weight:700">${fmt(subAct.reduce((s,x)=>s+x.monto,0))}</div></div>
     <div style="flex:1;background:var(--surface2);border-radius:7px;padding:10px;text-align:center"><div style="font-size:10px;font-family:'DM Mono',monospace;color:var(--text3);margin-bottom:3px">Por cobrar</div><div class="mono ${subPend.length>0?'ar':'ag'}" style="font-size:18px;font-weight:700">${subPend.length}</div></div>
   </div>`;
-  // chart
-  const weeks=[];const now=new Date();
+  const weeks=[]; const now=new Date();
   for(let i=5;i>=0;i--){const ref=new Date(now);ref.setDate(now.getDate()-i*7);const wDs=getWDays(ref.toISOString().split('T')[0]);
     const ing=D.caja.filter(c=>wDs.includes(c.fecha)).reduce((s,c)=>s+c.total,0);
     const gas=D.gastos.filter(g=>wDs.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
@@ -649,17 +759,19 @@ function renderDashboard(){
   $('dlbl').textContent='Semana: '+wd[0]+' → '+wd[4];
 }
 
-// ─── REPORTES ───
-function renderReportes(){
+// ══════════════════════════════════════════════════════
+//  REPORTES
+// ══════════════════════════════════════════════════════
+function renderReportes() {
   const cm=curM();
   const cajaMes=D.caja.filter(c=>mOf(c.fecha)===cm).reduce((s,c)=>s+c.total,0);
   const ingSubs=D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0);
-  const ingT=cajaMes+ingSubs;const gasT=D.gastos.filter(g=>mOf(g.fecha)===cm).reduce((s,g)=>s+g.monto,0);
-  const cC=getCC();const nomT=11700+(11000+cC*700);const util=ingT-gasT-nomT;
+  const ingT=cajaMes+ingSubs; const gasT=D.gastos.filter(g=>mOf(g.fecha)===cm).reduce((s,g)=>s+g.monto,0);
+  const cC=getCC(); const nomT=11700+(11000+cC*700); const util=ingT-gasT-nomT;
   const margen=ingT>0?Math.round(util/ingT*100):0;
   const dias=new Set(D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha)).size;
   $('rpprom').textContent=fmt(dias>0?cajaMes/dias:0);
-  $('rpmargen').textContent=margen+'%';$('rpmargen').className='kv '+(margen>=0?'gold':'red');
+  $('rpmargen').textContent=margen+'%'; $('rpmargen').className='kv '+(margen>=0?'gold':'red');
   $('rpsubs').textContent=fmt(D.subs.filter(s=>s.activo).reduce((s,x)=>s+x.monto,0));
   $('rpest').innerHTML=`
     <div class="sr"><span>Ventas en caja</span><span class="mono ag">${fmt(cajaMes)}</span></div>
@@ -667,38 +779,63 @@ function renderReportes(){
     <div class="sr fw7"><span>= Ingresos Totales</span><span class="mono ag" style="font-size:15px">${fmt(ingT)}</span></div>
     <div class="div"></div>
     <div class="sr"><span>Gastos operativos</span><span class="mono ar">− ${fmt(gasT)}</span></div>
-    <div class="sr"><span>Nómina (Diana + Clau)</span><span class="mono ar">− ${fmt(nomT)}</span></div>
+    <div class="sr"><span>Nómina</span><span class="mono ar">− ${fmt(nomT)}</span></div>
     <div class="div"></div>
     <div class="sr fw7" style="font-size:15px"><span>UTILIDAD NETA</span><span class="mono ${util>=0?'ay':'ar'}" style="font-size:18px">${fmt(util)}</span></div>
     <div class="sr"><span style="color:var(--text2);font-size:12px">Días con venta</span><span class="mono" style="color:var(--text2)">${dias}</span></div>
     <div class="sr"><span style="color:var(--text2);font-size:12px">Margen</span><span class="mono ${margen>=0?'ay':'ar'}">${margen}%</span></div>`;
-  const bC={};D.gastos.filter(g=>mOf(g.fecha)===cm).forEach(g=>{bC[g.cat]=(bC[g.cat]||0)+g.monto;});
+  const bC={}; D.gastos.filter(g=>mOf(g.fecha)===cm).forEach(g=>{bC[g.cat]=(bC[g.cat]||0)+g.monto;});
   const totG=Object.values(bC).reduce((s,v)=>s+v,0);
   $('rpdist').innerHTML=Object.entries(bC).length===0?`<p style="color:var(--text3);font-size:13px">Sin gastos este mes</p>`:
     Object.entries(bC).sort((a,b)=>b[1]-a[1]).map(([c,v])=>{const p=totG?Math.round(v/totG*100):0;return `<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:12.5px">${catL[c]||c}</span><span class="mono ar" style="font-size:12px">${p}% — ${fmt(v)}</span></div><div class="prog"><div class="pf" style="background:var(--red);width:${p}%"></div></div></div>`;}).join('');
 }
 
-// ─── CSV EXPORT ───
-function csvX(tipo){
+// ══════════════════════════════════════════════════════
+//  CSV EXPORT
+// ══════════════════════════════════════════════════════
+function csvX(tipo) {
   let h=[],r=[];
   if(tipo==='caja'){h=['Fecha','Efectivo','Tarjeta','Total','Diana Cerró','Clau Cerró','Nota'];r=D.caja.map(c=>[c.fecha,c.ef,c.tc,c.total,c.dC?'Sí':'No',c.cC?'Sí':'No',c.nota]);}
   else if(tipo==='gastos'){h=['Fecha','Categoría','Proveedor','Ticket','Método','Monto','Notas'];r=D.gastos.map(g=>[g.fecha,g.cat,g.prov,g.ticket,g.metodo,g.monto,g.notas]);}
   else if(tipo==='pedidos'){h=['Fecha','Proveedor','Tipo','Ticket','Total','Detalle'];r=D.pedidos.map(p=>[p.fecha,p.nombre,p.tipo,p.ticket,p.total,p.detalle]);}
   else if(tipo==='subs'){h=['Nombre','Tel','Plan','Monto','Día','Inicio','Meses Cobrados'];r=D.subs.map(s=>[s.nombre,s.tel,s.plan,s.monto,s.dia,s.inicio,s.pagos.join('; ')]);}
   const csv=[h,...r].map(row=>row.map(c=>`"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
-  const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));a.download=`elhuerto_${tipo}_${today()}.csv`;a.click();
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['\uFEFF'+csv],{type:'text/csv;charset=utf-8;'}));
+  a.download=`elhuerto_${tipo}_${today()}.csv`; a.click();
   toast('⬇ CSV: '+tipo);
 }
+window.csvX = csvX;
 
-// ─── RENDER ALL & INIT ───
-function renderAll(){renderDashboard();renderCaja();renderGastos();renderNomina();renderProv();renderSubs();renderInv();renderReportes();}
-function initD(){
-  const t=today();
-  ['cf','gf','pvf','sbi'].forEach(id=>{if($(id))$(id).value=t;});
-  if($('nmes'))$('nmes').value=curM();
+// ══════════════════════════════════════════════════════
+//  RENDER ALL & INIT
+// ══════════════════════════════════════════════════════
+function renderAll() {
+  if(!DB_READY) return;
+  renderDashboard(); renderCaja(); renderGastos(); renderNomina();
+  renderProv(); renderSubs(); renderInv(); renderReportes();
 }
-function clock(){$('navDate').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});}
-load();clock();setInterval(clock,60000);initD();renderAll();
+
+function initD() {
+  const t=today();
+  ['cf','gf','pvf','sbi'].forEach(id=>{ if($(id)) $(id).value=t; });
+  if($('nmes')) $('nmes').value=curM();
+}
+
+function clock() {
+  $('navDate').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+}
+
+// ─── Firestore Rules reminder shown once ───
+function showConnecting() {
+  const nb=$('nav-alerta'); nb.style.display=''; nb.textContent='⏳ Conectando...'; nb.style.background='var(--gold)';
+  setTimeout(()=>{ if(!DB_READY){nb.textContent='⚠ Sin conexión';nb.style.background='var(--red)';}else{nb.style.display='none';} }, 8000);
+}
+
+clock();
+setInterval(clock, 60000);
+showConnecting();
+listenAll(); // ← arranca la conexión con Firestore en tiempo real
+
 </script>
 </body>
 </html>
