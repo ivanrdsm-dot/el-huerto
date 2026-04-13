@@ -1393,8 +1393,8 @@ async function seedMenu(){
 }
 async function seedEmps(){
   const E=[
-    {id:2001,nombre:'Adilene',rol:'Empleada',base:11000,bonoCierre:700,cierresFijos:8,tipo:'fijo',color:'#7ec850'},
-    {id:2002,nombre:'Clau',rol:'Empleada',base:11000,bonoCierre:700,cierresFijos:0,tipo:'variable',color:'#5ab4e8'},
+    {id:2001,nombre:'Adilene',rol:'Empleada',base:11700,bonoCierre:700,cierresFijos:8,tipo:'fijo',color:'#7ec850'},
+    {id:2002,nombre:'Clau',rol:'Empleada',base:12400,bonoCierre:700,cierresFijos:0,tipo:'variable',color:'#5ab4e8'},
   ];
   for(const e of E) await fsSet('empleados',e);
 }
@@ -1682,6 +1682,11 @@ async function fixEmpleadosTipo(){
   // Corregir nombre: Diana → Adilene (id 2001)
   const emp1=D.empleados.find(e=>e.id===2001&&e.nombre==='Diana');
   if(emp1){ await fsSet('empleados',{...emp1,nombre:'Adilene'}); }
+  // Actualizar sueldos base: Adilene $11,700/mes ($2,925/sem), Clau $12,400/mes ($3,100/sem)
+  const adi=D.empleados.find(e=>e.id===2001);
+  if(adi&&adi.base!==11700){adi.base=11700;await fsSet('empleados',adi);}
+  const cla=D.empleados.find(e=>e.id===2002);
+  if(cla&&cla.base!==12400){cla.base=12400;await fsSet('empleados',cla);}
 }
 
 // Migrar registros con fecha UTC incorrecta
