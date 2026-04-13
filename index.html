@@ -105,8 +105,28 @@ select option{background:var(--surface2);}
 .xg{background:#e8f5e9;color:#2e7d32;}.xr{background:#ffebee;color:#c62828;}
 .xy{background:#fff8e1;color:#f57f17;}.xb{background:#e3f2fd;color:#1565c0;}
 .xt{background:#e0f2f1;color:#00695c;}.xo{background:#fff3e0;color:#e65100;}
-.toast{position:fixed;bottom:72px;left:50%;transform:translateX(-50%) translateY(12px);background:var(--accent);border:1px solid var(--accentd);color:#fff;padding:9px 18px;border-radius:20px;font-size:12.5px;font-weight:600;opacity:0;transition:all .25s;pointer-events:none;z-index:8000;white-space:nowrap;max-width:92vw;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,.4);}
+.toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--accent);border:1px solid var(--accentd);color:#fff;padding:12px 24px;border-radius:24px;font-size:14px;font-weight:700;opacity:0;transition:all .3s cubic-bezier(.2,.8,.2,1);pointer-events:none;z-index:8000;white-space:nowrap;max-width:92vw;text-align:center;box-shadow:0 6px 28px rgba(0,0,0,.5);letter-spacing:.2px;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+.toast.toast-error{background:var(--red);border-color:var(--redd);}
+.toast.toast-warn{background:#e65100;border-color:#bf4300;}
+
+/* SALE SUCCESS OVERLAY */
+.sale-ok-overlay{position:fixed;inset:0;z-index:9500;display:flex;flex-direction:column;align-items:center;justify-content:center;background:rgba(30,70,20,.92);backdrop-filter:blur(8px);opacity:0;pointer-events:none;transition:opacity .25s;}
+.sale-ok-overlay.show{opacity:1;pointer-events:auto;}
+.sale-ok-check{width:90px;height:90px;border-radius:50%;background:#fff;display:flex;align-items:center;justify-content:center;font-size:48px;box-shadow:0 4px 30px rgba(0,0,0,.3);animation:salePopIn .4s cubic-bezier(.2,.8,.2,1) both;}
+.sale-ok-total{font-family:'Playfair Display',serif;font-size:42px;font-weight:900;color:#fff;margin-top:18px;animation:salePopIn .4s .1s cubic-bezier(.2,.8,.2,1) both;}
+.sale-ok-detail{font-size:16px;color:rgba(255,255,255,.85);margin-top:8px;font-weight:500;animation:salePopIn .4s .18s cubic-bezier(.2,.8,.2,1) both;}
+.sale-ok-ticket{font-family:'DM Mono',monospace;font-size:13px;color:rgba(255,255,255,.6);margin-top:6px;animation:salePopIn .4s .24s cubic-bezier(.2,.8,.2,1) both;}
+.sale-ok-badge{background:rgba(255,255,255,.2);color:#fff;padding:6px 18px;border-radius:20px;font-size:13px;font-weight:700;margin-top:16px;animation:salePopIn .4s .3s cubic-bezier(.2,.8,.2,1) both;}
+@keyframes salePopIn{from{opacity:0;transform:scale(.7) translateY(20px);}to{opacity:1;transform:scale(1) translateY(0);}}
+
+/* LOADING BUTTON STATE */
+.btn.loading{pointer-events:none;opacity:.6;position:relative;}
+.btn.loading::after{content:'';width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:btnSpin .6s linear infinite;margin-left:6px;}
+@keyframes btnSpin{to{transform:rotate(360deg)}}
+
+/* PAGO ROW bigger on mobile */
+.pago-row .btn{padding:12px 14px;font-size:14px;font-weight:700;min-height:48px;}
 .astrip{background:#fff3e0;border:1px solid #ffcc80;border-radius:var(--rsm);padding:9px 12px;font-size:12.5px;color:#e65100;margin-bottom:10px;}
 .prog{height:4px;background:var(--surface3);border-radius:2px;overflow:hidden;}
 .pf{height:100%;border-radius:2px;transition:width .3s;}
@@ -497,11 +517,11 @@ select option{background:var(--surface2);}
           <button class="btn bs bxs" onclick="resetFechaVenta()" title="Usar hoy">↺</button>
         </div>
       </div>
-      <div class="pago-row">
-        <button class="btn bp bfull" onclick="abrirCobro()">💵 Efectivo</button>
-        <button class="btn bbl bfull" onclick="cobrar('tarjeta',0)">💳 Tarjeta</button>
+      <div class="pago-row" style="gap:8px;">
+        <button class="btn bp bfull" onclick="abrirCobro()" style="gap:6px;">💵 Efectivo</button>
+        <button class="btn bbl bfull" onclick="cobrar('tarjeta',0)" style="gap:6px;">💳 Tarjeta</button>
       </div>
-      <button class="btn bs bfull bsm" onclick="clearOrder()">✕ Limpiar</button>
+      <button class="btn bs bfull bsm" onclick="clearOrder()" style="margin-top:4px;">✕ Limpiar orden</button>
     </div>
   </div>
 </div>
@@ -1136,6 +1156,15 @@ select option{background:var(--surface2);}
 <div id="ticket-print" style="display:none;"></div>
 <div class="toast" id="toast"></div>
 
+<!-- SALE SUCCESS OVERLAY -->
+<div class="sale-ok-overlay" id="sale-ok">
+  <div class="sale-ok-check">✓</div>
+  <div class="sale-ok-total" id="sale-ok-total">$0.00</div>
+  <div class="sale-ok-detail" id="sale-ok-detail"></div>
+  <div class="sale-ok-ticket" id="sale-ok-ticket"></div>
+  <div class="sale-ok-badge" id="sale-ok-badge">VENTA REGISTRADA</div>
+</div>
+
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
@@ -1150,8 +1179,8 @@ let activeVend=null; // {id, nombre, color}
 
 const colRef=c=>collection(db,c);
 const docRef=(c,id)=>doc(db,c,String(id));
-const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);}catch(e){toast('⚠ '+e.message,4000);}};
-const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error',3000);}};
+const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);}catch(e){toast('⚠ '+e.message,4000,'error');}};
+const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
 
 function listenAll(){
   const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes'];
@@ -1366,7 +1395,25 @@ const catEmoji={acai:'🫐',oats:'🥣',smoothie:'🥤',coctel:'🍓',combo:'⭐
 const COLORS=['#7ec850','#5ab4e8','#e8c96a','#e87a6a','#a87ee8','#5ae8c8','#e8a06a','#e85ac8'];
 
 let toastT;
-function toast(msg,ms=2400){clearTimeout(toastT);const t=$('toast');t.textContent=msg;t.classList.add('show');toastT=setTimeout(()=>t.classList.remove('show'),ms);}
+function toast(msg,ms=2400,type=''){
+  clearTimeout(toastT);const t=$('toast');t.textContent=msg;
+  t.className='toast show'+(type?' toast-'+type:'');
+  toastT=setTimeout(()=>{t.className='toast';},ms);
+}
+
+// Overlay grande de venta exitosa
+function showSaleSuccess(venta){
+  const el=$('sale-ok'); if(!el) return;
+  $('sale-ok-total').textContent=fmt(venta.total);
+  const metodoTxt=venta.metodo==='efectivo'?'💵 Efectivo':'💳 Tarjeta';
+  const cambioTxt=venta.metodo==='efectivo'&&venta.cambio>0?' · Cambio: '+fmt(venta.cambio):'';
+  $('sale-ok-detail').textContent=metodoTxt+cambioTxt;
+  $('sale-ok-ticket').textContent=venta.ticket+' · '+venta.hora+(venta.vendedorNombre&&venta.vendedorNombre!=='Sin asignar'?' · '+venta.vendedorNombre:'');
+  $('sale-ok-badge').textContent='VENTA REGISTRADA';
+  el.classList.add('show');
+  try{navigator.vibrate&&navigator.vibrate([100,50,100]);}catch(e){}
+  setTimeout(()=>el.classList.remove('show'),2200);
+}
 
 // Sonido de venta confirmada (Web Audio API — no requiere archivos externos)
 function playSaleSound(){
@@ -1758,7 +1805,8 @@ window.toggleOP=()=>{opOpen=!opOpen;$('order-panel').classList.toggle('hidden',!
 
 // ABRIR modal efectivo
 window.abrirCobro=()=>{
-  if(order.length===0){toast('⚠ Agrega productos');return;}
+  if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return;}
+  if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
   const {total}=getDescuento();
   $('cobro-total').textContent=fmt(total);
   $('cobro-recibido').value='';
@@ -1789,9 +1837,12 @@ window.calcCambio=()=>{
   }
 };
 window.cobrarEfectivo=async()=>{
+  if(cobrandoEnProceso) return;
   const rec=parseFloat($('cobro-recibido').value)||0;
+  const btn=$('cobro-btn'); if(btn){btn.classList.add('loading');btn.disabled=true;}
   $('cobro-modal').style.display='none';
   await cobrar('efectivo',rec);
+  if(btn){btn.classList.remove('loading');btn.disabled=false;}
 };
 
 window.resetFechaVenta=()=>{if($('op-fecha-venta'))$('op-fecha-venta').value=today();};
@@ -1819,46 +1870,56 @@ async function descontarInventario(ventaItems){
   }
 }
 
+let cobrandoEnProceso=false;
 async function cobrar(metodo,recibido=0){
-  if(order.length===0){toast('⚠ Agrega productos');return;}
-  const {sub,desc,total}=getDescuento();
-  const nota=$('op-nota').value.trim();
-  const tid=Date.now();
-  const cambio=metodo==='efectivo'?recibido-total:0;
-  // Usar fecha seleccionada (si es retroactiva) o hoy
-  const fechaVenta = ($('op-fecha-venta')?.value && $('op-fecha-venta').value !== today())
-    ? $('op-fecha-venta').value : today();
-  const esRetroactiva = fechaVenta !== today();
-  const venta={
-    id:tid, fecha:fechaVenta,
-    hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
-    items:order.map(o=>({...o})),
-    subtotal:sub, descuento:desc, total, metodo, nota, anulada:false,
-    ticket:'#'+String(tid).slice(-6),
-    vendedorId:activeVend?.id||null,
-    vendedorNombre:activeVend?.nombre||'Sin asignar',
-    recibido:metodo==='efectivo'?recibido:total,
-    cambio:Math.max(0,cambio)
-  };
-  await fsSet('ventas',venta);
-  // Descontar inventario automáticamente según recetas
-  await descontarInventario(venta.items);
-  // Solo actualizar caja automáticamente si es venta del día actual
-  if(!esRetroactiva){
-    const ex=D.caja.find(c=>c.fecha===fechaVenta);
-    const ef=metodo==='efectivo'?total:0; const tc=metodo==='tarjeta'?total:0;
-    if(ex){ex.ef=(ex.ef||0)+ef;ex.tc=(ex.tc||0)+tc;ex.total=ex.ef+ex.tc;await fsSet('caja',ex);}
-    else{await fsSet('caja',{id:tid+1,fecha:fechaVenta,ef,tc,total,nota:'Auto-POS',dC:false,cC:false,subId:null});}
+  if(order.length===0){toast('⚠ Agrega productos','2400','warn');return;}
+  if(cobrandoEnProceso){toast('⏳ Procesando venta...','1500','warn');return;}
+  cobrandoEnProceso=true;
+
+  // Bloquear botones de pago visualmente
+  const btns=document.querySelectorAll('.pago-row .btn');
+  btns.forEach(b=>b.classList.add('loading'));
+
+  try{
+    const {sub,desc,total}=getDescuento();
+    const nota=$('op-nota').value.trim();
+    const tid=Date.now();
+    const cambio=metodo==='efectivo'?recibido-total:0;
+    const fechaVenta = ($('op-fecha-venta')?.value && $('op-fecha-venta').value !== today())
+      ? $('op-fecha-venta').value : today();
+    const esRetroactiva = fechaVenta !== today();
+    const venta={
+      id:tid, fecha:fechaVenta,
+      hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
+      items:order.map(o=>({...o})),
+      subtotal:sub, descuento:desc, total, metodo, nota, anulada:false,
+      ticket:'#'+String(tid).slice(-6),
+      vendedorId:activeVend?.id||null,
+      vendedorNombre:activeVend?.nombre||'Sin asignar',
+      recibido:metodo==='efectivo'?recibido:total,
+      cambio:Math.max(0,cambio)
+    };
+    await fsSet('ventas',venta);
+    await descontarInventario(venta.items);
+    if(!esRetroactiva){
+      const ex=D.caja.find(c=>c.fecha===fechaVenta);
+      const ef=metodo==='efectivo'?total:0; const tc=metodo==='tarjeta'?total:0;
+      if(ex){ex.ef=(ex.ef||0)+ef;ex.tc=(ex.tc||0)+tc;ex.total=ex.ef+ex.tc;await fsSet('caja',ex);}
+      else{await fsSet('caja',{id:tid+1,fecha:fechaVenta,ef,tc,total,nota:'Auto-POS',dC:false,cC:false,subId:null});}
+    }
+    printTicket(venta);
+    playSaleSound();
+    showSaleSuccess(venta);
+    order=[]; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
+    if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
+    renderOrder();
+  }catch(e){
+    console.error('Error en venta:',e);
+    toast('❌ Error al registrar venta. Intenta de nuevo.',4000,'error');
+  }finally{
+    cobrandoEnProceso=false;
+    btns.forEach(b=>b.classList.remove('loading'));
   }
-  printTicket(venta);
-  const cambioTxt=metodo==='efectivo'&&cambio>0?` · Cambio: ${fmt(cambio)}`:'';
-  const retroTxt=esRetroactiva?` 📅 ${fechaVenta}`:'';
-  playSaleSound();
-  toast(`✓ ${metodo==='efectivo'?'💵':'💳'} ${fmt(total)}${cambioTxt}${activeVend?' — '+activeVend.nombre:''}${retroTxt}`);
-  order=[]; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
-  // Resetear fecha a hoy después de venta retroactiva
-  if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
-  renderOrder();
 }
 window.cobrar=cobrar;
 
@@ -1890,7 +1951,7 @@ function printTicket(v){
     <hr class="tk-sep">
     <div class="tk-footer">${CFG.msg}<br>*** Gracias por su compra ***</div>
   </div>`;
-  setTimeout(()=>window.print(),200);
+  setTimeout(()=>{try{window.print();}catch(e){console.warn('Print error:',e);}},250);
 }
 // Imprimir ticket de corte de caja
 function printCorteTicket(corte){
