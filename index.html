@@ -1262,6 +1262,7 @@ function listenAll(){
           }catch(e){}
           fixUTCDates();
           fixEmpleadosTipo();
+          migrateMenuAbril2026();
           renderLock();
           if(!SESSION){
             $('lock-screen').style.display='flex';
@@ -1298,7 +1299,7 @@ function listenAll(){
           if(loader) loader.style.display='none';
           initD(); renderAll();
           try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);}}catch(e){}
-          fixUTCDates(); fixEmpleadosTipo(); renderLock();
+          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); renderLock();
           if(!SESSION){ $('lock-screen').style.display='flex'; }
           else{
             $('lock-screen').style.display='none';
@@ -1325,13 +1326,13 @@ async function seedMenu(){
     {id:1009,nombre:"Pal'Crudo",cat:'smoothie',precio:99,desc:'Manzana, limón y zanahoria',activo:true},
     {id:1010,nombre:"Pal'Sediento",cat:'smoothie',precio:99,desc:'Sandía y limón',activo:true},
     {id:1011,nombre:"Pal'Changuito",cat:'smoothie',precio:99,desc:'Plátano, mango y leche',activo:true},
-    {id:1012,nombre:"Pal'Mamado",cat:'smoothie',precio:99,desc:'Plátano, avena, leche, proteína',activo:true},
+    {id:1012,nombre:"Pal'Mamado",cat:'smoothie',precio:99,desc:'Plátano, crema de almendra, avena y leche (incluye proteína)',activo:true},
     {id:1013,nombre:'Coctel de Fruta',cat:'coctel',precio:69,desc:'2 frutas a escoger',activo:true},
     {id:1014,nombre:'Coctel Biónico',cat:'coctel',precio:119,desc:'3 frutas, yogurt, coco rallado',activo:true},
-    {id:1015,nombre:'Papas Locas',cat:'papas',precio:69,desc:'Susalias con pepino, jícama y zanahoria',activo:true},
-    {id:1016,nombre:'Combo Touchdown',cat:'combo',precio:159,desc:'Overnight Oats 2T + smoothie',activo:true},
-    {id:1017,nombre:'Combo Gym Rat',cat:'combo',precio:149,desc:'Coctel + smoothie',activo:true},
-    {id:1018,nombre:'Combo Home Run',cat:'combo',precio:219,desc:'Açaí bowl + smoothie',activo:true},
+    {id:1015,nombre:'Papas Locas',cat:'papas',precio:75,desc:'Susalias con pepino, jícama y zanahoria',activo:true},
+    {id:1016,nombre:'Combo Home Run',cat:'combo',precio:169,desc:'Overnight Oats 2T + Smoothie',activo:true},
+    {id:1017,nombre:'Combo Gym Rat',cat:'combo',precio:159,desc:'Coctel de fruta + Smoothie',activo:true},
+    {id:1018,nombre:'Combo El Fresa',cat:'combo',precio:229,desc:'Açaí Bowl 2T + Smoothie',activo:true},
     {id:1019,nombre:'Panini Queso Mozzarella',cat:'panini',precio:89,desc:'',activo:true},
     {id:1020,nombre:'Panini 4 Quesos',cat:'panini',precio:89,desc:'',activo:true},
     {id:1021,nombre:'Panini Pechuga de Pavo',cat:'panini',precio:89,desc:'',activo:true},
@@ -1357,16 +1358,16 @@ async function seedMenu(){
     {id:1041,nombre:'Matcha Grande',cat:'te',precio:69,desc:'',activo:true},
     {id:1042,nombre:'Chai Chico',cat:'te',precio:59,desc:'',activo:true},
     {id:1043,nombre:'Chai Grande',cat:'te',precio:69,desc:'',activo:true},
-    {id:1044,nombre:'Pan tía Renee - Queso',cat:'pan',precio:75,desc:'+ Aguacate $10',activo:true},
-    {id:1045,nombre:'Pan tía Renee - Chilaquiles',cat:'pan',precio:75,desc:'',activo:true},
-    {id:1046,nombre:'Pan tía Renee - Pizza',cat:'pan',precio:75,desc:'',activo:true},
-    {id:1047,nombre:'Pan tía Renee - Rajas Poblanas',cat:'pan',precio:75,desc:'',activo:true},
-    {id:1048,nombre:'Combo El OG',cat:'combo',precio:169,desc:'Smoothie + Panini',activo:true},
-    {id:1049,nombre:'Combo El Mañanaero',cat:'combo',precio:119,desc:'Panini + Capuchino Ch',activo:true},
-    {id:1050,nombre:'Combo El de Renee',cat:'combo',precio:115,desc:'Pan Renee + Capuchino Ch',activo:true},
+    {id:1044,nombre:'Pan tía Renee - Queso',cat:'pan',precio:85,desc:'+ Aguacate $10',activo:true},
+    {id:1045,nombre:'Pan tía Renee - Chilaquiles',cat:'pan',precio:85,desc:'',activo:true},
+    {id:1046,nombre:'Pan tía Renee - Pizza',cat:'pan',precio:85,desc:'',activo:true},
+    {id:1047,nombre:'Pan tía Renee - Rajas Poblanas',cat:'pan',precio:85,desc:'',activo:true},
+    {id:1048,nombre:'Combo El OG',cat:'combo',precio:179,desc:'Smoothie + Panini',activo:true},
+    {id:1049,nombre:'Combo El Mañanero',cat:'combo',precio:129,desc:'Panini + Capuchino Ch',activo:true},
+    {id:1050,nombre:'Combo El de Renee',cat:'combo',precio:125,desc:'Pan Renee + Capuchino Ch',activo:true},
     {id:1051,nombre:'Topping Extra (Bowl/Oats)',cat:'otro',precio:10,desc:'',activo:true},
-    {id:1052,nombre:'Proteína Extra',cat:'otro',precio:15,desc:'',activo:true},
-    {id:1053,nombre:'Topping Extra (Panini)',cat:'otro',precio:15,desc:'',activo:true},
+    {id:1052,nombre:'Proteína Extra',cat:'otro',precio:15,desc:'Por $15 agrega proteína',activo:true},
+    {id:1053,nombre:'Topping Extra (Panini)',cat:'otro',precio:15,desc:'Jamón, aguacate, queso, aceitunas, pepino, jitomate, chipotle o pavo',activo:true},
     {id:1054,nombre:'Aguacate (Pan Renee)',cat:'otro',precio:10,desc:'',activo:true},
     {id:1055,nombre:'Topping Cacahuates',cat:'otro',precio:10,desc:'Bowl / Oats',activo:true},
     {id:1056,nombre:'Shot Espresso Extra',cat:'otro',precio:15,desc:'Para cualquier bebida',activo:true},
@@ -1376,6 +1377,15 @@ async function seedMenu(){
     {id:1060,nombre:'Coctel Pepino',cat:'coctel',precio:69,desc:'Con limón y chile',activo:true},
     {id:1061,nombre:'Coctel Mix',cat:'coctel',precio:69,desc:'3 frutas a escoger',activo:true},
     {id:1062,nombre:'Papas Susalias',cat:'papas',precio:19,desc:'Papas solitas',activo:true},
+    // Smoothies nuevos
+    {id:1063,nombre:"Pal'Matcha Gains",cat:'smoothie',precio:99,desc:'Matcha, plátano, avena, crema de almendra y leche',activo:true},
+    {id:1064,nombre:"Pal'Chai Lover",cat:'smoothie',precio:99,desc:'Chai, plátano, avena, crema de almendra, miel y leche',activo:true},
+    {id:1065,nombre:"Pal'Berry Fuerte",cat:'smoothie',precio:99,desc:'Fresa, blueberry, plátano, avena y leche',activo:true},
+    // Tés nuevos
+    {id:1066,nombre:'Hierbabuena Chico',cat:'te',precio:35,desc:'',activo:true},
+    {id:1067,nombre:'Hierbabuena Grande',cat:'te',precio:50,desc:'',activo:true},
+    {id:1068,nombre:'Manzanilla Chico',cat:'te',precio:35,desc:'',activo:true},
+    {id:1069,nombre:'Manzanilla Grande',cat:'te',precio:50,desc:'',activo:true},
   ];
   for(const p of M) await fsSet('productos',p);
 }
@@ -1386,6 +1396,55 @@ async function seedEmps(){
   ];
   for(const e of E) await fsSet('empleados',e);
 }
+// Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
+async function migrateMenuAbril2026(){
+  const migKey='h5menu_abr26';
+  if(localStorage.getItem(migKey)) return; // ya migrado
+  const updates=[
+    {id:1012,nombre:"Pal'Mamado",precio:99,desc:'Plátano, crema de almendra, avena y leche (incluye proteína)'},
+    {id:1015,nombre:'Papas Locas',precio:75},
+    {id:1016,nombre:'Combo Home Run',precio:169,desc:'Overnight Oats 2T + Smoothie'},
+    {id:1017,nombre:'Combo Gym Rat',precio:159,desc:'Coctel de fruta + Smoothie'},
+    {id:1018,nombre:'Combo El Fresa',precio:229,desc:'Açaí Bowl 2T + Smoothie'},
+    {id:1044,nombre:'Pan tía Renee - Queso',precio:85},
+    {id:1045,nombre:'Pan tía Renee - Chilaquiles',precio:85},
+    {id:1046,nombre:'Pan tía Renee - Pizza',precio:85},
+    {id:1047,nombre:'Pan tía Renee - Rajas Poblanas',precio:85},
+    {id:1048,nombre:'Combo El OG',precio:179},
+    {id:1049,nombre:'Combo El Mañanero',precio:129},
+    {id:1050,nombre:'Combo El de Renee',precio:125},
+    {id:1053,nombre:'Topping Extra (Panini)',precio:15,desc:'Jamón, aguacate, queso, aceitunas, pepino, jitomate, chipotle o pavo'},
+  ];
+  let changed=0;
+  for(const u of updates){
+    const p=D.productos.find(x=>x.id===u.id);
+    if(p){
+      let needsUpdate=false;
+      if(u.precio&&p.precio!==u.precio){p.precio=u.precio;needsUpdate=true;}
+      if(u.nombre&&p.nombre!==u.nombre){p.nombre=u.nombre;needsUpdate=true;}
+      if(u.desc!==undefined&&p.desc!==u.desc){p.desc=u.desc;needsUpdate=true;}
+      if(needsUpdate){await fsSet('productos',p);changed++;}
+    }
+  }
+  // Agregar productos nuevos si no existen
+  const newProds=[
+    {id:1063,nombre:"Pal'Matcha Gains",cat:'smoothie',precio:99,desc:'Matcha, plátano, avena, crema de almendra y leche',activo:true},
+    {id:1064,nombre:"Pal'Chai Lover",cat:'smoothie',precio:99,desc:'Chai, plátano, avena, crema de almendra, miel y leche',activo:true},
+    {id:1065,nombre:"Pal'Berry Fuerte",cat:'smoothie',precio:99,desc:'Fresa, blueberry, plátano, avena y leche',activo:true},
+    {id:1066,nombre:'Hierbabuena Chico',cat:'te',precio:35,desc:'',activo:true},
+    {id:1067,nombre:'Hierbabuena Grande',cat:'te',precio:50,desc:'',activo:true},
+    {id:1068,nombre:'Manzanilla Chico',cat:'te',precio:35,desc:'',activo:true},
+    {id:1069,nombre:'Manzanilla Grande',cat:'te',precio:50,desc:'',activo:true},
+  ];
+  for(const np of newProds){
+    if(!D.productos.find(x=>x.id===np.id)){
+      await fsSet('productos',np);changed++;
+    }
+  }
+  localStorage.setItem(migKey,'1');
+  if(changed>0) toast(`✓ Menú actualizado: ${changed} productos`,3000);
+}
+
 // Fix empleados existentes con tipo incorrecto Y nombres correctos
 async function fixEmpleadosTipo(){
   // Corregir Clau: tipo debe ser variable
@@ -3286,8 +3345,13 @@ window.seedRecetasPredefinidas=async()=>{
   const ing=(inv,qty,unit)=>({invId:inv.id,nombre:inv.nombre,qty:String(qty),unit:unit||inv.unit});
 
   // ── SMOOTHIES ──
-  // Pal'Mamado (1012)
-  await setRec(1012,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(avena,30,'g'),ing(leche,250,'ml'),ing(platano,1,'pz'),ing(hielo,100,'g'),ing(proteina,30,'g')]);
+  // Pal'Mamado (1012) — plátano, crema de almendra, avena y leche (incluye proteína)
+  const crema_almendra=await I('Crema de almendra','granos','g');
+  const blueberry=await I('Blueberry','frutas','g');
+  const miel=await I('Miel de abeja','otros','ml');
+  const hierbabuena_h=await I('Hierbabuena hoja','bebidas','g');
+  const manzanilla_h=await I('Manzanilla hoja','bebidas','g');
+  await setRec(1012,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(platano,1,'pz'),ing(crema_almendra,20,'g'),ing(avena,30,'g'),ing(leche,250,'ml'),ing(hielo,100,'g'),ing(proteina,30,'g')]);
   // Pal'Playero (1007)
   await setRec(1007,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(pina,100,'g'),ing(mango,100,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
   // Pal'Fresa (1008)
@@ -3357,6 +3421,20 @@ window.seedRecetasPredefinidas=async()=>{
   await setRec(1059,[...coctelBase,ing(sandia,200,'g'),ing(limon,1,'pz')]); // Sandía
   await setRec(1060,[...coctelBase,ing(pepino,0.5,'pz'),ing(limon,1,'pz')]); // Pepino
   await setRec(1061,coctelBase); // Mix
+
+  // ── SMOOTHIES NUEVOS ──
+  // Pal'Matcha Gains (1063) — matcha, plátano, avena, crema de almendra y leche
+  await setRec(1063,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(matcha,5,'g'),ing(platano,1,'pz'),ing(avena,30,'g'),ing(crema_almendra,20,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  // Pal'Chai Lover (1064) — chai, plátano, avena, crema de almendra, miel y leche
+  await setRec(1064,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(chai,5,'g'),ing(platano,1,'pz'),ing(avena,30,'g'),ing(crema_almendra,20,'g'),ing(miel,15,'ml'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  // Pal'Berry Fuerte (1065) — fresa, blueberry, plátano, avena y leche
+  await setRec(1065,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(fresa,80,'g'),ing(blueberry,80,'g'),ing(platano,1,'pz'),ing(avena,30,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+
+  // ── TÉS NUEVOS ──
+  await setRec(1066,[ing(hierbabuena_h,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]); // Hierbabuena chico
+  await setRec(1067,[ing(hierbabuena_h,5,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]); // Hierbabuena grande
+  await setRec(1068,[ing(manzanilla_h,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]); // Manzanilla chico
+  await setRec(1069,[ing(manzanilla_h,5,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]); // Manzanilla grande
 
   // ── PAPAS ──
   await setRec(1015,[ing(papas_susalias,1,'bolsa'),ing(pepino,0.25,'pz'),ing(jicama,0.25,'pz'),ing(zanahoria,0.25,'pz'),ing(servilleta,1,'pz'),ing(plato,1,'pz')]);
