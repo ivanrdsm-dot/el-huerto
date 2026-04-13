@@ -286,6 +286,28 @@ select option{background:var(--surface2);}
 .checkin-info{flex:1;}
 .checkin-time{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);font-weight:700;}
 .checkin-absent{color:var(--text3);font-size:11px;}
+/* RELOJ CHECADOR */
+.reloj-clock{font-family:'DM Mono',monospace;font-size:42px;font-weight:700;color:var(--accent);text-align:center;letter-spacing:2px;line-height:1;}
+.reloj-date{font-size:13px;color:var(--text2);text-align:center;margin-top:4px;}
+.reloj-emp-card{background:var(--surface);border:2px solid var(--border);border-radius:var(--r);padding:18px;display:flex;flex-direction:column;align-items:center;gap:10px;transition:border-color .2s;}
+.reloj-emp-card.en-turno{border-color:var(--accent);box-shadow:0 0 0 3px rgba(46,125,50,.12);}
+.reloj-av{width:64px;height:64px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:28px;font-weight:900;color:#fff;box-shadow:0 2px 10px rgba(0,0,0,.15);}
+.reloj-name{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;}
+.reloj-status{font-size:12px;font-weight:700;padding:4px 14px;border-radius:20px;}
+.reloj-status.on{background:#e8f5e9;color:#2e7d32;}
+.reloj-status.off{background:#f5f5f5;color:var(--text3);}
+.reloj-hora{font-family:'DM Mono',monospace;font-size:13px;color:var(--text2);}
+.reloj-elapsed{font-family:'DM Mono',monospace;font-size:22px;font-weight:700;color:var(--accent);}
+.reloj-btn{padding:14px 28px;border-radius:var(--r);border:none;cursor:pointer;font-size:15px;font-weight:700;font-family:'DM Sans',sans-serif;width:100%;max-width:260px;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:8px;}
+.reloj-btn.entrada{background:var(--accent);color:#fff;box-shadow:0 3px 12px rgba(46,125,50,.3);}
+.reloj-btn.entrada:hover{background:var(--accentd);}
+.reloj-btn.salida{background:var(--red);color:#fff;box-shadow:0 3px 12px rgba(198,40,40,.3);}
+.reloj-btn.salida:hover{background:var(--redd);}
+.reloj-btn.disabled{background:var(--surface3);color:var(--text3);pointer-events:none;box-shadow:none;}
+.reloj-week-table th,.reloj-week-table td{text-align:center;font-size:12px;padding:8px 6px;}
+.reloj-week-table .total-row td{font-weight:700;background:var(--surface2);border-top:2px solid var(--accent);}
+@media(max-width:700px){.reloj-emp-card{padding:14px;}.reloj-av{width:52px;height:52px;font-size:22px;}.reloj-btn{padding:12px 20px;font-size:14px;}}
+
 /* AJUSTES */
 .ajuste-section{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:14px;margin-bottom:10px;}
 .ajuste-title{font-size:13px;font-weight:700;margin-bottom:12px;color:var(--text);}
@@ -395,6 +417,7 @@ select option{background:var(--surface2);}
   <div class="logo">El <em>Huerto</em></div>
   <div class="ntabs">
     <button class="ntab active" onclick="go('dashboard')">🏠 Inicio</button>
+    <button class="ntab" onclick="go('reloj')">🕐 Reloj</button>
     <button class="ntab" onclick="go('pos')">🛒 Ventas</button>
     <button class="ntab" onclick="go('historial')">📋 Historial</button>
     <button class="ntab" onclick="go('caja')">💰 Caja</button>
@@ -420,8 +443,9 @@ select option{background:var(--surface2);}
   </div>
 </nav>
 
-<div class="mnav">
+<div class="mnav" style="grid-template-columns:repeat(6,1fr);">
   <button class="mnbtn" onclick="go('dashboard')"><span class="mni">🏠</span>Inicio</button>
+  <button class="mnbtn" onclick="go('reloj')"><span class="mni">🕐</span>Reloj</button>
   <button class="mnbtn active" onclick="go('pos')"><span class="mni">🛒</span>Ventas</button>
   <button class="mnbtn" onclick="go('caja')"><span class="mni">💰</span>Caja</button>
   <button class="mnbtn" onclick="go('nomina')"><span class="mni">👩</span>Nómina</button>
@@ -469,6 +493,31 @@ select option{background:var(--surface2);}
       <span id="db-checkin-fecha" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;"></span>
     </div>
     <div id="db-checkin-content"></div>
+  </div>
+</div>
+
+<!-- ══ RELOJ CHECADOR ══ -->
+<div id="page-reloj" class="page">
+  <div class="sh"><span class="st">Reloj Checador</span></div>
+  <!-- Reloj en tiempo real -->
+  <div class="card" style="text-align:center;margin-bottom:12px;padding:18px;">
+    <div class="reloj-clock" id="reloj-live">--:--:--</div>
+    <div class="reloj-date" id="reloj-fecha"></div>
+  </div>
+  <!-- Tarjetas de empleadas -->
+  <div class="g2" style="gap:12px;margin-bottom:14px;" id="reloj-cards"></div>
+  <!-- Reporte Semanal -->
+  <div class="card">
+    <div class="sh">
+      <span class="ct" style="margin-bottom:0;">Reporte Semanal de Horas</span>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <select id="reloj-sem" onchange="renderReloj()" style="width:auto;padding:5px 8px;font-size:11.5px;"></select>
+        <button class="btn bg bsm" onclick="pdfReporteHoras()">📄 PDF</button>
+      </div>
+    </div>
+    <div class="tw" style="margin-top:10px;" id="reloj-week-table"></div>
+    <!-- Resumen totales -->
+    <div class="g2" style="gap:10px;margin-top:12px;" id="reloj-totales"></div>
   </div>
 </div>
 
@@ -2879,6 +2928,254 @@ window.confirmarCargaMasiva=async()=>{
 // Cargar API key guardada (se ejecuta en initD también)
 function loadClaudeKey(){try{const sk=localStorage.getItem('h5claudekey');if(sk&&$('claude-api-key'))$('claude-api-key').value=sk;}catch(e){}}
 
+// ─── RELOJ CHECADOR ───
+let relojInterval=null;
+
+function startRelojTick(){
+  if(relojInterval) clearInterval(relojInterval);
+  relojTick();
+  relojInterval=setInterval(relojTick,1000);
+}
+
+function relojTick(){
+  const now=new Date();
+  const hh=String(now.getHours()).padStart(2,'0');
+  const mm=String(now.getMinutes()).padStart(2,'0');
+  const ss=String(now.getSeconds()).padStart(2,'0');
+  const el=$('reloj-live');
+  if(el) el.textContent=`${hh}:${mm}:${ss}`;
+  const fd=$('reloj-fecha');
+  if(fd) fd.textContent=now.toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  // Actualizar tiempos transcurridos
+  document.querySelectorAll('[data-elapsed-from]').forEach(span=>{
+    const from=span.getAttribute('data-elapsed-from');
+    if(!from) return;
+    const [h,m]=from.split(':').map(Number);
+    const startMin=h*60+m;
+    const nowMin=now.getHours()*60+now.getMinutes();
+    const diff=Math.max(0,nowMin-startMin);
+    const dh=Math.floor(diff/60);
+    const dm=diff%60;
+    span.textContent=`${dh}h ${String(dm).padStart(2,'0')}m`;
+  });
+}
+
+function populateRelojSemanas(){
+  const sel=$('reloj-sem'); if(!sel) return;
+  const cur=sel.value;
+  const weeks=[];
+  for(let i=0;i<8;i++){
+    const d=new Date(); d.setDate(d.getDate()-i*7);
+    const mon=getMonday(localDate(d));
+    if(!weeks.includes(mon)) weeks.push(mon);
+  }
+  sel.innerHTML=weeks.map((w,i)=>{
+    const end=new Date(w+'T12:00:00'); end.setDate(end.getDate()+6);
+    const lbl=`${w.slice(5)} → ${localDate(end).slice(5)}${i===0?' (Esta semana)':''}`;
+    return `<option value="${w}">${lbl}</option>`;
+  }).join('');
+  if(cur&&weeks.includes(cur)) sel.value=cur;
+}
+
+function getCheckinHoy(empId){
+  const td=today();
+  return D.checkins.find(c=>c.empId===empId && c.fecha===td && !c.horaSalida);
+}
+
+function getCheckinsCerradosHoy(empId){
+  const td=today();
+  return D.checkins.filter(c=>c.empId===empId && c.fecha===td && c.horaSalida);
+}
+
+function calcMinsFromCheckins(checkins){
+  let total=0;
+  for(const c of checkins){
+    if(!c.hora||!c.horaSalida) continue;
+    const [hE,mE]=c.hora.split(':').map(Number);
+    const [hS,mS]=c.horaSalida.split(':').map(Number);
+    const mins=(hS*60+mS)-(hE*60+mE);
+    if(mins>0) total+=mins;
+  }
+  return total;
+}
+
+function fmtMins(mins){
+  if(mins<=0) return '—';
+  return `${Math.floor(mins/60)}h ${String(mins%60).padStart(2,'0')}m`;
+}
+
+function getHorasSemana(empId,monday){
+  const days=[];
+  for(let i=0;i<7;i++){
+    const d=new Date(monday+'T12:00:00'); d.setDate(d.getDate()+i);
+    const fecha=localDate(d);
+    const dayName=d.toLocaleDateString('es-MX',{weekday:'short'}).replace('.','');
+    const checks=D.checkins.filter(c=>c.empId===empId && c.fecha===fecha);
+    const entrada=checks.find(c=>c.hora)?.hora||null;
+    const salida=checks.find(c=>c.horaSalida)?.horaSalida||null;
+    const mins=calcMinsFromCheckins(checks);
+    days.push({fecha,dayName,entrada,salida,mins});
+  }
+  const totalMins=days.reduce((s,d)=>s+d.mins,0);
+  return {days,totalMins};
+}
+
+window.checkarEntrada=async(empId)=>{
+  const e=D.empleados.find(x=>x.id===empId); if(!e) return;
+  // Verificar que no tenga turno abierto
+  const abierto=getCheckinHoy(empId);
+  if(abierto){toast(`${e.nombre} ya tiene turno abierto`,2400,'warn');return;}
+  const hora=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
+  const ci={id:Date.now(),empId:e.id,empNombre:e.nombre,fecha:today(),hora,horaSalida:null,color:e.color||'var(--accent)'};
+  await fsSet('checkins',ci);
+  playSaleSound();
+  toast(`✅ Entrada registrada — ${e.nombre} ${hora}`);
+};
+
+window.checkarSalida=async(empId)=>{
+  const e=D.empleados.find(x=>x.id===empId); if(!e) return;
+  const ci=getCheckinHoy(empId);
+  if(!ci){toast(`${e.nombre} no tiene turno abierto`,2400,'warn');return;}
+  const hora=new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
+  await fsSet('checkins',{...ci,horaSalida:hora});
+  const [hE,mE]=ci.hora.split(':').map(Number);
+  const [hS,mS]=hora.split(':').map(Number);
+  const mins=(hS*60+mS)-(hE*60+mE);
+  playSaleSound();
+  toast(`🔴 Salida registrada — ${e.nombre} ${hora} (${fmtMins(mins)})`);
+};
+
+function renderReloj(){
+  populateRelojSemanas();
+  const td=today();
+  const isAdmin=SESSION&&SESSION.tipo==='admin';
+  const isEmp=SESSION&&SESSION.tipo==='emp';
+
+  // Tarjetas de empleadas
+  if($('reloj-cards')){
+    $('reloj-cards').innerHTML=D.empleados.map(e=>{
+      const abierto=getCheckinHoy(e.id);
+      const cerrados=getCheckinsCerradosHoy(e.id);
+      const minsHoy=calcMinsFromCheckins(cerrados);
+      const enTurno=!!abierto;
+      // Solo puede checar su propio turno (emp) o cualquiera (admin)
+      const puedeChecar=isAdmin||(isEmp&&SESSION.id===e.id);
+      const btnHTML=puedeChecar?(
+        enTurno
+          ?`<button class="reloj-btn salida" onclick="checkarSalida(${e.id})">🔴 Registrar Salida</button>`
+          :`<button class="reloj-btn entrada" onclick="checkarEntrada(${e.id})">🟢 Registrar Entrada</button>`
+      ):`<button class="reloj-btn disabled">Solo tu perfil</button>`;
+
+      return `<div class="reloj-emp-card ${enTurno?'en-turno':''}">
+        <div class="reloj-av" style="background:${e.color||'var(--accent)'};">${e.nombre[0]}</div>
+        <div class="reloj-name">${e.nombre}</div>
+        <span class="reloj-status ${enTurno?'on':'off'}">${enTurno?'🟢 En turno':'⚪ Fuera'}</span>
+        ${enTurno?`
+          <div class="reloj-hora">Entrada: <strong>${abierto.hora}</strong></div>
+          <div class="reloj-elapsed" data-elapsed-from="${abierto.hora}">0h 00m</div>
+          <div style="font-size:10px;color:var(--text3);">Tiempo en turno</div>
+        `:`
+          <div class="reloj-hora">${cerrados.length>0?'Último turno: '+cerrados[cerrados.length-1].hora+' — '+cerrados[cerrados.length-1].horaSalida:'Sin registro hoy'}</div>
+          ${minsHoy>0?`<div style="font-size:12px;color:var(--text2);">Hoy: <strong class="ag">${fmtMins(minsHoy)}</strong></div>`:''}
+        `}
+        ${btnHTML}
+      </div>`;
+    }).join('');
+  }
+
+  // Reporte semanal
+  const mon=$('reloj-sem')?.value||getMonday(today());
+  const empData=D.empleados.map(e=>({emp:e,...getHorasSemana(e.id,mon)}));
+
+  if($('reloj-week-table')){
+    const dayNames=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+    let headerCols='<th>Día</th>';
+    empData.forEach(ed=>{headerCols+=`<th colspan="3" style="background:${ed.emp.color||'var(--accent)'};color:#fff;border-radius:4px;">${ed.emp.nombre}</th>`;});
+
+    let subHeader='<th></th>';
+    empData.forEach(()=>{subHeader+='<th style="font-size:9px;">Entrada</th><th style="font-size:9px;">Salida</th><th style="font-size:9px;">Horas</th>';});
+
+    let rows='';
+    for(let i=0;i<7;i++){
+      const isToday=empData[0]?.days[i]?.fecha===td;
+      rows+=`<tr style="${isToday?'background:rgba(46,125,50,.06);':''}">`;
+      rows+=`<td class="mono" style="font-weight:700;font-size:11px;">${dayNames[i]}<br><span style="font-size:9px;color:var(--text3);">${empData[0]?.days[i]?.fecha?.slice(5)||''}</span></td>`;
+      empData.forEach(ed=>{
+        const d=ed.days[i];
+        rows+=`<td class="mono ag" style="font-size:11px;">${d.entrada||'—'}</td>`;
+        rows+=`<td class="mono ${d.salida?'ar':'ay'}" style="font-size:11px;">${d.salida||'—'}</td>`;
+        rows+=`<td class="mono" style="font-size:11px;font-weight:700;">${fmtMins(d.mins)}</td>`;
+      });
+      rows+='</tr>';
+    }
+
+    // Fila de totales
+    let totalRow='<tr class="total-row"><td style="font-weight:900;">TOTAL</td>';
+    empData.forEach(ed=>{
+      totalRow+=`<td colspan="3" style="font-size:14px;font-weight:900;color:var(--accent);">${fmtMins(ed.totalMins)}</td>`;
+    });
+    totalRow+='</tr>';
+
+    $('reloj-week-table').innerHTML=`<table class="tbl reloj-week-table"><thead><tr>${headerCols}</tr><tr>${subHeader}</tr></thead><tbody>${rows}${totalRow}</tbody></table>`;
+  }
+
+  // Totales resumen
+  if($('reloj-totales')){
+    $('reloj-totales').innerHTML=empData.map(ed=>`
+      <div class="card" style="text-align:center;">
+        <div class="ct">${ed.emp.nombre}</div>
+        <div class="kv" style="color:${ed.emp.color||'var(--accent)'};">${fmtMins(ed.totalMins)}</div>
+        <div style="font-size:11px;color:var(--text2);margin-top:4px;">${ed.days.filter(d=>d.mins>0).length} días trabajados</div>
+      </div>
+    `).join('');
+  }
+}
+window.renderReloj=renderReloj;
+
+// PDF Reporte de Horas
+window.pdfReporteHoras=()=>{
+  if(typeof jspdf==='undefined'&&typeof window.jspdf==='undefined'){toast('⚠ Cargando PDF...',2000,'warn');return;}
+  const {jsPDF}=window.jspdf;
+  const pdf=new jsPDF('l','mm','letter');
+  const mon=$('reloj-sem')?.value||getMonday(today());
+  const endD=new Date(mon+'T12:00:00');endD.setDate(endD.getDate()+6);
+
+  pdf.setFontSize(18);
+  pdf.setTextColor(46,125,50);
+  pdf.text(`${CFG.negocio} — Reporte de Horas`,14,18);
+  pdf.setFontSize(11);
+  pdf.setTextColor(80);
+  pdf.text(`Semana: ${mon} al ${localDate(endD)}`,14,26);
+
+  const dayNames=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
+  const empData=D.empleados.map(e=>({emp:e,...getHorasSemana(e.id,mon)}));
+
+  // Construir tabla
+  const head=[['Día',...empData.flatMap(ed=>[ed.emp.nombre+' Entrada',ed.emp.nombre+' Salida',ed.emp.nombre+' Horas'])]];
+  const body=[];
+  for(let i=0;i<7;i++){
+    const row=[dayNames[i]+' '+empData[0]?.days[i]?.fecha?.slice(5)];
+    empData.forEach(ed=>{
+      const d=ed.days[i];
+      row.push(d.entrada||'—',d.salida||'—',fmtMins(d.mins));
+    });
+    body.push(row);
+  }
+  // Totales
+  const totRow=['TOTAL'];
+  empData.forEach(ed=>{totRow.push('','',fmtMins(ed.totalMins));});
+  body.push(totRow);
+
+  pdf.autoTable({head,body,startY:32,styles:{fontSize:9,cellPadding:3},headStyles:{fillColor:[46,125,50]},
+    didParseCell:function(data){
+      if(data.row.index===body.length-1){data.cell.styles.fontStyle='bold';data.cell.styles.fillColor=[232,245,233];}
+    }
+  });
+
+  pdf.save(`Horas_${mon}.pdf`);
+  toast('✓ PDF descargado');
+};
+
 // ─── RECETAS ───
 function renderRecetas(){
   const q=($('rec-q')?.value||'').toLowerCase();
@@ -3796,7 +4093,7 @@ function renderAll(){
   renderNomina(); renderVendedores();
   renderProv(); renderSubs(); renderInv();
   renderRecetas(); renderReportes(); renderConfig();
-  renderAjustes(); loadClaudeKey();
+  renderAjustes(); renderReloj(); loadClaudeKey();
 }
 
 function initD(){
@@ -3828,6 +4125,7 @@ window.renderReportes=renderReportes;
 window.renderInv=renderInv;
 function clock(){const el=$('navDate');if(el)el.textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});}
 clock(); setInterval(clock,60000);
+startRelojTick();
 listenAll();
 </script>
 </body>
