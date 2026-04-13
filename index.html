@@ -1264,6 +1264,8 @@ function listenAll(){
           fixEmpleadosTipo();
           migrateMenuAbril2026();
           loadInventarioAbril2026();
+          loadInventarioCostcoRenee();
+          setMinimosInteligentes();
           autoSeedRecetas();
           renderLock();
           if(!SESSION){
@@ -1301,7 +1303,7 @@ function listenAll(){
           if(loader) loader.style.display='none';
           initD(); renderAll();
           try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);}}catch(e){}
-          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); loadInventarioAbril2026(); autoSeedRecetas(); renderLock();
+          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); loadInventarioAbril2026(); loadInventarioCostcoRenee(); setMinimosInteligentes(); autoSeedRecetas(); renderLock();
           if(!SESSION){ $('lock-screen').style.display='flex'; }
           else{
             $('lock-screen').style.display='none';
@@ -1524,6 +1526,80 @@ async function loadInventarioAbril2026(){
 
   localStorage.setItem(migKey,'1');
   if(added+updated>0) toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados`,4000);
+}
+
+// Carga inventario Costco 12/abr + Tía Renee 10/abr/2026
+async function loadInventarioCostcoRenee(){
+  const migKey='h5inv_costco_renee_abr26';
+  if(localStorage.getItem(migKey)) return;
+
+  const items=[
+    // COSTCO 12/abr/2026 — Factura ARG-5680570 — $2,766.00
+    {nombre:'Leche de almendra',cat:'lacteos',qty:6,unit:'pz',precio:24.83},
+    {nombre:'Proteína en polvo',cat:'proteinas',qty:2.48,unit:'kg',precio:486.30},
+    {nombre:'Queso americano',cat:'lacteos',qty:1.36,unit:'kg',precio:113.97},
+    {nombre:'Queso mozzarella',cat:'lacteos',qty:2.26,unit:'kg',precio:132.30},
+    {nombre:'Leche deslactosada',cat:'lacteos',qty:12,unit:'L',precio:23.83},
+    {nombre:'Papas Susalias',cat:'otros',qty:20,unit:'bolsa',precio:14.95},
+    {nombre:'Crema de almendra',cat:'granos',qty:0.765,unit:'kg',precio:233.98},
+    // TÍA RENEE 10/abr/2026 — Factura aro-1000 — $923.32
+    {nombre:'Pan tía Renee',cat:'granos',qty:20,unit:'pz',precio:46.75},
+  ];
+
+  let added=0,updated=0;
+  for(const item of items){
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      existing.qty=(existing.qty||0)+item.qty;
+      if(item.precio>0) existing.precio=item.precio;
+      await fsSet('inventario',existing);
+      updated++;
+    } else {
+      const newItem={id:Date.now()+added+100,nombre:item.nombre,cat:item.cat,qty:item.qty,unit:item.unit,min:0,precio:item.precio};
+      await fsSet('inventario',newItem);
+      added++;
+    }
+  }
+
+  // Registrar pedidos a proveedor
+  const t1={id:Date.now()+200,fecha:'2026-04-12',proveedor:'Costco Interlomas',tipo:'Insumos',ticket:'ARG-5680570',total:2766.00};
+  const t2={id:Date.now()+201,fecha:'2026-04-10',proveedor:'Renee Farca (Tía Renee)',tipo:'Panes',ticket:'aro-1000',total:923.32};
+  if(!D.pedidos.find(p=>p.ticket==='ARG-5680570')) await fsSet('pedidos',t1);
+  if(!D.pedidos.find(p=>p.ticket==='aro-1000')) await fsSet('pedidos',t2);
+
+  // Registrar gastos
+  const g1={id:Date.now()+202,fecha:'2026-04-12',concepto:'Compra Costco — insumos',monto:2766.00,cat:'proveedor',nota:'Factura ARG-5680570'};
+  const g2={id:Date.now()+203,fecha:'2026-04-10',concepto:'Compra Panes tía Renee — 20 panes',monto:923.32,cat:'proveedor',nota:'Factura aro-1000'};
+  if(!D.gastos.find(g=>g.nota==='Factura ARG-5680570')) await fsSet('gastos',g1);
+  if(!D.gastos.find(g=>g.nota==='Factura aro-1000')) await fsSet('gastos',g2);
+
+  localStorage.setItem(migKey,'1');
+  if(added+updated>0) toast(`✓ Costco+Renee: ${added} nuevos, ${updated} actualizados`,4000);
+}
+
+// Establecer stocks mínimos inteligentes para ingredientes clave
+async function setMinimosInteligentes(){
+  const migKey='h5minimos_v1';
+  if(localStorage.getItem(migKey)) return;
+  const mins={
+    'plátano':2,'fresa':1,'mango':2,'piña':1,'sandía':1,'limón':1,'manzana':0.5,'aguacate':0.5,'blueberry':0.5,
+    'pepino':2,'zanahoria':1,'jícama':2,'jitomate':0.5,
+    'leche deslactosada':3,'yogurt natural':0.5,'queso mozzarella':0.5,
+    'avena':1,'granola':0.5,'pan tía renee':5,'pan de panini':3,
+    'café molido':0.2,'proteína en polvo':0.5,'crema de almendra':0.2,
+    'vaso 16 oz':50,'tapa para café':20,'servilleta':0.5,'popote':50,'plato desechable':20,'bowl sopero':15,
+    'papas susalias':3,
+  };
+  let updated=0;
+  for(const [nombre,minQty] of Object.entries(mins)){
+    const inv=D.inventario.find(i=>i.nombre.toLowerCase()===nombre.toLowerCase());
+    if(inv && (!inv.min || inv.min===0)){
+      inv.min=minQty;
+      await fsSet('inventario',inv);
+      updated++;
+    }
+  }
+  localStorage.setItem(migKey,'1');
 }
 
 // Auto-cargar recetas si no existen (para que el descuento automático funcione)
@@ -2190,23 +2266,34 @@ window.resetFechaVenta=()=>{if($('op-fecha-venta'))$('op-fecha-venta').value=tod
 // ─── DESCUENTO AUTOMÁTICO DE INVENTARIO POR RECETAS ───
 async function descontarInventario(ventaItems){
   let alertas=[];
+  let descontados=0;
   for(const item of ventaItems){
     const rec=D.recetas.find(r=>r.prodId===item.id);
     if(!rec||!rec.ings||rec.ings.length===0) continue;
     for(const ing of rec.ings){
-      const inv=D.inventario.find(i=>i.id==ing.invId);
+      // Buscar por ID primero, luego por nombre como fallback
+      let inv=D.inventario.find(i=>i.id==ing.invId);
+      if(!inv && ing.nombre){
+        inv=D.inventario.find(i=>i.nombre.toLowerCase()===ing.nombre.toLowerCase());
+      }
       if(!inv) continue;
       const qtyDescontar=parseFloat(ing.qty||1)*item.qty;
       const newQty=Math.max(0,(inv.qty||0)-qtyDescontar);
-      inv.qty=Math.round(newQty*1000)/1000; // evitar decimales flotantes
+      inv.qty=Math.round(newQty*1000)/1000;
       await fsSet('inventario',inv);
-      if(inv.min>0&&inv.qty<=inv.min){
+      descontados++;
+      if(inv.qty<=0){
+        alertas.push('🔴 '+inv.nombre+' AGOTADO');
+      } else if(inv.min>0&&inv.qty<=inv.min){
         alertas.push(inv.nombre);
       }
     }
   }
   if(alertas.length>0){
-    setTimeout(()=>toast(`⚠ Stock bajo: ${alertas.join(', ')}`,4000),800);
+    const agotados=alertas.filter(a=>a.startsWith('🔴'));
+    const bajos=alertas.filter(a=>!a.startsWith('🔴'));
+    if(agotados.length>0) setTimeout(()=>toast(agotados.join(', '),5000,'error'),800);
+    if(bajos.length>0) setTimeout(()=>toast(`⚠ Stock bajo: ${bajos.join(', ')}`,4000,'warn'),agotados.length>0?6000:800);
   }
 }
 
