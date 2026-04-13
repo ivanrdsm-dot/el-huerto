@@ -1263,6 +1263,7 @@ function listenAll(){
           fixUTCDates();
           fixEmpleadosTipo();
           migrateMenuAbril2026();
+          loadInventarioAbril2026();
           renderLock();
           if(!SESSION){
             $('lock-screen').style.display='flex';
@@ -1299,7 +1300,7 @@ function listenAll(){
           if(loader) loader.style.display='none';
           initD(); renderAll();
           try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);}}catch(e){}
-          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); renderLock();
+          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); loadInventarioAbril2026(); renderLock();
           if(!SESSION){ $('lock-screen').style.display='flex'; }
           else{
             $('lock-screen').style.display='none';
@@ -1443,6 +1444,85 @@ async function migrateMenuAbril2026(){
   }
   localStorage.setItem(migKey,'1');
   if(changed>0) toast(`✓ Menú actualizado: ${changed} productos`,3000);
+}
+
+// Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
+async function loadInventarioAbril2026(){
+  const migKey='h5inv_abr26';
+  if(localStorage.getItem(migKey)) return;
+
+  const items=[
+    // TICKET 1 — 11/abr/2026 Naranjarillo $2,704.50
+    {nombre:'Avena',cat:'granos',qty:5,unit:'kg',precio:27},
+    {nombre:'Granola',cat:'granos',qty:2,unit:'kg',precio:72},
+    {nombre:'Azúcar',cat:'granos',qty:2,unit:'kg',precio:26},
+    {nombre:'Splenda',cat:'otros',qty:1,unit:'caja',precio:355},
+    {nombre:'Bolsas de basura',cat:'limpieza',qty:1,unit:'rollo',precio:45},
+    {nombre:'Pechuga de pavo',cat:'proteinas',qty:1,unit:'kg',precio:165},
+    {nombre:'Chorizo pamplona',cat:'proteinas',qty:0.5,unit:'kg',precio:575},
+    {nombre:'Jitomate',cat:'verduras',qty:1,unit:'kg',precio:70},
+    {nombre:'Yogurt natural',cat:'lacteos',qty:1,unit:'pz',precio:65},
+    {nombre:'Fruti Minch',cat:'otros',qty:1,unit:'pz',precio:70},
+    {nombre:'Vaso 16 oz',cat:'empaque',qty:300,unit:'pz',precio:0.48},
+    {nombre:'Tapa para café',cat:'empaque',qty:100,unit:'pz',precio:1.05},
+    {nombre:'Cuchara desechable',cat:'empaque',qty:300,unit:'pz',precio:0.41},
+    {nombre:'Tenedor desechable',cat:'empaque',qty:300,unit:'pz',precio:0.41},
+    {nombre:'Aceite',cat:'otros',qty:1,unit:'pz',precio:240},
+    {nombre:'Servilleta',cat:'empaque',qty:2,unit:'paq',precio:21},
+    {nombre:'Trapos',cat:'limpieza',qty:3,unit:'pz',precio:20},
+    {nombre:'Bowl sopero',cat:'empaque',qty:100,unit:'pz',precio:2.25},
+    {nombre:'Vaso café 16 oz',cat:'empaque',qty:100,unit:'pz',precio:1.23},
+    {nombre:'Vaso café 14 oz',cat:'empaque',qty:100,unit:'pz',precio:1.23},
+    {nombre:'Plato desechable',cat:'empaque',qty:150,unit:'pz',precio:0.82},
+    {nombre:'Tapa 16 oz',cat:'empaque',qty:200,unit:'pz',precio:0.65},
+    // TICKET 2 — 12/abr/2026 Naranjarillo $1,580.50
+    {nombre:'Plátano',cat:'frutas',qty:7,unit:'kg',precio:18.50},
+    {nombre:'Sandía',cat:'frutas',qty:5.6,unit:'kg',precio:20},
+    {nombre:'Piña',cat:'frutas',qty:3,unit:'pz',precio:53},
+    {nombre:'Jícama',cat:'verduras',qty:7,unit:'kg',precio:16},
+    {nombre:'Mango',cat:'frutas',qty:6,unit:'kg',precio:23},
+    {nombre:'Manzana',cat:'frutas',qty:2,unit:'caja',precio:70},
+    {nombre:'Aguacate',cat:'frutas',qty:0.5,unit:'caja',precio:58},
+    {nombre:'Fresa',cat:'frutas',qty:3,unit:'domo',precio:58},
+    {nombre:'Pepino',cat:'verduras',qty:7,unit:'kg',precio:46},
+    {nombre:'Zanahoria',cat:'verduras',qty:5,unit:'kg',precio:23},
+    {nombre:'Limón',cat:'frutas',qty:5,unit:'kg',precio:30},
+    // EXTRAS de la lista
+    {nombre:'Cacahuates japoneses',cat:'otros',qty:1,unit:'kg',precio:0},
+    {nombre:'Jamón serrano',cat:'proteinas',qty:1,unit:'kg',precio:0},
+    {nombre:'Mangas para café',cat:'empaque',qty:1,unit:'paq',precio:0},
+    {nombre:'Popote',cat:'empaque',qty:300,unit:'pz',precio:0},
+  ];
+
+  let added=0,updated=0;
+  for(const item of items){
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      existing.qty=(existing.qty||0)+item.qty;
+      if(item.precio>0) existing.precio=item.precio;
+      await fsSet('inventario',existing);
+      updated++;
+    } else {
+      const newItem={id:Date.now()+added,nombre:item.nombre,cat:item.cat,qty:item.qty,unit:item.unit,min:0,precio:item.precio};
+      await fsSet('inventario',newItem);
+      added++;
+    }
+  }
+
+  // Registrar los 2 tickets como pedidos a proveedor
+  const t1={id:Date.now(),fecha:'2026-04-11',proveedor:'Naranjarillo - Bodegas Atizapán',tipo:'Insumos y alimentos',ticket:'A-2369024',total:2704.50};
+  const t2={id:Date.now()+1,fecha:'2026-04-12',proveedor:'Naranjarillo - Bodegas Atizapán',tipo:'Frutas y verduras',ticket:'A-2369089',total:1580.50};
+  if(!D.pedidos.find(p=>p.ticket==='A-2369024')) await fsSet('pedidos',t1);
+  if(!D.pedidos.find(p=>p.ticket==='A-2369089')) await fsSet('pedidos',t2);
+
+  // Registrar como gastos
+  const g1={id:Date.now()+2,fecha:'2026-04-11',concepto:'Compra Naranjarillo — insumos',monto:2704.50,cat:'proveedor',nota:'Ticket A-2369024'};
+  const g2={id:Date.now()+3,fecha:'2026-04-12',concepto:'Compra Naranjarillo — frutas/verduras',monto:1580.50,cat:'proveedor',nota:'Ticket A-2369089'};
+  if(!D.gastos.find(g=>g.nota==='Ticket A-2369024')) await fsSet('gastos',g1);
+  if(!D.gastos.find(g=>g.nota==='Ticket A-2369089')) await fsSet('gastos',g2);
+
+  localStorage.setItem(migKey,'1');
+  if(added+updated>0) toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados`,4000);
 }
 
 // Fix empleados existentes con tipo incorrecto Y nombres correctos
