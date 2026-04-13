@@ -1264,6 +1264,7 @@ function listenAll(){
           fixEmpleadosTipo();
           migrateMenuAbril2026();
           loadInventarioAbril2026();
+          autoSeedRecetas();
           renderLock();
           if(!SESSION){
             $('lock-screen').style.display='flex';
@@ -1300,7 +1301,7 @@ function listenAll(){
           if(loader) loader.style.display='none';
           initD(); renderAll();
           try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);}}catch(e){}
-          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); loadInventarioAbril2026(); renderLock();
+          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); loadInventarioAbril2026(); autoSeedRecetas(); renderLock();
           if(!SESSION){ $('lock-screen').style.display='flex'; }
           else{
             $('lock-screen').style.display='none';
@@ -1523,6 +1524,152 @@ async function loadInventarioAbril2026(){
 
   localStorage.setItem(migKey,'1');
   if(added+updated>0) toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados`,4000);
+}
+
+// Auto-cargar recetas si no existen (para que el descuento automático funcione)
+async function autoSeedRecetas(){
+  if(D.recetas.length>0) return; // Ya hay recetas, no sobreescribir
+  if(D.productos.length===0) return; // Sin productos aún
+  if(D.inventario.length===0) return; // Sin inventario aún
+  // Llamar seedRecetasPredefinidas sin confirm
+  toast('Cargando recetas automáticamente...',3000);
+
+  const I=async(n,c,u)=>await ensureInvItem(n,c,u);
+  const servilleta=await I('Servilleta','empaque','pz');
+  const popote=await I('Popote','empaque','pz');
+  const avena=await I('Avena','granos','g');
+  const leche=await I('Leche deslactosada','lacteos','ml');
+  const platano=await I('Plátano','frutas','pz');
+  const hielo=await I('Hielo','otros','g');
+  const proteina=await I('Proteína en polvo','proteinas','g');
+  const pan_panini=await I('Pan de panini','granos','pz');
+  const aceitunas=await I('Aceitunas','verduras','g');
+  const jitomate=await I('Jitomate','verduras','pz');
+  const pepino=await I('Pepino','verduras','pz');
+  const salsa_chipotle=await I('Salsa de chipotle','salsas','ml');
+  const plato=await I('Plato desechable','empaque','pz');
+  const pan_renee=await I('Pan tía Renee','granos','pz');
+  const cafe_molido=await I('Café molido','bebidas','g');
+  const vaso_12=await I('Vaso 12 oz','empaque','pz');
+  const vaso_16=await I('Vaso 16 oz','empaque','pz');
+  const tapa_cafe=await I('Tapa para café','empaque','pz');
+  const granola=await I('Granola','granos','g');
+  const acai=await I('Açaí pulpa','frutas','g');
+  const fresa=await I('Fresa','frutas','g');
+  const mango=await I('Mango','frutas','g');
+  const pina=await I('Piña','frutas','g');
+  const sandia=await I('Sandía','frutas','g');
+  const manzana=await I('Manzana','frutas','pz');
+  const limon=await I('Limón','frutas','pz');
+  const zanahoria=await I('Zanahoria','verduras','pz');
+  const jicama=await I('Jícama','verduras','pz');
+  const yogurt=await I('Yogurt natural','lacteos','ml');
+  const coco_rallado=await I('Coco rallado','granos','g');
+  const papas_susalias=await I('Papas Susalias','otros','bolsa');
+  const queso_mozz=await I('Queso mozzarella','lacteos','g');
+  const queso_4=await I('Mezcla 4 quesos','lacteos','g');
+  const pechuga_pavo=await I('Pechuga de pavo','proteinas','g');
+  const jamon_serrano=await I('Jamón serrano','proteinas','g');
+  const chorizo_pamplona=await I('Chorizo pamplona','proteinas','g');
+  const te_negro=await I('Té negro','bebidas','g');
+  const te_verde=await I('Té verde','bebidas','g');
+  const matcha=await I('Matcha','bebidas','g');
+  const chai=await I('Chai','bebidas','g');
+  const chocolate=await I('Chocolate en polvo','bebidas','g');
+  const aguacate=await I('Aguacate','frutas','pz');
+  const overnight_base=await I('Avena overnight base','granos','g');
+  const crema_almendra=await I('Crema de almendra','granos','g');
+  const blueberry=await I('Blueberry','frutas','g');
+  const miel=await I('Miel de abeja','otros','ml');
+  const hierbabuena_h=await I('Hierbabuena hoja','bebidas','g');
+  const manzanilla_h=await I('Manzanilla hoja','bebidas','g');
+
+  const setRec=async(prodId,ings)=>{
+    const existing=D.recetas.find(r=>r.prodId===prodId);
+    const rec={id:existing?.id||Date.now()+prodId,prodId,ings};
+    await fsSet('recetas',rec);
+  };
+  const ing=(inv,qty,unit)=>({invId:inv.id,nombre:inv.nombre,qty:String(qty),unit:unit||inv.unit});
+
+  // SMOOTHIES
+  await setRec(1012,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(platano,1,'pz'),ing(crema_almendra,20,'g'),ing(avena,30,'g'),ing(leche,250,'ml'),ing(hielo,100,'g'),ing(proteina,30,'g')]);
+  await setRec(1007,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(pina,100,'g'),ing(mango,100,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  await setRec(1008,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(fresa,100,'g'),ing(platano,1,'pz'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  await setRec(1009,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(manzana,1,'pz'),ing(limon,1,'pz'),ing(zanahoria,1,'pz'),ing(hielo,100,'g')]);
+  await setRec(1010,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(sandia,200,'g'),ing(limon,1,'pz'),ing(hielo,100,'g')]);
+  await setRec(1011,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(platano,1,'pz'),ing(mango,100,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  await setRec(1063,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(matcha,5,'g'),ing(platano,1,'pz'),ing(avena,30,'g'),ing(crema_almendra,20,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  await setRec(1064,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(chai,5,'g'),ing(platano,1,'pz'),ing(avena,30,'g'),ing(crema_almendra,20,'g'),ing(miel,15,'ml'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  await setRec(1065,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(fresa,80,'g'),ing(blueberry,80,'g'),ing(platano,1,'pz'),ing(avena,30,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+
+  // AÇAÍ BOWLS
+  await setRec(1001,[ing(servilleta,1,'pz'),ing(acai,150,'g'),ing(granola,30,'g'),ing(plato,1,'pz')]);
+  await setRec(1002,[ing(servilleta,1,'pz'),ing(acai,150,'g'),ing(granola,30,'g'),ing(plato,1,'pz')]);
+  await setRec(1003,[ing(servilleta,1,'pz'),ing(acai,150,'g'),ing(granola,30,'g'),ing(plato,1,'pz')]);
+
+  // OVERNIGHT OATS
+  await setRec(1004,[ing(servilleta,1,'pz'),ing(overnight_base,80,'g'),ing(leche,150,'ml'),ing(granola,20,'g'),ing(vaso_16,1,'pz')]);
+  await setRec(1005,[ing(servilleta,1,'pz'),ing(overnight_base,80,'g'),ing(leche,150,'ml'),ing(granola,20,'g'),ing(vaso_16,1,'pz')]);
+  await setRec(1006,[ing(servilleta,1,'pz'),ing(overnight_base,80,'g'),ing(leche,150,'ml'),ing(granola,20,'g'),ing(vaso_16,1,'pz')]);
+
+  // PANINIS
+  const paniniBase=[ing(servilleta,1,'pz'),ing(pan_panini,1,'pz'),ing(aceitunas,10,'g'),ing(jitomate,0.5,'pz'),ing(pepino,0.25,'pz'),ing(salsa_chipotle,15,'ml'),ing(plato,1,'pz')];
+  await setRec(1019,[...paniniBase,ing(queso_mozz,50,'g')]);
+  await setRec(1020,[...paniniBase,ing(queso_4,50,'g')]);
+  await setRec(1021,[...paniniBase,ing(pechuga_pavo,60,'g')]);
+  await setRec(1022,[...paniniBase,ing(jamon_serrano,60,'g')]);
+  await setRec(1023,[...paniniBase,ing(chorizo_pamplona,60,'g')]);
+
+  // PANES TÍA RENEE
+  const panBase=[ing(servilleta,1,'pz'),ing(pan_renee,1,'pz'),ing(plato,1,'pz')];
+  await setRec(1044,panBase);
+  await setRec(1045,panBase);
+  await setRec(1046,panBase);
+  await setRec(1047,panBase);
+
+  // CAFÉS
+  await setRec(1024,[ing(cafe_molido,30,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1025,[ing(cafe_molido,30,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1026,[ing(cafe_molido,30,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1027,[ing(cafe_molido,30,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1028,[ing(cafe_molido,30,'g'),ing(leche,120,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1029,[ing(cafe_molido,30,'g'),ing(leche,180,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1030,[ing(cafe_molido,30,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1031,[ing(cafe_molido,30,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1032,[ing(cafe_molido,14,'g'),ing(vaso_12,1,'pz')]);
+  await setRec(1033,[ing(cafe_molido,28,'g'),ing(vaso_16,1,'pz')]);
+  await setRec(1034,[ing(chocolate,25,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1035,[ing(chocolate,35,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+
+  // TÉS
+  await setRec(1036,[ing(te_negro,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1037,[ing(te_negro,3,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1038,[ing(te_verde,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1039,[ing(te_verde,3,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1040,[ing(matcha,5,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1041,[ing(matcha,5,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1042,[ing(chai,5,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1043,[ing(chai,5,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1066,[ing(hierbabuena_h,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1067,[ing(hierbabuena_h,5,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1068,[ing(manzanilla_h,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1069,[ing(manzanilla_h,5,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+
+  // COCTELES
+  const coctelBase=[ing(servilleta,1,'pz'),ing(plato,1,'pz')];
+  await setRec(1013,coctelBase);
+  await setRec(1014,[...coctelBase,ing(yogurt,100,'ml'),ing(coco_rallado,15,'g')]);
+  await setRec(1057,[...coctelBase,ing(jicama,0.5,'pz'),ing(limon,1,'pz')]);
+  await setRec(1058,[...coctelBase,ing(pina,150,'g'),ing(limon,1,'pz')]);
+  await setRec(1059,[...coctelBase,ing(sandia,200,'g'),ing(limon,1,'pz')]);
+  await setRec(1060,[...coctelBase,ing(pepino,0.5,'pz'),ing(limon,1,'pz')]);
+  await setRec(1061,coctelBase);
+
+  // PAPAS
+  await setRec(1015,[ing(papas_susalias,1,'bolsa'),ing(pepino,0.25,'pz'),ing(jicama,0.25,'pz'),ing(zanahoria,0.25,'pz'),ing(servilleta,1,'pz'),ing(plato,1,'pz')]);
+  await setRec(1062,[ing(papas_susalias,1,'bolsa'),ing(servilleta,1,'pz')]);
+
+  toast('✓ Recetas cargadas — el inventario se descontará automáticamente',3000);
 }
 
 // Fix empleados existentes con tipo incorrecto Y nombres correctos
