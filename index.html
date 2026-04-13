@@ -274,6 +274,30 @@ select option{background:var(--surface2);}
 ::-webkit-scrollbar-track{background:var(--surface);}
 ::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
 
+/* ══ PRINT — Impresora Térmica 80mm ══ */
+@media print{
+  @page{size:80mm auto;margin:0;}
+  *{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+  body>*:not(#ticket-print){display:none!important;}
+  #ticket-print{display:block!important;position:fixed;inset:0;z-index:99999;background:#fff;}
+  .ticket-thermal{
+    font-family:'Courier New',Courier,monospace!important;
+    font-size:12px!important;line-height:1.4!important;
+    color:#000!important;background:#fff!important;
+    width:72mm;padding:3mm 4mm;margin:0 auto;
+  }
+  .tk-center{text-align:center;}
+  .tk-logo{font-size:18px;font-weight:900;margin-bottom:2px;}
+  .tk-sub{font-size:9px;margin-bottom:6px;}
+  .tk-sep{border:none;border-top:1px dashed #000;margin:5px 0;}
+  .tk-row{display:flex;justify-content:space-between;font-size:11px;line-height:1.5;}
+  .tk-row-bold{display:flex;justify-content:space-between;font-size:13px;font-weight:900;line-height:1.5;}
+  .tk-item{font-size:11px;margin-bottom:1px;}
+  .tk-item-detail{font-size:10px;color:#444;padding-left:8px;}
+  .tk-footer{text-align:center;font-size:9px;margin-top:6px;line-height:1.4;}
+  .tk-big{font-size:16px;font-weight:900;text-align:center;margin:4px 0;}
+}
+
 /* LOCK SCREEN */
 #lock-screen{position:fixed;inset:0;background:linear-gradient(135deg,#e8f5e9 0%,#f5f7f4 60%,#e3f2fd 100%);z-index:9000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;padding:20px;}
 .lock-logo{font-family:'Playfair Display',serif;font-size:42px;font-weight:900;color:var(--accent);margin-bottom:6px;}
@@ -578,6 +602,72 @@ select option{background:var(--surface2);}
       </div>
     </div>
   </div>
+  <!-- CORTE DE CAJA FORMAL -->
+  <div class="card" style="margin-top:10px;">
+    <div class="sh">
+      <span class="ct" style="margin-bottom:0;">🧾 Corte de Caja</span>
+      <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;" id="corte-fecha-label"></span>
+    </div>
+    <div style="background:var(--surface2);border-radius:var(--rsm);padding:12px;margin-bottom:10px;">
+      <div style="font-size:11px;font-weight:700;margin-bottom:8px;">Cálculo Automático del Sistema</div>
+      <div class="sr"><span style="font-size:12px;">💰 Fondo inicial</span><span class="mono ab" id="corte-fondo">$0.00</span></div>
+      <div class="sr"><span style="font-size:12px;">💵 Ventas efectivo</span><span class="mono ag" id="corte-vef">$0.00</span></div>
+      <div class="sr"><span style="font-size:12px;">📥 Depósitos</span><span class="mono ab" id="corte-dep">$0.00</span></div>
+      <div class="sr"><span style="font-size:12px;">💸 Retiros</span><span class="mono ar" id="corte-ret">$0.00</span></div>
+      <div style="border-top:2px solid var(--border2);margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-weight:700;">
+        <span>EFECTIVO ESPERADO</span>
+        <span class="mono at" style="font-size:16px;" id="corte-esperado">$0.00</span>
+      </div>
+      <div class="div"></div>
+      <div class="sr"><span style="font-size:12px;">💳 Ventas tarjeta</span><span class="mono ay" id="corte-vtc">$0.00</span></div>
+      <div class="sr fw7"><span style="font-size:12px;">Total ventas día</span><span class="mono ag" id="corte-vtot">$0.00</span></div>
+      <div class="sr"><span style="font-size:12px;">Número de ventas</span><span class="mono" id="corte-nventas">0</span></div>
+    </div>
+    <div class="ii">
+      <div class="fg">
+        <label>💵 Efectivo contado en caja</label>
+        <input type="number" id="corte-contado" placeholder="$0.00" step="0.01" oninput="calcCorte()">
+      </div>
+      <div class="fg">
+        <label>Diferencia</label>
+        <div id="corte-diff" style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;padding:8px 10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
+      </div>
+    </div>
+    <div class="fg"><label>Desglose de billetes (opcional)</label>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
+        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$1000</label><input type="number" class="corte-bill" data-val="1000" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
+        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$500</label><input type="number" class="corte-bill" data-val="500" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
+        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$200</label><input type="number" class="corte-bill" data-val="200" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
+        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$100</label><input type="number" class="corte-bill" data-val="100" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
+        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$50</label><input type="number" class="corte-bill" data-val="50" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
+        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$20</label><input type="number" class="corte-bill" data-val="20" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
+        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">Monedas</label><input type="number" id="corte-monedas" placeholder="0" step="0.5" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
+      </div>
+    </div>
+    <div class="fg"><label>Nota del corte</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn bp bfull" onclick="realizarCorte()">🧾 Realizar Corte</button>
+      <button class="btn bs" onclick="printUltimoCorte()">🖨</button>
+    </div>
+    <!-- Historial de cortes -->
+    <div style="margin-top:12px;">
+      <div class="ct">Historial de Cortes Formales</div>
+      <div id="cortes-hist"></div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL APERTURA DE CAJA -->
+<div id="apertura-modal" style="display:none;" class="modal-bg" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" style="max-width:380px;text-align:center;">
+    <div class="modal-head"><span class="modal-title">💰 Apertura de Caja</span></div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:14px;">Registra el fondo inicial con el que abres caja hoy.</p>
+    <div class="fg"><label>Monto del fondo inicial</label><input type="number" id="apertura-monto" placeholder="$0.00" step="0.01"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn bp bfull" onclick="confirmarApertura()">💰 Registrar Apertura</button>
+      <button class="btn bs" onclick="$('apertura-modal').style.display='none'">Saltar</button>
+    </div>
+  </div>
 </div>
 
 <!-- ══ GASTOS ══ -->
@@ -755,7 +845,9 @@ select option{background:var(--surface2);}
 
 <!-- ══ INVENTARIO ══ -->
 <div id="page-inventario" class="page">
-  <div class="sh"><span class="st">Inventario</span></div>
+  <div class="sh"><span class="st">Inventario</span>
+    <button class="btn bg bsm" onclick="$('img-inv-modal').style.display='flex'">📸 Cargar por Imagen</button>
+  </div>
   <div id="ivalert"></div>
   <div class="g2" style="gap:10px;margin-bottom:10px;">
     <div class="card">
@@ -780,9 +872,52 @@ select option{background:var(--surface2);}
   </div>
 </div>
 
+<!-- MODAL CARGA MASIVA POR IMAGEN -->
+<div id="img-inv-modal" style="display:none;" class="modal-bg" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" style="max-width:680px;">
+    <div class="modal-head">
+      <span class="modal-title">📸 Carga Masiva de Inventario</span>
+      <button class="btn bs bxs" onclick="$('img-inv-modal').style.display='none'">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Sube una foto de factura, lista de compras, o inventario fisico. La IA detectara los productos automaticamente.</p>
+    <div class="fg">
+      <label>API Key de Claude (Anthropic)</label>
+      <input type="password" id="claude-api-key" placeholder="sk-ant-..." style="font-size:12px;">
+      <div style="font-size:9px;color:var(--text3);margin-top:3px;">Tu API key se guarda localmente y nunca se comparte.</div>
+    </div>
+    <div class="fg">
+      <label>Imagen del inventario</label>
+      <input type="file" id="inv-img-input" accept="image/*" onchange="previewInvImg(this)" style="font-size:12px;">
+    </div>
+    <div id="inv-img-preview" style="display:none;margin-bottom:10px;text-align:center;">
+      <img id="inv-img-tag" style="max-width:100%;max-height:250px;border-radius:var(--rsm);border:1px solid var(--border);">
+    </div>
+    <button class="btn bp bfull" onclick="analizarImagen()" id="btn-analizar">🤖 Analizar Imagen</button>
+    <div id="inv-img-loading" style="display:none;text-align:center;padding:16px;">
+      <div style="font-size:13px;color:var(--accent);font-weight:600;">Analizando imagen...</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">Esto puede tomar unos segundos</div>
+    </div>
+    <div id="inv-img-results" style="display:none;margin-top:12px;">
+      <div class="ct">Productos Detectados</div>
+      <div class="tw" style="margin-bottom:10px;">
+        <table class="tbl">
+          <thead><tr><th>Producto</th><th>Categoría</th><th>Cantidad</th><th>Unidad</th><th>Precio</th><th>Incluir</th></tr></thead>
+          <tbody id="inv-img-table"></tbody>
+        </table>
+      </div>
+      <button class="btn bp bfull" onclick="confirmarCargaMasiva()">✓ Cargar al Inventario</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══ RECETAS ══ -->
 <div id="page-recetas" class="page">
-  <div class="sh"><span class="st">Recetas</span><span style="font-size:12px;color:var(--text3);">Vincula ingredientes del inventario</span></div>
+  <div class="sh"><span class="st">Recetas</span>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <span style="font-size:12px;color:var(--text3);">Vincula ingredientes del inventario</span>
+      <button class="btn bg bsm" onclick="seedRecetasPredefinidas()">📖 Cargar Recetas Predefinidas</button>
+    </div>
+  </div>
   <div class="card" style="margin-bottom:10px;"><input id="rec-q" placeholder="🔍 Buscar producto del menú…" oninput="renderRecetas()"></div>
   <div id="recetas-list"></div>
 </div>
@@ -1008,7 +1143,7 @@ import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "ht
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
 const app=initializeApp(FB); const db=getFirestore(app);
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!'};
 let READY=false;
 let activeVend=null; // {id, nombre, color}
@@ -1019,7 +1154,7 @@ const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);}catch(e){t
 const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error',3000);}};
 
 function listenAll(){
-  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins'];
+  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes'];
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
   const loaded=new Set();
 
@@ -1354,6 +1489,8 @@ function loginEmp(id){
   registrarCheckin(e);
   go('pos');
   toast(`✓ Hola ${e.nombre}! Turno iniciado 🛒`);
+  // Verificar apertura de caja
+  setTimeout(()=>checkApertura(),600);
 }
 window.loginEmp = loginEmp;
 
@@ -1443,6 +1580,7 @@ function checkPIN(){
     pinTarget=null;
     go(dest);
     toast('✓ Acceso admin desbloqueado 🔓');
+    setTimeout(()=>checkApertura(),600);
   } else {
     $('pin-input').classList.add('err');
     $('pin-input').value='';
@@ -1658,6 +1796,29 @@ window.cobrarEfectivo=async()=>{
 
 window.resetFechaVenta=()=>{if($('op-fecha-venta'))$('op-fecha-venta').value=today();};
 
+// ─── DESCUENTO AUTOMÁTICO DE INVENTARIO POR RECETAS ───
+async function descontarInventario(ventaItems){
+  let alertas=[];
+  for(const item of ventaItems){
+    const rec=D.recetas.find(r=>r.prodId===item.id);
+    if(!rec||!rec.ings||rec.ings.length===0) continue;
+    for(const ing of rec.ings){
+      const inv=D.inventario.find(i=>i.id==ing.invId);
+      if(!inv) continue;
+      const qtyDescontar=parseFloat(ing.qty||1)*item.qty;
+      const newQty=Math.max(0,(inv.qty||0)-qtyDescontar);
+      inv.qty=Math.round(newQty*1000)/1000; // evitar decimales flotantes
+      await fsSet('inventario',inv);
+      if(inv.min>0&&inv.qty<=inv.min){
+        alertas.push(inv.nombre);
+      }
+    }
+  }
+  if(alertas.length>0){
+    setTimeout(()=>toast(`⚠ Stock bajo: ${alertas.join(', ')}`,4000),800);
+  }
+}
+
 async function cobrar(metodo,recibido=0){
   if(order.length===0){toast('⚠ Agrega productos');return;}
   const {sub,desc,total}=getDescuento();
@@ -1680,6 +1841,8 @@ async function cobrar(metodo,recibido=0){
     cambio:Math.max(0,cambio)
   };
   await fsSet('ventas',venta);
+  // Descontar inventario automáticamente según recetas
+  await descontarInventario(venta.items);
   // Solo actualizar caja automáticamente si es venta del día actual
   if(!esRetroactiva){
     const ex=D.caja.find(c=>c.fecha===fechaVenta);
@@ -1700,24 +1863,64 @@ async function cobrar(metodo,recibido=0){
 window.cobrar=cobrar;
 
 function printTicket(v){
-  const lines=v.items.map(i=>{
-    const n=i.nombre.length>22?i.nombre.slice(0,22)+'…':i.nombre;
-    return `${n}${i.nota?' ('+i.nota+')':''}\n  x${i.qty}  ${fmt(i.precio*i.qty)}`;
-  }).join('\n');
-  const descLine=v.descuento>0?`<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;"><span>🏷 Descuento</span><span>-${fmt(v.descuento)}</span></div>`:'';
-  const cambioLines=v.metodo==='efectivo'?`<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;"><span>Recibido</span><span>${fmt(v.recibido||v.total)}</span></div><div style="display:flex;justify-content:space-between;font-size:12px;font-weight:bold;margin-bottom:4px;"><span>Cambio</span><span>${fmt(v.cambio||0)}</span></div>`:'';
-  $('ticket-print').innerHTML=`<div style="font-family:'Courier New',monospace;font-size:12px;width:80mm;background:#fff;color:#000;padding:10px;">
-    <div style="text-align:center;font-size:15px;font-weight:bold;margin-bottom:4px;">${CFG.negocio}</div>
-    <div style="text-align:center;font-size:10px;margin-bottom:8px;border-bottom:1px dashed #000;padding-bottom:6px;">${v.ticket} · ${v.fecha} ${v.hora}${v.vendedorNombre&&v.vendedorNombre!=='Sin asignar'?' · '+v.vendedorNombre:''}</div>
-    <pre style="font-size:11px;margin-bottom:8px;white-space:pre-wrap;">${lines}</pre>
-    <div style="border-top:1px dashed #000;padding-top:5px;">
-      ${v.subtotal&&v.descuento>0?`<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:2px;"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div>`:''}
-      ${descLine}
-      <div style="display:flex;justify-content:space-between;font-weight:bold;font-size:14px;margin-bottom:5px;"><span>TOTAL</span><span>${fmt(v.total)}</span></div>
-      ${cambioLines}
+  const itemsHTML=v.items.map(i=>{
+    const n=i.nombre.length>28?i.nombre.slice(0,28)+'…':i.nombre;
+    return `<div class="tk-item">${n}${i.nota?' <span style="font-size:9px;color:#666;">('+i.nota+')</span>':''}</div>
+    <div class="tk-row"><span style="padding-left:8px;">x${i.qty} @ ${fmt(i.precio)}</span><span>${fmt(i.precio*i.qty)}</span></div>`;
+  }).join('');
+
+  $('ticket-print').innerHTML=`<div class="ticket-thermal">
+    <div class="tk-center">
+      <div class="tk-logo">${CFG.negocio}</div>
+      <div class="tk-sub">${CFG.tel||''}</div>
     </div>
-    <div style="font-size:11px;margin-bottom:8px;">Pago: ${v.metodo}${v.nota?'  ·  '+v.nota:''}</div>
-    <div style="text-align:center;font-size:10px;border-top:1px dashed #000;padding-top:6px;">${CFG.msg}<br>${CFG.tel}</div>
+    <hr class="tk-sep">
+    <div class="tk-row"><span>${v.ticket}</span><span>${v.fecha} ${v.hora}</span></div>
+    ${v.vendedorNombre&&v.vendedorNombre!=='Sin asignar'?`<div style="font-size:10px;">Atendió: ${v.vendedorNombre}</div>`:''}
+    ${v.nota?`<div style="font-size:10px;">Mesa/Nota: ${v.nota}</div>`:''}
+    <hr class="tk-sep">
+    ${itemsHTML}
+    <hr class="tk-sep">
+    ${v.descuento>0?`<div class="tk-row"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div>
+    <div class="tk-row"><span>Descuento</span><span>-${fmt(v.descuento)}</span></div>`:''}
+    <div class="tk-big">TOTAL: ${fmt(v.total)}</div>
+    <div class="tk-row"><span>Método</span><span>${v.metodo==='efectivo'?'EFECTIVO':'TARJETA'}</span></div>
+    ${v.metodo==='efectivo'?`<div class="tk-row"><span>Recibido</span><span>${fmt(v.recibido||v.total)}</span></div>
+    <div class="tk-row-bold"><span>Cambio</span><span>${fmt(v.cambio||0)}</span></div>`:''}
+    <hr class="tk-sep">
+    <div class="tk-footer">${CFG.msg}<br>*** Gracias por su compra ***</div>
+  </div>`;
+  setTimeout(()=>window.print(),200);
+}
+// Imprimir ticket de corte de caja
+function printCorteTicket(corte){
+  $('ticket-print').innerHTML=`<div class="ticket-thermal">
+    <div class="tk-center">
+      <div class="tk-logo">${CFG.negocio}</div>
+      <div class="tk-sub">CORTE DE CAJA</div>
+    </div>
+    <hr class="tk-sep">
+    <div class="tk-row"><span>Fecha</span><span>${corte.fecha}</span></div>
+    <div class="tk-row"><span>Hora</span><span>${corte.hora}</span></div>
+    <div class="tk-row"><span>Realizó</span><span>${corte.realizadoPor||'Admin'}</span></div>
+    <hr class="tk-sep">
+    <div style="font-size:11px;font-weight:700;margin-bottom:3px;">VENTAS DEL DÍA</div>
+    <div class="tk-row"><span>Efectivo</span><span>${fmt(corte.ventasEf)}</span></div>
+    <div class="tk-row"><span>Tarjeta</span><span>${fmt(corte.ventasTc)}</span></div>
+    <div class="tk-row-bold"><span>Total ventas</span><span>${fmt(corte.ventasTotal)}</span></div>
+    <hr class="tk-sep">
+    <div style="font-size:11px;font-weight:700;margin-bottom:3px;">EFECTIVO EN CAJA</div>
+    ${corte.fondoInicial>0?`<div class="tk-row"><span>Fondo inicial</span><span>${fmt(corte.fondoInicial)}</span></div>`:''}
+    <div class="tk-row"><span>+ Ventas efvo</span><span>${fmt(corte.ventasEf)}</span></div>
+    ${corte.depositos>0?`<div class="tk-row"><span>+ Depósitos</span><span>${fmt(corte.depositos)}</span></div>`:''}
+    ${corte.retiros>0?`<div class="tk-row"><span>- Retiros</span><span>-${fmt(corte.retiros)}</span></div>`:''}
+    <div class="tk-row-bold"><span>Esperado</span><span>${fmt(corte.esperado)}</span></div>
+    <div class="tk-row-bold"><span>Contado</span><span>${fmt(corte.contado)}</span></div>
+    <hr class="tk-sep">
+    <div class="tk-big">${corte.diferencia>=0?'SOBRANTE':'FALTANTE'}: ${fmt(Math.abs(corte.diferencia))}</div>
+    ${corte.nota?`<div style="font-size:10px;margin-top:4px;">Nota: ${corte.nota}</div>`:''}
+    <hr class="tk-sep">
+    <div class="tk-footer">Corte #${String(corte.id).slice(-6)}</div>
   </div>`;
   setTimeout(()=>window.print(),200);
 }
@@ -1918,6 +2121,144 @@ function renderCaja(){
         <button class="btn bd bxs" onclick="delRetiro(${r.id})">✕</button>
       </div>
     </div>`).join('');
+  // Renderizar corte de caja formal
+  renderCorteInfo();
+}
+
+// ─── CORTE DE CAJA FORMAL ───
+function renderCorteInfo(){
+  const td=today();
+  const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const rets=D.retiros.filter(r=>r.fecha===td);
+  const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
+  const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
+  const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
+  const esperado=fondos+vEf+deps-retiros;
+
+  if($('corte-fecha-label'))$('corte-fecha-label').textContent=td;
+  if($('corte-fondo'))$('corte-fondo').textContent=fmt(fondos);
+  if($('corte-vef'))$('corte-vef').textContent=fmt(vEf);
+  if($('corte-dep'))$('corte-dep').textContent=fmt(deps);
+  if($('corte-ret'))$('corte-ret').textContent=fmt(retiros);
+  if($('corte-esperado'))$('corte-esperado').textContent=fmt(esperado);
+  if($('corte-vtc'))$('corte-vtc').textContent=fmt(vTc);
+  if($('corte-vtot'))$('corte-vtot').textContent=fmt(vEf+vTc);
+  if($('corte-nventas'))$('corte-nventas').textContent=ventasHoy.length;
+
+  // Historial de cortes
+  const cortes=[...D.cortes].sort((a,b)=>b.id-a.id).slice(0,10);
+  if($('cortes-hist'))$('cortes-hist').innerHTML=cortes.length===0?
+    '<p style="color:var(--text3);font-size:12px;">Sin cortes registrados</p>':
+    cortes.map(c=>{
+      const diffColor=c.diferencia>=0?'ag':'ar';
+      const diffIcon=c.diferencia>0?'⬆ Sobrante':c.diferencia<0?'⬇ Faltante':'✓ Cuadra';
+      return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:10px;margin-bottom:6px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px;">
+          <span class="mono" style="font-size:11px;">${c.fecha} ${c.hora||''}</span>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <span class="badge ${c.diferencia>=0?'xg':'xr'}">${diffIcon}: ${fmt(Math.abs(c.diferencia))}</span>
+            <button class="btn bs bxs" onclick="printCorteById(${c.id})">🖨</button>
+            <button class="btn bd bxs" onclick="delCorte(${c.id})">✕</button>
+          </div>
+        </div>
+        <div class="sr" style="font-size:11px;"><span>Ventas: ${fmt(c.ventasTotal)}</span><span>Esperado: ${fmt(c.esperado)}</span><span>Contado: ${fmt(c.contado)}</span></div>
+        ${c.realizadoPor?`<div style="font-size:10px;color:var(--text3);margin-top:3px;">Por: ${c.realizadoPor}</div>`:''}
+        ${c.nota?`<div style="font-size:10px;color:var(--text3);">Nota: ${c.nota}</div>`:''}
+      </div>`;
+    }).join('');
+}
+
+window.calcCorte=()=>{
+  const contado=parseFloat($('corte-contado')?.value)||0;
+  const td=today();
+  const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  const rets=D.retiros.filter(r=>r.fecha===td);
+  const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
+  const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
+  const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
+  const esperado=fondos+vEf+deps-retiros;
+  const diff=contado-esperado;
+  const el=$('corte-diff');
+  if(!el) return;
+  if(contado<=0){el.textContent='—';el.style.color='var(--text3)';return;}
+  el.textContent=(diff>=0?'+':'')+fmt(diff);
+  el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
+};
+
+window.calcBilletes=()=>{
+  let total=0;
+  document.querySelectorAll('.corte-bill').forEach(el=>{
+    const val=parseInt(el.value)||0;
+    const denom=parseInt(el.dataset.val)||0;
+    total+=val*denom;
+  });
+  total+=parseFloat($('corte-monedas')?.value)||0;
+  if($('corte-contado'))$('corte-contado').value=total;
+  calcCorte();
+};
+
+window.realizarCorte=async()=>{
+  const contado=parseFloat($('corte-contado')?.value);
+  if(!contado&&contado!==0){toast('⚠ Ingresa el efectivo contado');return;}
+  const td=today();
+  const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const rets=D.retiros.filter(r=>r.fecha===td);
+  const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
+  const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
+  const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
+  const esperado=fondos+vEf+deps-retiros;
+  const diferencia=contado-esperado;
+
+  const corte={
+    id:Date.now(),
+    fecha:td,
+    hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
+    ventasEf:vEf, ventasTc:vTc, ventasTotal:vEf+vTc,
+    fondoInicial:fondos, depositos:deps, retiros,
+    esperado, contado, diferencia,
+    numVentas:ventasHoy.length,
+    nota:$('corte-nota')?.value?.trim()||'',
+    realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'
+  };
+  await fsSet('cortes',corte);
+  if($('corte-contado'))$('corte-contado').value='';
+  if($('corte-nota'))$('corte-nota').value='';
+  document.querySelectorAll('.corte-bill').forEach(el=>el.value='');
+  if($('corte-monedas'))$('corte-monedas').value='';
+  if($('corte-diff')){$('corte-diff').textContent='—';$('corte-diff').style.color='var(--text3)';}
+  printCorteTicket(corte);
+  toast(`🧾 Corte realizado · ${diferencia>=0?'Sobrante':'Faltante'}: ${fmt(Math.abs(diferencia))}`);
+};
+
+window.printCorteById=id=>{const c=D.cortes.find(x=>x.id===id);if(c)printCorteTicket(c);};
+window.printUltimoCorte=()=>{
+  const td=today();
+  const c=[...D.cortes].filter(x=>x.fecha===td).sort((a,b)=>b.id-a.id)[0];
+  if(c) printCorteTicket(c); else toast('⚠ No hay corte de hoy');
+};
+window.delCorte=async id=>{if(!confirm('¿Eliminar este corte?'))return;await fsDel('cortes',id);toast('✓ Corte eliminado');};
+
+// Apertura de caja
+window.confirmarApertura=async()=>{
+  const monto=parseFloat($('apertura-monto')?.value);
+  if(!monto||monto<=0){toast('⚠ Ingresa un monto');return;}
+  const r={id:Date.now(),fecha:today(),monto,tipo:'fondo',concepto:'Fondo de apertura'};
+  await fsSet('retiros',r);
+  $('apertura-modal').style.display='none';
+  toast(`💰 Apertura registrada: ${fmt(monto)}`);
+};
+
+function checkApertura(){
+  const td=today();
+  const fondoHoy=D.retiros.find(r=>r.fecha===td&&r.tipo==='fondo');
+  if(!fondoHoy&&SESSION){
+    $('apertura-modal').style.display='flex';
+  }
 }
 
 // ─── GASTOS ───
@@ -2355,6 +2696,128 @@ function renderInv(){
     items.map(x=>{const b=x.min>0&&x.qty<=x.min;return `<tr><td>${x.nombre}</td><td style="font-size:11px;">${ivL[x.cat]||''}</td><td class="mono">${x.qty}</td><td style="font-size:11px;color:var(--text2);">${x.unit||'—'}</td><td class="mono">${x.min||'—'}</td><td class="mono">${x.precio?fmt(x.precio):'—'}</td><td class="mono">${x.precio&&x.qty?fmt(x.precio*x.qty):'—'}</td><td>${b?'<span class="badge xy">⚠</span>':'<span class="badge xg">OK</span>'}</td><td style="display:flex;gap:3px;"><button class="btn bs bxs" onclick="editInvInline(${x.id})">✏️</button><button class="btn bd bxs" onclick="delInv(${x.id})">✕</button></td></tr>`;}).join('');
 }
 
+// ─── CARGA MASIVA POR IMAGEN ───
+let imgDetectedItems=[];
+
+window.previewInvImg=input=>{
+  const file=input.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    $('inv-img-tag').src=e.target.result;
+    $('inv-img-preview').style.display='block';
+  };
+  reader.readAsDataURL(file);
+};
+
+window.analizarImagen=async()=>{
+  const apiKey=$('claude-api-key')?.value?.trim();
+  if(!apiKey){toast('⚠ Ingresa tu API Key de Claude');return;}
+  // Guardar API key localmente
+  try{localStorage.setItem('h5claudekey',apiKey);}catch(e){}
+  const file=$('inv-img-input')?.files[0];
+  if(!file){toast('⚠ Selecciona una imagen');return;}
+
+  $('inv-img-loading').style.display='block';
+  $('inv-img-results').style.display='none';
+  $('btn-analizar').disabled=true;
+
+  try{
+    const base64=await new Promise((res,rej)=>{
+      const r=new FileReader();
+      r.onload=e=>res(e.target.result.split(',')[1]);
+      r.onerror=rej;
+      r.readAsDataURL(file);
+    });
+    const mediaType=file.type||'image/jpeg';
+
+    const resp=await fetch('https://api.anthropic.com/v1/messages',{
+      method:'POST',
+      headers:{
+        'Content-Type':'application/json',
+        'x-api-key':apiKey,
+        'anthropic-version':'2023-06-01',
+        'anthropic-dangerous-direct-browser-access':'true'
+      },
+      body:JSON.stringify({
+        model:'claude-sonnet-4-20250514',
+        max_tokens:2048,
+        messages:[{role:'user',content:[
+          {type:'image',source:{type:'base64',media_type:mediaType,data:base64}},
+          {type:'text',text:`Analiza esta imagen de inventario/factura/lista de productos de un negocio de comida saludable llamado "El Huerto" que vende smoothies, açaí bowls, paninis, cafés, etc.
+
+Extrae TODOS los productos visibles con su cantidad y unidad. Las categorías válidas son: frutas, verduras, lacteos, granos, proteinas, bebidas, salsas, limpieza, empaque, otros.
+
+Responde SOLO con un JSON array, sin texto adicional ni markdown. Cada elemento debe tener:
+{"nombre":"string","cat":"string","qty":number,"unit":"string","precio":number}
+
+Si no puedes determinar el precio, usa 0. Si no puedes determinar la cantidad, usa 1.
+Ejemplo: [{"nombre":"Plátano","cat":"frutas","qty":5,"unit":"kg","precio":35},{"nombre":"Leche deslactosada","cat":"lacteos","qty":4,"unit":"L","precio":42}]`}
+        ]}]
+      })
+    });
+
+    if(!resp.ok){
+      const err=await resp.text();
+      throw new Error(err);
+    }
+    const data=await resp.json();
+    const text=data.content?.[0]?.text||'';
+    // Extraer JSON del response
+    const jsonMatch=text.match(/\[[\s\S]*\]/);
+    if(!jsonMatch) throw new Error('No se detectaron productos en la imagen');
+    imgDetectedItems=JSON.parse(jsonMatch[0]);
+
+    $('inv-img-table').innerHTML=imgDetectedItems.map((item,i)=>`<tr>
+      <td><input value="${item.nombre}" onchange="imgDetectedItems[${i}].nombre=this.value" style="font-size:11px;padding:3px 5px;width:100%;"></td>
+      <td><select onchange="imgDetectedItems[${i}].cat=this.value" style="font-size:11px;padding:3px;">
+        ${Object.entries(ivL).map(([k,v])=>`<option value="${k}" ${item.cat===k?'selected':''}>${v} ${k}</option>`).join('')}
+      </select></td>
+      <td><input type="number" value="${item.qty}" onchange="imgDetectedItems[${i}].qty=parseFloat(this.value)||0" style="font-size:11px;padding:3px 5px;width:60px;"></td>
+      <td><input value="${item.unit||''}" onchange="imgDetectedItems[${i}].unit=this.value" style="font-size:11px;padding:3px 5px;width:50px;"></td>
+      <td><input type="number" value="${item.precio||0}" onchange="imgDetectedItems[${i}].precio=parseFloat(this.value)||0" style="font-size:11px;padding:3px 5px;width:60px;"></td>
+      <td><input type="checkbox" checked data-idx="${i}" class="img-inv-check" style="width:auto;"></td>
+    </tr>`).join('');
+    $('inv-img-results').style.display='block';
+    toast(`✓ ${imgDetectedItems.length} productos detectados`);
+  }catch(e){
+    console.error(e);
+    toast('⚠ Error: '+e.message,4000);
+  }finally{
+    $('inv-img-loading').style.display='none';
+    $('btn-analizar').disabled=false;
+  }
+};
+
+window.confirmarCargaMasiva=async()=>{
+  const checks=document.querySelectorAll('.img-inv-check');
+  let count=0;
+  for(let i=0;i<imgDetectedItems.length;i++){
+    if(!checks[i]?.checked) continue;
+    const item=imgDetectedItems[i];
+    // Buscar si ya existe en inventario (por nombre similar)
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      // Sumar cantidad al existente
+      existing.qty=(existing.qty||0)+item.qty;
+      if(item.precio>0) existing.precio=item.precio;
+      await fsSet('inventario',existing);
+    } else {
+      const newItem={id:Date.now()+i,nombre:item.nombre,cat:item.cat||'otros',qty:item.qty||1,unit:item.unit||'pz',min:0,precio:item.precio||0};
+      await fsSet('inventario',newItem);
+    }
+    count++;
+  }
+  imgDetectedItems=[];
+  $('img-inv-modal').style.display='none';
+  $('inv-img-results').style.display='none';
+  $('inv-img-preview').style.display='none';
+  if($('inv-img-input'))$('inv-img-input').value='';
+  toast(`✓ ${count} productos cargados al inventario`);
+};
+
+// Cargar API key guardada (se ejecuta en initD también)
+function loadClaudeKey(){try{const sk=localStorage.getItem('h5claudekey');if(sk&&$('claude-api-key'))$('claude-api-key').value=sk;}catch(e){}}
+
 // ─── RECETAS ───
 function renderRecetas(){
   const q=($('rec-q')?.value||'').toLowerCase();
@@ -2394,6 +2857,155 @@ window.addIng=async prodId=>{
   await fsSet('recetas',rec);toast('✓ Agregado');
 };
 window.delIng=async(prodId,invId)=>{const rec=D.recetas.find(r=>r.prodId===prodId);if(!rec)return;rec.ings=rec.ings.filter(i=>i.invId!=invId);await fsSet('recetas',rec);toast('✓ Eliminado');};
+
+// ─── RECETAS PREDEFINIDAS ───
+async function ensureInvItem(nombre,cat,unit){
+  let inv=D.inventario.find(i=>i.nombre.toLowerCase()===nombre.toLowerCase());
+  if(!inv){
+    inv={id:Date.now()+Math.floor(Math.random()*1000),nombre,cat,qty:0,unit,min:5,precio:0};
+    await fsSet('inventario',inv);
+    D.inventario.push(inv);
+  }
+  return inv;
+}
+
+window.seedRecetasPredefinidas=async()=>{
+  if(!confirm('¿Cargar recetas predefinidas? Se crearán los ingredientes en inventario si no existen.')) return;
+  toast('Cargando recetas...',3000);
+
+  // Definir ingredientes base
+  const I=async(n,c,u)=>await ensureInvItem(n,c,u);
+  const servilleta=await I('Servilleta','empaque','pz');
+  const popote=await I('Popote','empaque','pz');
+  const avena=await I('Avena','granos','g');
+  const leche=await I('Leche deslactosada','lacteos','ml');
+  const platano=await I('Plátano','frutas','pz');
+  const hielo=await I('Hielo','otros','g');
+  const proteina=await I('Proteína en polvo','proteinas','g');
+  const pan_panini=await I('Pan de panini','granos','pz');
+  const aceitunas=await I('Aceitunas','verduras','g');
+  const jitomate=await I('Jitomate','verduras','pz');
+  const pepino=await I('Pepino','verduras','pz');
+  const salsa_chipotle=await I('Salsa de chipotle','salsas','ml');
+  const plato=await I('Plato desechable','empaque','pz');
+  const pan_renee=await I('Pan tía Renee','granos','pz');
+  const cafe_molido=await I('Café molido','bebidas','g');
+  const vaso_12=await I('Vaso 12 oz','empaque','pz');
+  const vaso_16=await I('Vaso 16 oz','empaque','pz');
+  const tapa_cafe=await I('Tapa para café','empaque','pz');
+  const granola=await I('Granola','granos','g');
+  const acai=await I('Açaí pulpa','frutas','g');
+  const fresa=await I('Fresa','frutas','g');
+  const mango=await I('Mango','frutas','g');
+  const pina=await I('Piña','frutas','g');
+  const sandia=await I('Sandía','frutas','g');
+  const manzana=await I('Manzana','frutas','pz');
+  const limon=await I('Limón','frutas','pz');
+  const zanahoria=await I('Zanahoria','verduras','pz');
+  const jicama=await I('Jícama','verduras','pz');
+  const yogurt=await I('Yogurt natural','lacteos','ml');
+  const coco_rallado=await I('Coco rallado','granos','g');
+  const papas_susalias=await I('Papas Susalias','otros','bolsa');
+  const queso_mozz=await I('Queso mozzarella','lacteos','g');
+  const queso_4=await I('Mezcla 4 quesos','lacteos','g');
+  const pechuga_pavo=await I('Pechuga de pavo','proteinas','g');
+  const jamon_serrano=await I('Jamón serrano','proteinas','g');
+  const chorizo_pamplona=await I('Chorizo pamplona','proteinas','g');
+  const te_negro=await I('Té negro','bebidas','g');
+  const te_verde=await I('Té verde','bebidas','g');
+  const matcha=await I('Matcha','bebidas','g');
+  const chai=await I('Chai','bebidas','g');
+  const chocolate=await I('Chocolate en polvo','bebidas','g');
+  const aguacate=await I('Aguacate','frutas','pz');
+  const overnight_base=await I('Avena overnight base','granos','g');
+
+  // Helper para crear receta
+  const setRec=async(prodId,ings)=>{
+    const existing=D.recetas.find(r=>r.prodId===prodId);
+    const rec={id:existing?.id||Date.now()+prodId,prodId,ings};
+    await fsSet('recetas',rec);
+  };
+  const ing=(inv,qty,unit)=>({invId:inv.id,nombre:inv.nombre,qty:String(qty),unit:unit||inv.unit});
+
+  // ── SMOOTHIES ──
+  // Pal'Mamado (1012)
+  await setRec(1012,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(avena,30,'g'),ing(leche,250,'ml'),ing(platano,1,'pz'),ing(hielo,100,'g'),ing(proteina,30,'g')]);
+  // Pal'Playero (1007)
+  await setRec(1007,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(pina,100,'g'),ing(mango,100,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  // Pal'Fresa (1008)
+  await setRec(1008,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(fresa,100,'g'),ing(platano,1,'pz'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+  // Pal'Crudo (1009)
+  await setRec(1009,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(manzana,1,'pz'),ing(limon,1,'pz'),ing(zanahoria,1,'pz'),ing(hielo,100,'g')]);
+  // Pal'Sediento (1010)
+  await setRec(1010,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(sandia,200,'g'),ing(limon,1,'pz'),ing(hielo,100,'g')]);
+  // Pal'Changuito (1011)
+  await setRec(1011,[ing(servilleta,1,'pz'),ing(popote,1,'pz'),ing(vaso_16,1,'pz'),ing(platano,1,'pz'),ing(mango,100,'g'),ing(leche,250,'ml'),ing(hielo,100,'g')]);
+
+  // ── AÇAÍ BOWLS ──
+  await setRec(1001,[ing(servilleta,1,'pz'),ing(acai,150,'g'),ing(granola,30,'g'),ing(plato,1,'pz')]);
+  await setRec(1002,[ing(servilleta,1,'pz'),ing(acai,150,'g'),ing(granola,30,'g'),ing(plato,1,'pz')]);
+  await setRec(1003,[ing(servilleta,1,'pz'),ing(acai,150,'g'),ing(granola,30,'g'),ing(plato,1,'pz')]);
+
+  // ── OVERNIGHT OATS ──
+  await setRec(1004,[ing(servilleta,1,'pz'),ing(overnight_base,80,'g'),ing(leche,150,'ml'),ing(granola,20,'g'),ing(vaso_16,1,'pz')]);
+  await setRec(1005,[ing(servilleta,1,'pz'),ing(overnight_base,80,'g'),ing(leche,150,'ml'),ing(granola,20,'g'),ing(vaso_16,1,'pz')]);
+  await setRec(1006,[ing(servilleta,1,'pz'),ing(overnight_base,80,'g'),ing(leche,150,'ml'),ing(granola,20,'g'),ing(vaso_16,1,'pz')]);
+
+  // ── PANINIS ──
+  const paniniBase=[ing(servilleta,1,'pz'),ing(pan_panini,1,'pz'),ing(aceitunas,10,'g'),ing(jitomate,0.5,'pz'),ing(pepino,0.25,'pz'),ing(salsa_chipotle,15,'ml'),ing(plato,1,'pz')];
+  await setRec(1019,[...paniniBase,ing(queso_mozz,50,'g')]);
+  await setRec(1020,[...paniniBase,ing(queso_4,50,'g')]);
+  await setRec(1021,[...paniniBase,ing(pechuga_pavo,60,'g')]);
+  await setRec(1022,[...paniniBase,ing(jamon_serrano,60,'g')]);
+  await setRec(1023,[...paniniBase,ing(chorizo_pamplona,60,'g')]);
+
+  // ── PANES TÍA RENEE ──
+  const panBase=[ing(servilleta,1,'pz'),ing(pan_renee,1,'pz'),ing(plato,1,'pz')];
+  await setRec(1044,panBase); // Queso
+  await setRec(1045,panBase); // Chilaquiles
+  await setRec(1046,panBase); // Pizza
+  await setRec(1047,panBase); // Rajas
+
+  // ── CAFÉS (chicos = 12oz, grandes = 16oz) ──
+  await setRec(1024,[ing(cafe_molido,30,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]); // Americano chico
+  await setRec(1025,[ing(cafe_molido,30,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]); // Americano grande
+  await setRec(1026,[ing(cafe_molido,30,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]); // Latte chico
+  await setRec(1027,[ing(cafe_molido,30,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]); // Latte grande
+  await setRec(1028,[ing(cafe_molido,30,'g'),ing(leche,120,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]); // Flat white chico
+  await setRec(1029,[ing(cafe_molido,30,'g'),ing(leche,180,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]); // Flat white grande
+  await setRec(1030,[ing(cafe_molido,30,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]); // Capuchino chico
+  await setRec(1031,[ing(cafe_molido,30,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]); // Capuchino grande
+  await setRec(1032,[ing(cafe_molido,14,'g'),ing(vaso_12,1,'pz')]); // Espreso chico
+  await setRec(1033,[ing(cafe_molido,28,'g'),ing(vaso_16,1,'pz')]); // Espreso grande
+  await setRec(1034,[ing(chocolate,25,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]); // Chocolate chico
+  await setRec(1035,[ing(chocolate,35,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]); // Chocolate grande
+
+  // ── TÉS ──
+  await setRec(1036,[ing(te_negro,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1037,[ing(te_negro,3,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1038,[ing(te_verde,3,'g'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1039,[ing(te_verde,3,'g'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1040,[ing(matcha,5,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1041,[ing(matcha,5,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1042,[ing(chai,5,'g'),ing(leche,150,'ml'),ing(vaso_12,1,'pz'),ing(tapa_cafe,1,'pz')]);
+  await setRec(1043,[ing(chai,5,'g'),ing(leche,250,'ml'),ing(vaso_16,1,'pz'),ing(tapa_cafe,1,'pz')]);
+
+  // ── COCTELES ──
+  const coctelBase=[ing(servilleta,1,'pz'),ing(plato,1,'pz')];
+  await setRec(1013,[...coctelBase]); // Coctel de fruta
+  await setRec(1014,[...coctelBase,ing(yogurt,100,'ml'),ing(coco_rallado,15,'g')]); // Biónico
+  await setRec(1057,[...coctelBase,ing(jicama,0.5,'pz'),ing(limon,1,'pz')]); // Jícama
+  await setRec(1058,[...coctelBase,ing(pina,150,'g'),ing(limon,1,'pz')]); // Piña
+  await setRec(1059,[...coctelBase,ing(sandia,200,'g'),ing(limon,1,'pz')]); // Sandía
+  await setRec(1060,[...coctelBase,ing(pepino,0.5,'pz'),ing(limon,1,'pz')]); // Pepino
+  await setRec(1061,coctelBase); // Mix
+
+  // ── PAPAS ──
+  await setRec(1015,[ing(papas_susalias,1,'bolsa'),ing(pepino,0.25,'pz'),ing(jicama,0.25,'pz'),ing(zanahoria,0.25,'pz'),ing(servilleta,1,'pz'),ing(plato,1,'pz')]);
+  await setRec(1062,[ing(papas_susalias,1,'bolsa'),ing(servilleta,1,'pz')]);
+
+  toast('✓ Recetas predefinidas cargadas exitosamente',3000);
+};
 
 // ─── DASHBOARD ─── (siempre en tiempo real)
 function renderDashboard(){
@@ -3123,7 +3735,7 @@ function renderAll(){
   renderNomina(); renderVendedores();
   renderProv(); renderSubs(); renderInv();
   renderRecetas(); renderReportes(); renderConfig();
-  renderAjustes();
+  renderAjustes(); loadClaudeKey();
 }
 
 function initD(){
