@@ -2541,12 +2541,11 @@ window.addRetiro=async()=>{
 window.delRetiro=async id=>{await fsDel('retiros',id);toast('✓ Eliminado');};
 
 function getEnCaja(fecha){
-  // Fuente de verdad: ventas POS del día (no caja manual)
+  // Fuente de verdad: colección caja (registro diario), fallback a ventas POS
+  const cj=D.caja.find(c=>c.fecha===fecha);
   const ventasPOS=D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
   const efvPOS=ventasPOS.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  // Fallback a caja manual si no hay ventas POS
-  const cj=D.caja.find(c=>c.fecha===fecha);
-  const efv=efvPOS>0?efvPOS:(cj?cj.ef:0);
+  const efv=cj?(cj.ef||0):efvPOS;
   const rets=D.retiros.filter(r=>r.fecha===fecha);
   const retTotal=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
   const fondoTotal=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
@@ -2557,15 +2556,19 @@ function getEnCaja(fecha){
 function renderCaja(){
   const td=today(); const wd=getWDays(td);
 
-  // ══ FUENTE DE VERDAD: misma función que el strip semanal ══
+  // ══ FUENTE DE VERDAD: caja (registro diario) con fallback a ventas POS ══
   const ventasDia=(fecha)=>D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
 
-  // KPIs — calculados igual que el strip para garantizar consistencia
+  // calcDia: usa colección caja si existe (tiene los datos correctos), sino calcula desde ventas POS
   const calcDia=(fecha)=>{
+    const cj=D.caja.find(c=>c.fecha===fecha);
     const vd=ventasDia(fecha);
+    if(cj){
+      return {ef:cj.ef||0, tc:cj.tc||0, total:cj.total||(cj.ef||0)+(cj.tc||0), count:vd.length||1, hasCaja:true};
+    }
     const ef=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
     const tc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
-    return {ef,tc,total:ef+tc,count:vd.length};
+    return {ef,tc,total:ef+tc,count:vd.length,hasCaja:false};
   };
   const hoyData=calcDia(td);
   const cj=getEnCaja(td);
@@ -2607,14 +2610,13 @@ function renderCaja(){
     <div style="flex:1;background:var(--surface3);border-radius:var(--rsm);padding:9px;text-align:center;border:1px solid var(--border);"><div class="ct" style="margin-bottom:3px;">Semana</div><div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--accent2);">${fmt(wTot)}</div></div>
   </div><div style="font-size:11px;color:var(--text2);">${wD}/5 días · Prom: <span class="mono ag">${fmt(wD?wTot/wD:0)}</span></div>`;
 
-  // Historial ventas por día
-  const diasConVentas=[...new Set(D.ventas.filter(v=>!v.anulada).map(v=>v.fecha))].sort((a,b)=>b.localeCompare(a)).slice(0,15);
-  if($('caja-hist'))$('caja-hist').innerHTML=diasConVentas.length===0?`<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:14px">Sin registros</td></tr>`:
-    diasConVentas.map(fecha=>{
-      const vd=ventasDia(fecha);
-      const ef=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-      const tc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
-      return `<tr><td class="mono">${fecha}</td><td class="mono ab">${fmt(ef)}</td><td class="mono ay">${fmt(tc)}</td><td class="mono fw7">${fmt(ef+tc)}</td><td style="font-size:10px;color:var(--text3);">${vd.length}v</td></tr>`;
+  // Historial ventas por día — unión de caja + ventas POS
+  const allDias=new Set([...D.caja.map(c=>c.fecha),...D.ventas.filter(v=>!v.anulada).map(v=>v.fecha)]);
+  const diasOrdenados=[...allDias].sort((a,b)=>b.localeCompare(a)).slice(0,15);
+  if($('caja-hist'))$('caja-hist').innerHTML=diasOrdenados.length===0?`<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:14px">Sin registros</td></tr>`:
+    diasOrdenados.map(fecha=>{
+      const dd=calcDia(fecha);
+      return `<tr><td class="mono">${fecha}</td><td class="mono ab">${fmt(dd.ef)}</td><td class="mono ay">${fmt(dd.tc)}</td><td class="mono fw7">${fmt(dd.total)}</td><td style="font-size:10px;color:var(--text3);">${dd.count>0?dd.count+'v':''}</td></tr>`;
     }).join('');
 
   // Movimientos de efectivo hoy
