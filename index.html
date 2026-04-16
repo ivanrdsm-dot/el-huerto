@@ -1266,6 +1266,7 @@ async function completeInit(){
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
   await ajusteInventarioFisico15Abr();
+  await ajusteManual15Abr();
   await setMinimosInteligentes();
   await autoSeedRecetas();
   renderLock();
@@ -1637,6 +1638,71 @@ async function ajusteInventarioFisico15Abr(){
   }
   localStorage.setItem(migKey,'1');
   if(updated+added>0) toast(`✓ Inventario físico: ${updated} ajustados, ${added} nuevos`,4000);
+}
+
+// Ajuste manual inventario 15/abr — datos del dueño
+async function ajusteManual15Abr(){
+  const migKey='h5invmanual_15abr26';
+  if(localStorage.getItem(migKey)) return;
+
+  // Actualizar cantidades exactas
+  const updates=[
+    {nombre:'Açaí pulpa',qty:2,unit:'kg'},
+    {nombre:'Matcha',qty:0.6},
+    {nombre:'Crema de almendra',qty:1.53,unit:'kg'},
+    {nombre:'Vaso 12 oz',qty:210},
+    {nombre:'Blueberry',qty:0.5,unit:'kg'},
+    {nombre:'Miel de abeja',qty:0.7,unit:'kg'},
+    {nombre:'Chocolate en polvo',qty:0.5,unit:'kg'},
+    {nombre:'Avena overnight base',qty:1,unit:'kg'},
+    {nombre:'Jícama',qty:3,unit:'kg'},
+    {nombre:'Manzana',qty:2,unit:'kg'},
+    {nombre:'Salsa de chipotle',qty:0.5,unit:'kg'},
+    {nombre:'Café molido',qty:0.5,unit:'kg'},
+    {nombre:'Chai',qty:0.5,unit:'kg'},
+  ];
+
+  let updated=0,added=0;
+  for(const item of updates){
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      existing.qty=item.qty;
+      if(item.unit) existing.unit=item.unit;
+      await fsSet('inventario',existing);
+      updated++;
+    } else {
+      await fsSet('inventario',{id:Date.now()+added+800,nombre:item.nombre,cat:'otros',qty:item.qty,unit:item.unit||'kg',min:0,precio:0});
+      added++;
+    }
+  }
+
+  // Renombrar Vaso café 14 oz → Vaso 12 oz (sustituir)
+  const vaso14=D.inventario.find(x=>x.nombre.toLowerCase()==='vaso café 14 oz');
+  if(vaso14){
+    vaso14.nombre='Vaso 12 oz';
+    vaso14.qty=210;
+    await fsSet('inventario',vaso14);
+  }
+
+  // Eliminar productos que no se usan
+  const eliminar=['Mezcla 4 quesos','Té negro','Té verde','Hierbabuena hoja','Manzanilla hoja'];
+  for(const nombre of eliminar){
+    const item=D.inventario.find(x=>x.nombre.toLowerCase()===nombre.toLowerCase());
+    if(item) await fsDel('inventario',item.id);
+  }
+
+  // Eliminar recetas de tés eliminados (Té Negro, Té Verde, Hierbabuena, Manzanilla)
+  const teProductIds=[1036,1037,1038,1039,1066,1067,1068,1069];
+  for(const prodId of teProductIds){
+    const p=D.productos.find(x=>x.id===prodId);
+    if(p&&p.activo){p.activo=false;await fsSet('productos',p);}
+  }
+
+  // Actualizar recetas de cafés que usaban Vaso 12 oz (ya existe con ese nombre)
+  // Las recetas referencian por invId, así que si vaso14 fue renombrado, el ID sigue siendo el mismo
+
+  localStorage.setItem(migKey,'1');
+  if(updated+added>0) toast(`✓ Inventario manual: ${updated} ajustados, ${added} nuevos`,3000);
 }
 
 // Carga inventario Costco 12/abr + Tía Renee 10/abr/2026
