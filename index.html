@@ -1286,7 +1286,7 @@ function listenAll(){
   const loaded=new Set();
 
   cols.forEach(col=>{
-    onSnapshot(colRef(col), snap=>{
+    onSnapshot(colRef(col), async snap=>{
       D[col]=snap.docs.map(d=>d.data());
 
       if(!READY){
@@ -1299,11 +1299,9 @@ function listenAll(){
           await completeInit();
         }
       } else {
-        // Ya estaba listo — actualización en tiempo real
         renderAll();
       }
-    }, err=>{
-      // Si una colección falla (ej: 'checkins' aún no existe), marcarla igual
+    }, async err=>{
       console.warn('Firestore error en', col, err.message);
       D[col]=[];
       if(!READY){
