@@ -1264,6 +1264,7 @@ async function completeInit(){
   await migrateMenuAbril2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
+  await loadInventario15Abr();
   await setMinimosInteligentes();
   await autoSeedRecetas();
   renderLock();
@@ -1527,6 +1528,60 @@ async function loadInventarioAbril2026(){
 
   localStorage.setItem(migKey,'1');
   if(added+updated>0) toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados`,4000);
+}
+
+// Carga inventario 15/abr/2026 — Naranjarillo + Costco
+async function loadInventario15Abr(){
+  const migKey='h5inv_15abr26';
+  if(localStorage.getItem(migKey)) return;
+  const items=[
+    // Naranjarillo A-2369858 — $1,103.30
+    {nombre:'Jamón serrano',cat:'proteinas',qty:0.5,unit:'kg',precio:770},
+    {nombre:'Piña',cat:'frutas',qty:3,unit:'pz',precio:53},
+    {nombre:'Fresa',cat:'frutas',qty:6,unit:'kg',precio:30},
+    {nombre:'Plátano',cat:'frutas',qty:5,unit:'kg',precio:19},
+    {nombre:'Yogurt natural',cat:'lacteos',qty:1,unit:'kg',precio:65},
+    {nombre:'Sandía',cat:'frutas',qty:5.9,unit:'kg',precio:20},
+    {nombre:'Mango',cat:'frutas',qty:3.1,unit:'kg',precio:23},
+    {nombre:'Jitomate',cat:'verduras',qty:0.5,unit:'kg',precio:60},
+    // Naranjarillo A-2369859 — $45
+    {nombre:'Jícama',cat:'verduras',qty:3,unit:'kg',precio:15},
+    // Costco ARG-5683195 — $1,203.95
+    {nombre:'Leche de almendra',cat:'lacteos',qty:6,unit:'pz',precio:24.83},
+    {nombre:'Aceitunas',cat:'verduras',qty:3,unit:'kg',precio:59.70},
+    {nombre:'Jugo sazonador Maggi',cat:'salsas',qty:1,unit:'pz',precio:219},
+    {nombre:'Papas Susalias',cat:'otros',qty:20,unit:'bolsa',precio:14.95},
+    {nombre:'Crema de almendra',cat:'granos',qty:1.53,unit:'kg',precio:233.98},
+  ];
+  let added=0,updated=0;
+  for(const item of items){
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      existing.qty=(existing.qty||0)+item.qty;
+      if(item.precio>0) existing.precio=item.precio;
+      await fsSet('inventario',existing);
+      updated++;
+    } else {
+      await fsSet('inventario',{id:Date.now()+added+500,nombre:item.nombre,cat:item.cat,qty:item.qty,unit:item.unit,min:0,precio:item.precio});
+      added++;
+    }
+  }
+  // Gastos
+  if(!D.gastos.find(g=>g.nota==='Ticket A-2369858'))
+    await fsSet('gastos',{id:Date.now()+600,fecha:'2026-04-15',concepto:'Naranjarillo — frutas y proteínas',monto:1103.30,cat:'proveedor',nota:'Ticket A-2369858'});
+  if(!D.gastos.find(g=>g.nota==='Ticket A-2369859'))
+    await fsSet('gastos',{id:Date.now()+601,fecha:'2026-04-15',concepto:'Naranjarillo — jícama',monto:45,cat:'proveedor',nota:'Ticket A-2369859'});
+  if(!D.gastos.find(g=>g.nota==='Factura ARG-5683195'))
+    await fsSet('gastos',{id:Date.now()+602,fecha:'2026-04-15',concepto:'Costco — almendra, aceitunas, susalia, maggi',monto:1203.95,cat:'proveedor',nota:'Factura ARG-5683195'});
+  // Pedidos
+  if(!D.pedidos.find(p=>p.ticket==='A-2369858'))
+    await fsSet('pedidos',{id:Date.now()+603,fecha:'2026-04-15',proveedor:'Naranjarillo',tipo:'Frutas y proteínas',ticket:'A-2369858',total:1103.30});
+  if(!D.pedidos.find(p=>p.ticket==='A-2369859'))
+    await fsSet('pedidos',{id:Date.now()+604,fecha:'2026-04-15',proveedor:'Naranjarillo',tipo:'Verduras',ticket:'A-2369859',total:45});
+  if(!D.pedidos.find(p=>p.ticket==='ARG-5683195'))
+    await fsSet('pedidos',{id:Date.now()+605,fecha:'2026-04-15',proveedor:'Costco Interlomas',tipo:'Insumos',ticket:'ARG-5683195',total:1203.95});
+  localStorage.setItem(migKey,'1');
+  if(added+updated>0) toast(`✓ Compras 15/abr: ${added} nuevos, ${updated} actualizados`,4000);
 }
 
 // Carga inventario Costco 12/abr + Tía Renee 10/abr/2026
