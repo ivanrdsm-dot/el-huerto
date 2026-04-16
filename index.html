@@ -2556,81 +2556,88 @@ function getEnCaja(fecha){
 
 function renderCaja(){
   const td=today(); const wd=getWDays(td);
-  // Ventas POS de hoy (fuente de verdad)
-  const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+
+  // ══ FUENTE DE VERDAD: ventas POS ══
+  const ventasDia=(fecha)=>D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
+  const ventasHoy=ventasDia(td);
   const vHoyEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
   const vHoyTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
   const vHoyTot=vHoyEf+vHoyTc;
-  // Caja manual (puede coexistir con POS o ser el único registro)
-  const hoy=D.caja.find(c=>c.fecha===td);
-  // Para KPIs: usar POS si hay ventas, sino usar caja manual
-  const kEf=vHoyTot>0?vHoyEf:(hoy?hoy.ef:0);
-  const kTc=vHoyTot>0?vHoyTc:(hoy?hoy.tc:0);
-  const kTot=vHoyTot>0?vHoyTot:(hoy?hoy.total:0);
   const cj=getEnCaja(td);
-  if($('k-hoy'))$('k-hoy').textContent=fmt(kTot);
-  if($('k-hef'))$('k-hef').textContent=fmt(kEf);
-  if($('k-htc'))$('k-htc').textContent=fmt(kTc);
+
+  // KPIs — siempre desde ventas POS
+  if($('k-hoy'))$('k-hoy').textContent=fmt(vHoyTot);
+  if($('k-hef'))$('k-hef').textContent=fmt(vHoyEf);
+  if($('k-htc'))$('k-htc').textContent=fmt(vHoyTc);
   if($('k-encaja'))$('k-encaja').textContent=fmt(cj.enCaja);
-  // Pre-fill formulario SIEMPRE con HOY al renderizar
+
+  // Pre-fill fechas
   if($('cf')&&(!$('cf').value||$('cf').value!==td)) $('cf').value=td;
   if($('ret-fecha')&&(!$('ret-fecha').value)) $('ret-fecha').value=td;
-  const e1=D.empleados[0]; const e2=D.empleados[1];
+  const e1=D.empleados.find(x=>x.id===2001); const e2=D.empleados.find(x=>x.id===2002);
   if(e1&&$('lbl-e1'))$('lbl-e1').textContent=e1.nombre;
-  if(e2&&$('lbl-e2'))$('lbl-e2').textContent=e2.nombre||'Emp 2';
+  if(e2&&$('lbl-e2'))$('lbl-e2').textContent=e2?.nombre||'Emp 2';
   const ss=$('css'); if(ss){const pv=ss.value;ss.innerHTML='<option value="">— No —</option>'+D.subs.filter(s=>s.activo).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('');if(pv)ss.value=pv;}
+
+  // Strip semanal — desde ventas POS
   if($('caja-wstrip'))$('caja-wstrip').innerHTML='<div class="ct">Semana</div><div class="wstrip">'+wd.map((d,i)=>{
-    const c=D.caja.find(x=>x.fecha===d);
-    const vd=D.ventas.filter(v=>v.fecha===d&&!v.anulada).reduce((s,v)=>s+v.total,0);
-    const tot=c?c.total:vd; // caja manual tiene prioridad, sino muestra POS
-    const tiene=c||vd>0; const it=d===td;
+    const vd=ventasDia(d);
+    const vdEf=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+    const vdTc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+    const tot=vdEf+vdTc;
+    const tiene=vd.length>0; const it=d===td;
+    const corte=D.cortes.find(c=>c.fecha===d);
     return `<div class="wday ${it?'today':''} ${tiene?'has':''}" onclick="prefill('${d}')">
       <div class="wdl">${dayN[i]}</div>
       <div class="wdd">${d.slice(8)}</div>
       <div class="${tiene?'wda':'wde'}">${tiene?fmt(tot):'—'}</div>
-      ${!c&&vd>0?'<div style="font-size:8px;color:var(--accent);margin-top:1px;">POS</div>':c?'<div style="font-size:8px;color:var(--text3);margin-top:1px;">✓</div>':''}
+      ${tiene?`<div style="font-size:8px;color:var(--text3);margin-top:1px;">${vd.length} ventas</div>`:''}
+      ${corte?'<div style="font-size:8px;color:var(--accent);margin-top:1px;">✓ Corte</div>':''}
     </div>`;
   }).join('')+'</div>';
-  const wEf=wd.reduce((s,d)=>{
-    const c=D.caja.find(x=>x.fecha===d);
-    const vd=D.ventas.filter(v=>v.fecha===d&&!v.anulada&&v.metodo==='efectivo').reduce((a,v)=>a+v.total,0);
-    return s+(c?c.ef:vd);
-  },0);
-  const wTc=wd.reduce((s,d)=>{
-    const c=D.caja.find(x=>x.fecha===d);
-    const vd=D.ventas.filter(v=>v.fecha===d&&!v.anulada&&v.metodo==='tarjeta').reduce((a,v)=>a+v.total,0);
-    return s+(c?c.tc:vd);
-  },0);
-  const wTot=wEf+wTc; const wD=wd.filter(d=>{const c=D.caja.find(x=>x.fecha===d);const vd=D.ventas.filter(v=>v.fecha===d&&!v.anulada).length;return c||vd>0;}).length;
+
+  // Resumen semanal — desde ventas POS
+  const wEf=wd.reduce((s,d)=>s+ventasDia(d).filter(v=>v.metodo==='efectivo').reduce((a,v)=>a+v.total,0),0);
+  const wTc=wd.reduce((s,d)=>s+ventasDia(d).filter(v=>v.metodo==='tarjeta').reduce((a,v)=>a+v.total,0),0);
+  const wTot=wEf+wTc;
+  const wD=wd.filter(d=>ventasDia(d).length>0).length;
   if($('caja-sem'))$('caja-sem').innerHTML=`<div style="display:flex;gap:7px;margin-bottom:9px;">
     <div style="flex:1;background:var(--surface2);border-radius:var(--rsm);padding:9px;text-align:center;"><div class="ct" style="margin-bottom:3px;">💵 Efectivo</div><div class="mono ab" style="font-size:16px;">${fmt(wEf)}</div></div>
     <div style="flex:1;background:var(--surface2);border-radius:var(--rsm);padding:9px;text-align:center;"><div class="ct" style="margin-bottom:3px;">💳 Tarjeta</div><div class="mono ay" style="font-size:16px;">${fmt(wTc)}</div></div>
     <div style="flex:1;background:var(--surface3);border-radius:var(--rsm);padding:9px;text-align:center;border:1px solid var(--border);"><div class="ct" style="margin-bottom:3px;">Semana</div><div style="font-family:'Playfair Display',serif;font-size:17px;font-weight:700;color:var(--accent2);">${fmt(wTot)}</div></div>
   </div><div style="font-size:11px;color:var(--text2);">${wD}/5 días · Prom: <span class="mono ag">${fmt(wD?wTot/wD:0)}</span></div>`;
-  const rec=[...D.caja].sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,15);
-  if($('caja-hist'))$('caja-hist').innerHTML=rec.length===0?`<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:14px">Sin registros</td></tr>`:
-    rec.map(r=>`<tr><td class="mono">${r.fecha}</td><td class="mono ab">${fmt(r.ef)}</td><td class="mono ay">${fmt(r.tc)}</td><td class="mono fw7">${fmt(r.total)}</td><td><button class="btn bd bxs" onclick="delCaja(${r.id})">✕</button></td></tr>`).join('');
-  // Retiros hoy
+
+  // Historial ventas por día
+  const diasConVentas=[...new Set(D.ventas.filter(v=>!v.anulada).map(v=>v.fecha))].sort((a,b)=>b.localeCompare(a)).slice(0,15);
+  if($('caja-hist'))$('caja-hist').innerHTML=diasConVentas.length===0?`<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:14px">Sin registros</td></tr>`:
+    diasConVentas.map(fecha=>{
+      const vd=ventasDia(fecha);
+      const ef=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+      const tc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+      return `<tr><td class="mono">${fecha}</td><td class="mono ab">${fmt(ef)}</td><td class="mono ay">${fmt(tc)}</td><td class="mono fw7">${fmt(ef+tc)}</td><td style="font-size:10px;color:var(--text3);">${vd.length}v</td></tr>`;
+    }).join('');
+
+  // Movimientos de efectivo hoy
   const rHoy=D.retiros.filter(r=>r.fecha===td).sort((a,b)=>b.id-a.id);
   if($('retiros-resumen'))$('retiros-resumen').innerHTML=`
-    <div style="background:var(--surface3);border-radius:var(--rsm);padding:10px;margin-bottom:8px;">
+    <div style="background:var(--surface3);border-radius:var(--rsm);padding:10px;">
       <div style="font-size:9.5px;color:var(--text3);font-family:'DM Mono',monospace;margin-bottom:7px;">FLUJO DE EFECTIVO HOY</div>
-      <div class="sr"><span style="font-size:12px;">💵 Ventas efectivo</span><span class="mono ag">${fmt(cj.efv)}</span></div>
-      ${cj.fondoTotal>0?`<div class="sr"><span style="font-size:12px;">💰 Fondo inicial</span><span class="mono ab">${fmt(cj.fondoTotal)}</span></div>`:''}
-      ${cj.depTotal>0?`<div class="sr"><span style="font-size:12px;">📥 Depósitos extra</span><span class="mono ab">${fmt(cj.depTotal)}</span></div>`:''}
+      ${cj.fondoTotal>0?`<div class="sr"><span style="font-size:12px;">💰 Fondo inicial</span><span class="mono ab fw7">${fmt(cj.fondoTotal)}</span></div>`:''}
+      <div class="sr"><span style="font-size:12px;">💵 Ventas efectivo</span><span class="mono ag fw7">${fmt(cj.efv)}</span></div>
+      ${cj.depTotal>0?`<div class="sr"><span style="font-size:12px;">📥 Depósitos</span><span class="mono ab">${fmt(cj.depTotal)}</span></div>`:''}
       ${cj.retTotal>0?`<div class="sr"><span style="font-size:12px;">💸 Retiros</span><span class="mono ar">− ${fmt(cj.retTotal)}</span></div>`:''}
-      <div style="border-top:2px solid var(--border2);margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-weight:700;"><span>EN CAJA AHORA</span><span class="mono at" style="font-size:16px;">${fmt(cj.enCaja)}</span></div>
+      <div style="border-top:2px solid var(--accent);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;font-weight:900;"><span>EN CAJA</span><span class="mono at" style="font-size:18px;">${fmt(cj.enCaja)}</span></div>
     </div>`;
-  if($('retiros-lista'))$('retiros-lista').innerHTML=rHoy.length===0?`<p style="font-size:12px;color:var(--text3);">Sin movimientos extra hoy</p>`:
+  if($('retiros-lista'))$('retiros-lista').innerHTML=rHoy.length===0?'':
     rHoy.map(r=>`<div class="retiro-row">
       <div><div style="font-size:12.5px;font-weight:600;">${r.concepto}</div>
-        <div style="font-size:10px;color:var(--text3);">${r.tipo==='retiro'?'💸 Retiro':r.tipo==='fondo'?'💰 Fondo inicial':'📥 Depósito'} · ${r.fecha}</div></div>
+        <div style="font-size:10px;color:var(--text3);">${r.tipo==='retiro'?'💸 Retiro':r.tipo==='fondo'?'💰 Fondo':'📥 Depósito'} · ${r.fecha}</div></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span class="mono fw7 ${r.tipo==='retiro'?'ar':'at'}" style="font-size:14px;">${r.tipo==='retiro'?'−':'+'}${fmt(r.monto)}</span>
         <button class="btn bd bxs" onclick="delRetiro(${r.id})">✕</button>
       </div>
     </div>`).join('');
-  // Renderizar corte de caja formal
+
   renderCorteInfo();
 }
 
