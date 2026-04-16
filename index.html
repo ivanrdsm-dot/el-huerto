@@ -1265,6 +1265,7 @@ async function completeInit(){
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
+  await ajusteInventarioFisico15Abr();
   await setMinimosInteligentes();
   await autoSeedRecetas();
   renderLock();
@@ -1582,6 +1583,60 @@ async function loadInventario15Abr(){
     await fsSet('pedidos',{id:Date.now()+605,fecha:'2026-04-15',proveedor:'Costco Interlomas',tipo:'Insumos',ticket:'ARG-5683195',total:1203.95});
   localStorage.setItem(migKey,'1');
   if(added+updated>0) toast(`✓ Compras 15/abr: ${added} nuevos, ${updated} actualizados`,4000);
+}
+
+// Ajuste de inventario físico 15/abr/2026 — reemplaza cantidades por conteo real
+async function ajusteInventarioFisico15Abr(){
+  const migKey='h5invfisico_15abr26';
+  if(localStorage.getItem(migKey)) return;
+  // {nombre, qty} — qty es la cantidad REAL contada, reemplaza lo que haya
+  const conteo=[
+    {nombre:'Vaso 16 oz',qty:225},
+    {nombre:'Vaso plástico 14oz',qty:185,cat:'empaque',unit:'pz',precio:0,isNew:true},
+    {nombre:'Vaso degustador',qty:296,cat:'empaque',unit:'pz',precio:0,isNew:true},
+    {nombre:'Vaso expreso',qty:120,cat:'empaque',unit:'pz',precio:0,isNew:true},
+    {nombre:'Vaso café 16 oz',qty:250},
+    {nombre:'Vaso café 14 oz',qty:210},
+    {nombre:'Tapa 16 oz',qty:250},
+    {nombre:'Tapa 14oz',qty:210,cat:'empaque',unit:'pz',precio:0,isNew:true},
+    {nombre:'Tapa para café',qty:159},
+    {nombre:'Plato desechable',qty:164},
+    {nombre:'Popote',qty:2000},
+    {nombre:'Cuchara desechable',qty:300},
+    {nombre:'Tenedor desechable',qty:300},
+    {nombre:'Servitoallas',qty:2,cat:'limpieza',unit:'paq',precio:0,isNew:true},
+    {nombre:'Servilleta',qty:2},
+    {nombre:'Leche de almendra',qty:6},
+    {nombre:'Leche deslactosada',qty:6},
+    {nombre:'Avena',qty:2.858},
+    {nombre:'Granola',qty:1.698},
+    {nombre:'Matcha',qty:0.396},
+    {nombre:'Chai',qty:0.262},
+    {nombre:'Aguacate',qty:0.081},
+    {nombre:'Plátano',qty:30.81},
+    {nombre:'Limón',qty:2.201},
+    {nombre:'Zanahoria',qty:1.736},
+    {nombre:'Piña',qty:2},
+    {nombre:'Pepino',qty:3.913},
+    {nombre:'Mango',qty:3.560},
+    {nombre:'Jitomate',qty:0.501},
+    {nombre:'Jícama',qty:0},
+    {nombre:'Papas Susalias',qty:15},
+  ];
+  let updated=0,added=0;
+  for(const item of conteo){
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      existing.qty=item.qty;
+      await fsSet('inventario',existing);
+      updated++;
+    } else if(item.isNew){
+      await fsSet('inventario',{id:Date.now()+added+700,nombre:item.nombre,cat:item.cat||'empaque',qty:item.qty,unit:item.unit||'pz',min:0,precio:item.precio||0});
+      added++;
+    }
+  }
+  localStorage.setItem(migKey,'1');
+  if(updated+added>0) toast(`✓ Inventario físico: ${updated} ajustados, ${added} nuevos`,4000);
 }
 
 // Carga inventario Costco 12/abr + Tía Renee 10/abr/2026
