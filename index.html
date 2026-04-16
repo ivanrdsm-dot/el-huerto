@@ -273,7 +273,7 @@ select option{background:var(--surface2);}
 .vend-bar{height:6px;border-radius:3px;margin-top:4px;}
 
 /* MOBILE NAV */
-.mnav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -2px 10px rgba(0,0,0,.08);padding:4px 2px;z-index:250;grid-template-columns:repeat(5,1fr);}
+.mnav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -2px 10px rgba(0,0,0,.08);padding:4px 2px;z-index:250;grid-template-columns:repeat(6,1fr);}
 @media(max-width:768px){.mnav{display:grid;}main{padding-bottom:65px;}}
 .mnbtn{background:none;border:none;color:var(--text3);font-size:9.5px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px 2px;font-family:'DM Sans',sans-serif;transition:color .12s;}
 .mnbtn.active{color:var(--accent);font-weight:700;}
@@ -307,6 +307,7 @@ select option{background:var(--surface2);}
 .reloj-week-table th,.reloj-week-table td{text-align:center;font-size:12px;padding:8px 6px;}
 .reloj-week-table .total-row td{font-weight:700;background:var(--surface2);border-top:2px solid var(--accent);}
 @media(max-width:700px){.reloj-emp-card{padding:14px;}.reloj-av{width:52px;height:52px;font-size:22px;}.reloj-btn{padding:12px 20px;font-size:14px;}}
+@media(max-width:380px){.sale-ok-total{font-size:32px;}.sale-ok-check{width:70px;height:70px;font-size:36px;}.mnbtn{font-size:8.5px;padding:3px 1px;}}
 
 /* AJUSTES */
 .ajuste-section{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:14px;margin-bottom:10px;}
@@ -443,7 +444,7 @@ select option{background:var(--surface2);}
   </div>
 </nav>
 
-<div class="mnav" style="grid-template-columns:repeat(6,1fr);">
+<div class="mnav">
   <button class="mnbtn" onclick="go('dashboard')"><span class="mni">🏠</span>Inicio</button>
   <button class="mnbtn" onclick="go('reloj')"><span class="mni">🕐</span>Reloj</button>
   <button class="mnbtn active" onclick="go('pos')"><span class="mni">🛒</span>Ventas</button>
@@ -1183,7 +1184,7 @@ select option{background:var(--surface2);}
       <div style="font-size:11px;color:var(--text3);margin-bottom:3px;">CAMBIO</div>
       <div id="cobro-cambio" style="font-family:'Playfair Display',serif;font-size:32px;font-weight:900;color:var(--teal);">$0.00</div>
     </div>
-    <div id="cobro-alerta" style="display:none;" class="astrip" style="text-align:center;"></div>
+    <div id="cobro-alerta" style="display:none;text-align:center;" class="astrip"></div>
     <button class="btn bp bfull" id="cobro-btn" onclick="cobrarEfectivo()" disabled style="opacity:.4;">✓ Confirmar Cobro</button>
   </div>
 </div>
@@ -1231,6 +1232,37 @@ const docRef=(c,id)=>doc(db,c,String(id));
 const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);}catch(e){toast('⚠ '+e.message,4000,'error');}};
 const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
 
+async function completeInit(){
+  READY=true;
+  try{const c=localStorage.getItem('h5cfg');if(c)CFG={...CFG,...JSON.parse(c)};}catch(e){}
+  try{const v=localStorage.getItem('h5vend');if(v)activeVend=JSON.parse(v);}catch(e){}
+  if(D.productos.length===0) await seedMenu();
+  if(D.empleados.length===0) await seedEmps();
+  const loader=document.getElementById('loader');
+  if(loader) loader.style.display='none';
+  initD(); renderAll();
+  try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);}}catch(e){}
+  await fixUTCDates();
+  await fixEmpleadosTipo();
+  await migrateMenuAbril2026();
+  await loadInventarioAbril2026();
+  await loadInventarioCostcoRenee();
+  await setMinimosInteligentes();
+  await autoSeedRecetas();
+  renderLock();
+  if(!SESSION){
+    $('lock-screen').style.display='flex';
+  } else {
+    $('lock-screen').style.display='none';
+    if(SESSION.tipo==='emp'){
+      const e=D.empleados.find(x=>x.id===SESSION.id);
+      if(e){activeVend={id:e.id,nombre:e.nombre,color:e.color||'var(--accent)'};}
+    }
+    updateNavForSession();
+    renderVendedorBar();
+  }
+}
+
 function listenAll(){
   const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes'];
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
@@ -1247,38 +1279,7 @@ function listenAll(){
         if(ldTxt) ldTxt.textContent=`${col}… (${n}/${cols.length})`;
 
         if(n>=cols.length){
-          // Primera carga completa
-          READY=true;
-          try{const c=localStorage.getItem('h5cfg');if(c)CFG={...CFG,...JSON.parse(c)};}catch(e){}
-          try{const v=localStorage.getItem('h5vend');if(v)activeVend=JSON.parse(v);}catch(e){}
-          if(D.productos.length===0) seedMenu();
-          if(D.empleados.length===0) seedEmps();
-          const loader=document.getElementById('loader');
-          if(loader) loader.style.display='none';
-          initD(); renderAll();
-          try{
-            const sv=localStorage.getItem('h5session');
-            if(sv){ SESSION=JSON.parse(sv); }
-          }catch(e){}
-          fixUTCDates();
-          fixEmpleadosTipo();
-          migrateMenuAbril2026();
-          loadInventarioAbril2026();
-          loadInventarioCostcoRenee();
-          setMinimosInteligentes();
-          autoSeedRecetas();
-          renderLock();
-          if(!SESSION){
-            $('lock-screen').style.display='flex';
-          } else {
-            $('lock-screen').style.display='none';
-            if(SESSION.tipo==='emp'){
-              const e=D.empleados.find(x=>x.id===SESSION.id);
-              if(e){ activeVend={id:e.id,nombre:e.nombre,color:e.color||'var(--accent)'}; }
-            }
-            updateNavForSession();
-            renderVendedorBar();
-          }
+          await completeInit();
         }
       } else {
         // Ya estaba listo — actualización en tiempo real
@@ -1294,22 +1295,7 @@ function listenAll(){
         const ldTxt=document.getElementById('ld-txt');
         if(ldTxt) ldTxt.textContent=`${col} (error)… (${n}/${cols.length})`;
         if(n>=cols.length){
-          READY=true;
-          try{const c=localStorage.getItem('h5cfg');if(c)CFG={...CFG,...JSON.parse(c)};}catch(e){}
-          try{const v=localStorage.getItem('h5vend');if(v)activeVend=JSON.parse(v);}catch(e){}
-          if(D.productos.length===0) seedMenu();
-          if(D.empleados.length===0) seedEmps();
-          const loader=document.getElementById('loader');
-          if(loader) loader.style.display='none';
-          initD(); renderAll();
-          try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);}}catch(e){}
-          fixUTCDates(); fixEmpleadosTipo(); migrateMenuAbril2026(); loadInventarioAbril2026(); loadInventarioCostcoRenee(); setMinimosInteligentes(); autoSeedRecetas(); renderLock();
-          if(!SESSION){ $('lock-screen').style.display='flex'; }
-          else{
-            $('lock-screen').style.display='none';
-            if(SESSION.tipo==='emp'){const e=D.empleados.find(x=>x.id===SESSION.id);if(e){activeVend={id:e.id,nombre:e.nombre,color:e.color||'var(--accent)'};}}
-            updateNavForSession(); renderVendedorBar();
-          }
+          await completeInit();
         }
       }
     });
@@ -2299,8 +2285,8 @@ async function descontarInventario(ventaItems){
 
 let cobrandoEnProceso=false;
 async function cobrar(metodo,recibido=0){
-  if(order.length===0){toast('⚠ Agrega productos','2400','warn');return;}
-  if(cobrandoEnProceso){toast('⏳ Procesando venta...','1500','warn');return;}
+  if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return;}
+  if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
   cobrandoEnProceso=true;
 
   // Bloquear botones de pago visualmente
@@ -2454,12 +2440,28 @@ function renderHistorial(){
 
 window.anularVenta=async id=>{
   const v=D.ventas.find(x=>x.id===id); if(!v) return;
-  if(!confirm(`¿Anular venta ${v.ticket} de ${fmt(v.total)}?\nSe revertirá de la caja.`)) return;
+  if(!confirm(`¿Anular venta ${v.ticket} de ${fmt(v.total)}?\nSe revertirá de la caja y se repondrá el inventario.`)) return;
   await fsSet('ventas',{...v,anulada:true});
   const cj=D.caja.find(c=>c.fecha===v.fecha);
   if(cj){if(v.metodo==='efectivo')cj.ef=Math.max(0,(cj.ef||0)-v.total);else cj.tc=Math.max(0,(cj.tc||0)-v.total);cj.total=(cj.ef||0)+(cj.tc||0);await fsSet('caja',cj);}
-  toast('✓ Venta anulada');
+  // Reponer inventario descontado
+  await reponerInventario(v.items);
+  toast('✓ Venta anulada — inventario repuesto');
 };
+async function reponerInventario(ventaItems){
+  for(const item of ventaItems){
+    const rec=D.recetas.find(r=>r.prodId===item.id);
+    if(!rec||!rec.ings) continue;
+    for(const ing of rec.ings){
+      let inv=D.inventario.find(i=>i.id==ing.invId);
+      if(!inv&&ing.nombre) inv=D.inventario.find(i=>i.nombre.toLowerCase()===ing.nombre.toLowerCase());
+      if(!inv) continue;
+      const qtyReponer=parseFloat(ing.qty||1)*item.qty;
+      inv.qty=Math.round(((inv.qty||0)+qtyReponer)*1000)/1000;
+      await fsSet('inventario',inv);
+    }
+  }
+}
 window.reprintTicket=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printTicket(v);};
 window.openVentaModal=id=>{
   const v=D.ventas.find(x=>x.id===id); if(!v) return;
@@ -2822,7 +2824,8 @@ function getNominaSemanal(mon){
   const exts=D.extras.filter(x=>x.semana===mon);
   return D.empleados.map((e,idx)=>{
     // Identificar el campo de checkbox por índice (0=dC primero emp, 1=cC segundo emp)
-    const checkField = idx===0 ? 'dC' : 'cC';
+    const checkFieldMap={2001:'dC',2002:'cC'};
+    const checkField = checkFieldMap[e.id] || (idx===0?'dC':'cC');
     let cierres=0;
     let cierreLabel='';
     if(e.tipo==='fijo'){
@@ -3794,7 +3797,7 @@ function renderDashboard(){
   const nomEst=nomPagadaMes+(semPagada?0:nomSemTotal);
   const util=ingT-gasT-nomEst;
   const margen=ingT>0?Math.round(util/ingT*100):0;
-  const dias=new Set(D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha)).size||new Set(D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha)).size;
+  const dias=new Set([...D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha),...D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha)]).size;
   const retHoy=getEnCaja(td);
 
   if($('db-fecha'))$('db-fecha').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
