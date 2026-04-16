@@ -2557,18 +2557,22 @@ function getEnCaja(fecha){
 function renderCaja(){
   const td=today(); const wd=getWDays(td);
 
-  // ══ FUENTE DE VERDAD: ventas POS ══
+  // ══ FUENTE DE VERDAD: misma función que el strip semanal ══
   const ventasDia=(fecha)=>D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
-  const ventasHoy=ventasDia(td);
-  const vHoyEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const vHoyTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
-  const vHoyTot=vHoyEf+vHoyTc;
+
+  // KPIs — calculados igual que el strip para garantizar consistencia
+  const calcDia=(fecha)=>{
+    const vd=ventasDia(fecha);
+    const ef=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+    const tc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+    return {ef,tc,total:ef+tc,count:vd.length};
+  };
+  const hoyData=calcDia(td);
   const cj=getEnCaja(td);
 
-  // KPIs — siempre desde ventas POS
-  if($('k-hoy'))$('k-hoy').textContent=fmt(vHoyTot);
-  if($('k-hef'))$('k-hef').textContent=fmt(vHoyEf);
-  if($('k-htc'))$('k-htc').textContent=fmt(vHoyTc);
+  if($('k-hoy'))$('k-hoy').textContent=fmt(hoyData.total);
+  if($('k-hef'))$('k-hef').textContent=fmt(hoyData.ef);
+  if($('k-htc'))$('k-htc').textContent=fmt(hoyData.tc);
   if($('k-encaja'))$('k-encaja').textContent=fmt(cj.enCaja);
 
   // Pre-fill fechas
@@ -2579,28 +2583,24 @@ function renderCaja(){
   if(e2&&$('lbl-e2'))$('lbl-e2').textContent=e2?.nombre||'Emp 2';
   const ss=$('css'); if(ss){const pv=ss.value;ss.innerHTML='<option value="">— No —</option>'+D.subs.filter(s=>s.activo).map(s=>`<option value="${s.id}">${s.nombre}</option>`).join('');if(pv)ss.value=pv;}
 
-  // Strip semanal — desde ventas POS
-  if($('caja-wstrip'))$('caja-wstrip').innerHTML='<div class="ct">Semana</div><div class="wstrip">'+wd.map((d,i)=>{
-    const vd=ventasDia(d);
-    const vdEf=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-    const vdTc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
-    const tot=vdEf+vdTc;
-    const tiene=vd.length>0; const it=d===td;
-    const corte=D.cortes.find(c=>c.fecha===d);
-    return `<div class="wday ${it?'today':''} ${tiene?'has':''}" onclick="prefill('${d}')">
+  // Strip semanal — usa calcDia para consistencia total
+  const weekData=wd.map(d=>({fecha:d,...calcDia(d),corte:D.cortes.find(c=>c.fecha===d)}));
+  if($('caja-wstrip'))$('caja-wstrip').innerHTML='<div class="ct">Semana</div><div class="wstrip">'+weekData.map((dd,i)=>{
+    const tiene=dd.count>0; const it=dd.fecha===td;
+    return `<div class="wday ${it?'today':''} ${tiene?'has':''}" onclick="prefill('${dd.fecha}')">
       <div class="wdl">${dayN[i]}</div>
-      <div class="wdd">${d.slice(8)}</div>
-      <div class="${tiene?'wda':'wde'}">${tiene?fmt(tot):'—'}</div>
-      ${tiene?`<div style="font-size:8px;color:var(--text3);margin-top:1px;">${vd.length} ventas</div>`:''}
-      ${corte?'<div style="font-size:8px;color:var(--accent);margin-top:1px;">✓ Corte</div>':''}
+      <div class="wdd">${dd.fecha.slice(8)}</div>
+      <div class="${tiene?'wda':'wde'}">${tiene?fmt(dd.total):'—'}</div>
+      ${tiene?`<div style="font-size:8px;color:var(--text3);margin-top:1px;">${dd.count}v</div>`:''}
+      ${dd.corte?'<div style="font-size:8px;color:var(--accent);margin-top:1px;">✓ Corte</div>':''}
     </div>`;
   }).join('')+'</div>';
 
-  // Resumen semanal — desde ventas POS
-  const wEf=wd.reduce((s,d)=>s+ventasDia(d).filter(v=>v.metodo==='efectivo').reduce((a,v)=>a+v.total,0),0);
-  const wTc=wd.reduce((s,d)=>s+ventasDia(d).filter(v=>v.metodo==='tarjeta').reduce((a,v)=>a+v.total,0),0);
+  // Resumen semanal
+  const wEf=weekData.reduce((s,d)=>s+d.ef,0);
+  const wTc=weekData.reduce((s,d)=>s+d.tc,0);
   const wTot=wEf+wTc;
-  const wD=wd.filter(d=>ventasDia(d).length>0).length;
+  const wD=weekData.filter(d=>d.count>0).length;
   if($('caja-sem'))$('caja-sem').innerHTML=`<div style="display:flex;gap:7px;margin-bottom:9px;">
     <div style="flex:1;background:var(--surface2);border-radius:var(--rsm);padding:9px;text-align:center;"><div class="ct" style="margin-bottom:3px;">💵 Efectivo</div><div class="mono ab" style="font-size:16px;">${fmt(wEf)}</div></div>
     <div style="flex:1;background:var(--surface2);border-radius:var(--rsm);padding:9px;text-align:center;"><div class="ct" style="margin-bottom:3px;">💳 Tarjeta</div><div class="mono ay" style="font-size:16px;">${fmt(wTc)}</div></div>
