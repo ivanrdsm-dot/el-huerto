@@ -1756,21 +1756,37 @@ async function loadInventarioCostcoRenee(){
 
 // Establecer stocks mínimos inteligentes para ingredientes clave
 async function setMinimosInteligentes(){
-  const migKey='h5minimos_v1';
+  const migKey='h5minimos_v2';
   if(localStorage.getItem(migKey)) return;
   const mins={
-    'plátano':2,'fresa':1,'mango':2,'piña':1,'sandía':1,'limón':1,'manzana':0.5,'aguacate':0.5,'blueberry':0.5,
-    'pepino':2,'zanahoria':1,'jícama':2,'jitomate':0.5,
-    'leche deslactosada':3,'yogurt natural':0.5,'queso mozzarella':0.5,
-    'avena':1,'granola':0.5,'pan tía renee':5,'pan de panini':3,
-    'café molido':0.2,'proteína en polvo':0.5,'crema de almendra':0.2,
-    'vaso 16 oz':50,'tapa para café':20,'servilleta':0.5,'popote':50,'plato desechable':20,'bowl sopero':15,
-    'papas susalias':3,
+    // Frutas (kg) — mínimo cuando queda poco para ~1 día
+    'plátano':2,'fresa':1,'mango':1,'piña':1,'sandía':1,'limón':0.5,'manzana':0.5,'aguacate':0.3,'blueberry':0.25,
+    // Verduras (kg)
+    'pepino':1,'zanahoria':0.5,'jícama':1,'jitomate':0.3,
+    // Lácteos
+    'leche deslactosada':3,'yogurt natural':0.3,'queso mozzarella':0.3,'queso americano':0.3,'leche de almendra':2,
+    // Granos/ingredientes (kg) — 250g mínimo para ingredientes pequeños
+    'avena':0.5,'granola':0.3,'avena overnight base':0.25,'crema de almendra':0.25,
+    // Panes (pz)
+    'pan tía renee':3,'pan de panini':3,
+    // Bebidas/polvos (kg) — 100-250g mínimo
+    'café molido':0.15,'matcha':0.1,'chai':0.1,'chocolate en polvo':0.15,'proteína en polvo':0.3,
+    // Salsas
+    'salsa de chipotle':0.15,'miel de abeja':0.15,
+    // Pulpas
+    'açaí pulpa':0.5,
+    // Desechables (pzas)
+    'vaso 16 oz':30,'vaso 12 oz':30,'vaso café 16 oz':30,
+    'tapa 16 oz':30,'tapa para café':20,
+    'servilleta':0.5,'popote':50,'plato desechable':20,'bowl sopero':15,
+    'cuchara desechable':30,'tenedor desechable':30,
+    // Otros
+    'papas susalias':3,'hielo':1,
   };
   let updated=0;
   for(const [nombre,minQty] of Object.entries(mins)){
     const inv=D.inventario.find(i=>i.nombre.toLowerCase()===nombre.toLowerCase());
-    if(inv && (!inv.min || inv.min===0)){
+    if(inv){
       inv.min=minQty;
       await fsSet('inventario',inv);
       updated++;
@@ -3572,14 +3588,22 @@ function getCheckinsCerradosHoy(empId){
   return D.checkins.filter(c=>c.empId===empId && c.fecha===td && c.horaSalida);
 }
 
-function calcMinsFromCheckins(checkins){
+function calcMinsFromCheckins(checkins, includeOpen=false){
   let total=0;
+  const now=new Date();
+  const nowMins=now.getHours()*60+now.getMinutes();
   for(const c of checkins){
-    if(!c.hora||!c.horaSalida) continue;
+    if(!c.hora) continue;
     const [hE,mE]=c.hora.split(':').map(Number);
-    const [hS,mS]=c.horaSalida.split(':').map(Number);
-    const mins=(hS*60+mS)-(hE*60+mE);
-    if(mins>0) total+=mins;
+    if(c.horaSalida){
+      const [hS,mS]=c.horaSalida.split(':').map(Number);
+      const mins=(hS*60+mS)-(hE*60+mE);
+      if(mins>0) total+=mins;
+    } else if(includeOpen && c.fecha===today()){
+      // Turno abierto hoy — contar hasta ahora
+      const mins=nowMins-(hE*60+mE);
+      if(mins>0) total+=mins;
+    }
   }
   return total;
 }
@@ -3595,10 +3619,13 @@ function getHorasSemana(empId,monday){
     const d=new Date(monday+'T12:00:00'); d.setDate(d.getDate()+i);
     const fecha=localDate(d);
     const dayName=d.toLocaleDateString('es-MX',{weekday:'short'}).replace('.','');
-    const checks=D.checkins.filter(c=>c.empId===empId && c.fecha===fecha);
-    const entrada=checks.find(c=>c.hora)?.hora||null;
-    const salida=checks.find(c=>c.horaSalida)?.horaSalida||null;
-    const mins=calcMinsFromCheckins(checks);
+    const checks=D.checkins.filter(c=>c.empId===empId && c.fecha===fecha).sort((a,b)=>(a.hora||'').localeCompare(b.hora||''));
+    // Primera entrada y última salida del día
+    const entrada=checks.length>0?checks[0].hora:null;
+    const ultimoCheck=checks[checks.length-1];
+    const salida=ultimoCheck?.horaSalida||null;
+    // Sumar todas las horas (cerradas + abierta si es hoy)
+    const mins=calcMinsFromCheckins(checks, fecha===today());
     days.push({fecha,dayName,entrada,salida,mins});
   }
   const totalMins=days.reduce((s,d)=>s+d.mins,0);
@@ -3640,8 +3667,8 @@ function renderReloj(){
   if($('reloj-cards')){
     $('reloj-cards').innerHTML=D.empleados.map(e=>{
       const abierto=getCheckinHoy(e.id);
-      const cerrados=getCheckinsCerradosHoy(e.id);
-      const minsHoy=calcMinsFromCheckins(cerrados);
+      const todosHoy=D.checkins.filter(c=>c.empId===e.id && c.fecha===td);
+      const minsHoy=calcMinsFromCheckins(todosHoy, true);
       const enTurno=!!abierto;
       // Solo puede checar su propio turno (emp) o cualquiera (admin)
       const puedeChecar=isAdmin||(isEmp&&SESSION.id===e.id);
@@ -3659,9 +3686,10 @@ function renderReloj(){
           <div class="reloj-hora">Entrada: <strong>${abierto.hora}</strong></div>
           <div class="reloj-elapsed" data-elapsed-from="${abierto.hora}">0h 00m</div>
           <div style="font-size:10px;color:var(--text3);">Tiempo en turno</div>
+          ${minsHoy>0?`<div style="font-size:11px;color:var(--text2);margin-top:4px;">Total hoy: <strong class="ag">${fmtMins(minsHoy)}</strong></div>`:''}
         `:`
-          <div class="reloj-hora">${cerrados.length>0?'Último turno: '+cerrados[cerrados.length-1].hora+' — '+cerrados[cerrados.length-1].horaSalida:'Sin registro hoy'}</div>
-          ${minsHoy>0?`<div style="font-size:12px;color:var(--text2);">Hoy: <strong class="ag">${fmtMins(minsHoy)}</strong></div>`:''}
+          <div class="reloj-hora">${todosHoy.filter(c=>c.horaSalida).length>0?'Último: '+todosHoy.filter(c=>c.horaSalida).slice(-1)[0].hora+' — '+todosHoy.filter(c=>c.horaSalida).slice(-1)[0].horaSalida:'Sin registro hoy'}</div>
+          ${minsHoy>0?`<div style="font-size:13px;color:var(--accent);font-weight:700;margin-top:4px;">Hoy: ${fmtMins(minsHoy)}</div>`:''}
         `}
         ${btnHTML}
       </div>`;
@@ -3805,7 +3833,7 @@ window.delIng=async(prodId,invId)=>{const rec=D.recetas.find(r=>r.prodId===prodI
 async function ensureInvItem(nombre,cat,unit){
   let inv=D.inventario.find(i=>i.nombre.toLowerCase()===nombre.toLowerCase());
   if(!inv){
-    inv={id:Date.now()+Math.floor(Math.random()*1000),nombre,cat,qty:0,unit,min:5,precio:0};
+    inv={id:Date.now()+Math.floor(Math.random()*1000),nombre,cat,qty:0,unit,min:0,precio:0};
     await fsSet('inventario',inv);
     D.inventario.push(inv);
   }
