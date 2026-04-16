@@ -3796,23 +3796,28 @@ window.seedRecetasPredefinidas=async()=>{
 // ─── DASHBOARD ─── (siempre en tiempo real)
 function renderDashboard(){
   const td=today(); const cm=curM();
-  // Cálculos en tiempo real
-  // ── Ventas POS del día (fuente de verdad = colección ventas)
+
+  // ══ FUNCIÓN UNIFICADA: caja tiene prioridad, fallback ventas POS ══
+  const calcDiaDB=(fecha)=>{
+    const cj=D.caja.find(c=>c.fecha===fecha);
+    const vd=D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
+    if(cj) return {ef:cj.ef||0, tc:cj.tc||0, total:cj.total||(cj.ef||0)+(cj.tc||0), count:vd.length||1};
+    const ef=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+    const tc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+    return {ef,tc,total:ef+tc,count:vd.length};
+  };
+
+  const hoyDB=calcDiaDB(td);
+  const totalVentasHoy=hoyDB.total;
+  const totalVentasHoyEf=hoyDB.ef;
+  const totalVentasHoyTc=hoyDB.tc;
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
-  const totalVentasHoyEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const totalVentasHoyTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
-  const totalVentasHoy=totalVentasHoyEf+totalVentasHoyTc;
-  // ── Caja del día (puede incluir corte manual + POS auto)
-  const cajHoy=D.caja.find(c=>c.fecha===td);
-  const ingHoy=cajHoy?cajHoy.total:totalVentasHoy; // usa caja si existe, sino ventas POS
-  // ── Mes completo — FUENTE DE VERDAD: ventas POS siempre
-  // Las ventas POS son la fuente principal. La caja es sólo para cortes manuales
-  // cuando no se usa el POS.
-  const ventasMes=D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).reduce((s,v)=>s+v.total,0);
-  // Días sin ventas POS: buscar en caja manual (días con corte manual pero sin ventas registradas)
-  const diasConPOS=new Set(D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha));
-  const cajaManualExtra=D.caja.filter(c=>mOf(c.fecha)===cm&&!diasConPOS.has(c.fecha)).reduce((s,c)=>s+c.total,0);
-  const ingCajaMes=ventasMes+cajaManualExtra;
+
+  // ── Mes completo: unir todas las fechas de caja + ventas POS
+  const allFechasMes=new Set([...D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha),...D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha)]);
+  const ingCajaMes=[...allFechasMes].reduce((s,f)=>s+calcDiaDB(f).total,0);
+  const ventasMes=ingCajaMes; // para compatibilidad
+  const cajaManualExtra=0; // ya incluido en calcDiaDB
   const ingSubs=D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0);
   const ingT=ingCajaMes+ingSubs;
   const gasT=D.gastos.filter(g=>mOf(g.fecha)===cm).reduce((s,g)=>s+g.monto,0);
@@ -3852,15 +3857,11 @@ function renderDashboard(){
       <div class="ks">Margen ${margen}% · ${util>=0?'✓ Positivo':'⚠ Negativo'}</div>
     </div>`;
 
-  // Gráfica 6 semanas con nómina
+  // Gráfica 6 semanas con nómina — usa calcDiaDB
   const weeks=getRecentWeeks(6);
   const wdata=weeks.map(w=>{
     const wd=getWDays(w);
-    // POS = fuente de verdad; caja manual solo para días sin POS
-    const diasConPOS_w=new Set(D.ventas.filter(v=>wd.includes(v.fecha)&&!v.anulada).map(v=>v.fecha));
-    const ingPOS=D.ventas.filter(v=>wd.includes(v.fecha)&&!v.anulada).reduce((s,v)=>s+v.total,0);
-    const ingCajaExtra=D.caja.filter(c=>wd.includes(c.fecha)&&!diasConPOS_w.has(c.fecha)).reduce((s,c)=>s+c.total,0);
-    const ing=ingPOS+ingCajaExtra;
+    const ing=wd.reduce((s,d)=>s+calcDiaDB(d).total,0);
     const gas=D.gastos.filter(g=>wd.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
     const nomW=D.nomPagos.find(p=>p.semana===w);
     const nomWt=nomW?nomW.total:getNominaSemanal(w).reduce((s,e)=>s+e.totalSem,0);
@@ -3889,15 +3890,10 @@ function renderDashboard(){
     <div class="sr fw7"><span>UTILIDAD NETA</span><span class="mono ${util>=0?'at':'ar'}" style="font-size:17px;">${fmt(util)}</span></div>
     <div class="sr"><span style="font-size:11px;color:var(--text2);">Margen</span><span class="mono ${margen>=0?'ay':'ar'}">${margen}%</span></div>`;
 
-  // Semana actual - FUENTE DE VERDAD: ventas POS
+  // Semana actual — usa calcDiaDB para consistencia
   const wd=getWDays(td);
-  const wTot=wd.reduce((s,d)=>{
-    const vd=D.ventas.filter(v=>v.fecha===d&&!v.anulada).reduce((a,v)=>a+v.total,0);
-    // Solo usar caja si no hay ventas POS para ese día
-    if(vd>0) return s+vd;
-    const cj=D.caja.find(x=>x.fecha===d);
-    return s+(cj?cj.total:0);
-  },0);
+  const weekDataDB=wd.map(d=>({fecha:d,...calcDiaDB(d)}));
+  const wTot=weekDataDB.reduce((s,d)=>s+d.total,0);
   const wGastosSem=D.gastos.filter(g=>wd.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
   const wUtilSem=wTot-wGastosSem;
   if($('db-semana'))$('db-semana').innerHTML=`<div class="ct">Semana Actual</div>
@@ -3905,26 +3901,23 @@ function renderDashboard(){
     <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px;">
       Gastos: <span class="mono ar">${fmt(wGastosSem)}</span> · Util: <span class="mono ${wUtilSem>=0?'ag':'ar'}">${fmt(wUtilSem)}</span>
     </div>
-    ${wd.map((d,i)=>{
-      const vd=D.ventas.filter(v=>v.fecha===d&&!v.anulada).reduce((a,v)=>a+v.total,0);
-      const cj=D.caja.find(x=>x.fecha===d);
-      const tot=vd>0?vd:(cj?cj.total:0);
-      const gd=D.gastos.filter(g=>g.fecha===d).reduce((s,g)=>s+g.monto,0);
-      const it=d===td;
+    ${weekDataDB.map((dd,i)=>{
+      const gd=D.gastos.filter(g=>g.fecha===dd.fecha).reduce((s,g)=>s+g.monto,0);
+      const it=dd.fecha===td;
       return `<div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;font-size:12px;border-bottom:1px solid var(--border);${it?'color:var(--accent2);font-weight:700;':'color:var(--text2);'}">
-        <span>${dayN[i]} ${d.slice(8)}</span>
+        <span>${dayN[i]} ${dd.fecha.slice(8)}</span>
         <div style="text-align:right;">
-          <span class="mono ${tot>0?(it?'':'ag'):''}">${tot>0?fmt(tot):'—'}</span>
+          <span class="mono ${dd.total>0?(it?'':'ag'):''}">${dd.total>0?fmt(dd.total):'—'}</span>
           ${gd>0?`<span class="mono ar" style="font-size:10px;margin-left:5px;">▼${fmt(gd)}</span>`:''}
         </div>
       </div>`;
     }).join('')}`;
 
-  // Caja hoy detalle
+  // Caja hoy detalle — usa calcDiaDB
   if($('db-caja-hoy'))$('db-caja-hoy').innerHTML=`<div class="ct">Caja Hoy — ${td}</div>
-    <div class="sr"><span style="font-size:12px;">🛒 Ventas POS</span><span class="mono ag fw7">${fmt(totalVentasHoy)}</span></div>
-    <div class="sr"><span style="font-size:12px;padding-left:10px;">↳ 💵 Efectivo</span><span class="mono ab">${fmt(totalVentasHoyEf)}</span></div>
-    <div class="sr"><span style="font-size:12px;padding-left:10px;">↳ 💳 Tarjeta</span><span class="mono ay">${fmt(totalVentasHoyTc)}</span></div>
+    <div class="sr"><span style="font-size:12px;">🛒 Ventas</span><span class="mono ag fw7">${fmt(hoyDB.total)}</span></div>
+    <div class="sr"><span style="font-size:12px;padding-left:10px;">↳ 💵 Efectivo</span><span class="mono ab">${fmt(hoyDB.ef)}</span></div>
+    <div class="sr"><span style="font-size:12px;padding-left:10px;">↳ 💳 Tarjeta</span><span class="mono ay">${fmt(hoyDB.tc)}</span></div>
     ${retHoy.retTotal>0?`<div class="sr"><span style="font-size:12px;">💸 Retiros</span><span class="mono ar">−${fmt(retHoy.retTotal)}</span></div>`:''}
     <div class="div"></div>
     <div class="sr fw7"><span>En caja efectivo</span><span class="mono at" style="font-size:16px;">${fmt(retHoy.enCaja)}</span></div>
