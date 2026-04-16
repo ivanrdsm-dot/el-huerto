@@ -604,125 +604,142 @@ select option{background:var(--surface2);}
 
 <!-- ══ CAJA ══ -->
 <div id="page-caja" class="page">
-  <div class="sh"><span class="st">Caja del Día</span></div>
-  <div class="g4" style="margin-bottom:10px;">
-    <div class="card" style="text-align:center;"><div class="ct">Ingresos Hoy</div><div class="kv" id="k-hoy">$0.00</div></div>
+  <div class="sh"><span class="st">💰 Caja del Día</span>
+    <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;" id="corte-fecha-label"></span>
+  </div>
+
+  <!-- KPIs principales -->
+  <div class="g4" style="margin-bottom:12px;">
+    <div class="card" style="text-align:center;"><div class="ct">Ventas Hoy</div><div class="kv" id="k-hoy">$0.00</div></div>
     <div class="card" style="text-align:center;"><div class="ct">💵 Efectivo</div><div class="kv blue" id="k-hef">$0.00</div></div>
     <div class="card" style="text-align:center;"><div class="ct">💳 Tarjeta</div><div class="kv gold" id="k-htc">$0.00</div></div>
-    <div class="card" style="text-align:center;"><div class="ct">💸 En Caja</div><div class="kv teal" id="k-encaja">$0.00</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">Efvo − retiros</div></div>
+    <div class="card" style="text-align:center;border:2px solid var(--accent);"><div class="ct">💰 En Caja</div><div class="kv teal" id="k-encaja">$0.00</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">Fondo + Efvo − Retiros</div></div>
   </div>
-  <div id="caja-wstrip" class="card" style="margin-bottom:10px;"></div>
-  <div class="g2" style="gap:10px;">
+
+  <!-- Semana -->
+  <div id="caja-wstrip" class="card" style="margin-bottom:12px;"></div>
+
+  <div class="g2" style="gap:12px;">
+    <!-- COLUMNA IZQUIERDA: Corte de Caja + Movimientos -->
     <div>
-      <!-- Corte manual -->
-      <div class="card" style="margin-bottom:10px;">
-        <div class="ct">Registrar Corte Manual</div>
-        <div class="fg"><label>Fecha</label><input type="date" id="cf"></div>
-        <div class="ii">
-          <div class="fg"><label>💵 Efectivo</label><input type="number" id="cef" placeholder="0" oninput="calcT()"></div>
-          <div class="fg"><label>💳 Tarjeta</label><input type="number" id="ctc" placeholder="0" oninput="calcT()"></div>
+      <!-- ══ CORTE DE CAJA ══ -->
+      <div class="card" style="margin-bottom:12px;border:2px solid var(--accent);">
+        <div class="sh">
+          <span class="ct" style="margin-bottom:0;">🧾 Corte de Caja</span>
+          <button class="btn bs bxs" onclick="printUltimoCorte()" title="Imprimir último corte">🖨 Imprimir</button>
         </div>
-        <div class="fg"><label>Suscripción cobrada</label><select id="css"><option value="">— No —</option></select></div>
-        <div style="display:flex;gap:14px;margin-bottom:10px;flex-wrap:wrap;">
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="cdc" style="width:auto;"> <span id="lbl-e1">Diana</span> cerró</label>
-          <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="ccc" style="width:auto;"> <span id="lbl-e2">Clau</span> cerró</label>
+        <!-- Resumen automático del sistema -->
+        <div style="background:var(--surface2);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:10px;">Cálculo automático</div>
+          <div class="sr"><span style="font-size:12.5px;">💰 Fondo inicial</span><span class="mono ab fw7" id="corte-fondo">$0.00</span></div>
+          <div class="sr"><span style="font-size:12.5px;">💵 Ventas efectivo</span><span class="mono ag fw7" id="corte-vef">$0.00</span></div>
+          <div class="sr"><span style="font-size:12.5px;">📥 Depósitos</span><span class="mono ab" id="corte-dep">$0.00</span></div>
+          <div class="sr"><span style="font-size:12.5px;">💸 Retiros</span><span class="mono ar" id="corte-ret">$0.00</span></div>
+          <div style="border-top:2px solid var(--accent);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:900;font-size:13px;">EFECTIVO ESPERADO</span>
+            <span class="mono" style="font-size:20px;font-weight:900;color:var(--accent);" id="corte-esperado">$0.00</span>
+          </div>
+          <div class="div" style="margin:10px 0;"></div>
+          <div class="sr"><span style="font-size:12.5px;">💳 Ventas tarjeta</span><span class="mono ay fw7" id="corte-vtc">$0.00</span></div>
+          <div class="sr"><span style="font-size:12.5px;">📊 Total ventas día</span><span class="mono ag fw7" id="corte-vtot">$0.00</span></div>
+          <div class="sr"><span style="font-size:12.5px;">🧾 Número de ventas</span><span class="mono fw7" id="corte-nventas">0</span></div>
         </div>
-        <div class="fg"><label>Nota</label><input type="text" id="cnota" placeholder="Opcional"></div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-          <span style="font-size:12px;color:var(--text2)">Total:</span>
-          <span class="mono fw7 ag" style="font-size:17px;" id="ctp">$0.00</span>
+        <!-- Conteo de efectivo -->
+        <div style="background:#f0faf0;border:1px solid var(--accent);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;">Cuenta tu efectivo</div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
+            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$1000</label><input type="number" class="corte-bill" data-val="1000" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
+            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$500</label><input type="number" class="corte-bill" data-val="500" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
+            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$200</label><input type="number" class="corte-bill" data-val="200" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
+            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$100</label><input type="number" class="corte-bill" data-val="100" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
+            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$50</label><input type="number" class="corte-bill" data-val="50" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
+            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$20</label><input type="number" class="corte-bill" data-val="20" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
+            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">Monedas</label><input type="number" id="corte-monedas" placeholder="0" step="0.5" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
+          </div>
+          <div class="ii" style="gap:10px;">
+            <div class="fg" style="margin-bottom:0;">
+              <label>💵 Efectivo contado</label>
+              <input type="number" id="corte-contado" placeholder="$0.00" step="0.01" oninput="calcCorte()" style="font-size:16px;font-weight:700;text-align:center;padding:10px;">
+            </div>
+            <div class="fg" style="margin-bottom:0;">
+              <label>Diferencia</label>
+              <div id="corte-diff" style="font-family:'DM Mono',monospace;font-size:22px;font-weight:900;padding:10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
+            </div>
+          </div>
         </div>
-        <button class="btn bp bfull" onclick="guardarCaja()">Guardar Corte</button>
+        <!-- Quién cerró + nota -->
+        <div class="ii" style="margin-bottom:10px;">
+          <div style="display:flex;gap:14px;flex-wrap:wrap;">
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="cdc" style="width:auto;"> <span id="lbl-e1">Adilene</span> cerró</label>
+            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="ccc" style="width:auto;"> <span id="lbl-e2">Clau</span> cerró</label>
+          </div>
+          <div class="fg" style="margin-bottom:0;"><label>Nota</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
+        </div>
+        <button class="btn bp bfull" onclick="realizarCorte()" style="padding:14px;font-size:15px;font-weight:700;">🧾 Realizar Corte de Caja</button>
       </div>
-      <!-- RETIROS DE EFECTIVO -->
+
+      <!-- ══ MOVIMIENTOS DE EFECTIVO ══ -->
       <div class="card">
-        <div class="ct">💸 Retiros de Efectivo</div>
+        <div class="ct">💸 Movimientos de Efectivo</div>
         <div class="ii">
           <div class="fg"><label>Fecha</label><input type="date" id="ret-fecha"></div>
-          <div class="fg"><label>Monto a retirar</label><input type="number" id="ret-monto" placeholder="$0"></div>
+          <div class="fg"><label>Monto</label><input type="number" id="ret-monto" placeholder="$0"></div>
         </div>
-        <div class="fg"><label>Concepto</label><input type="text" id="ret-concepto" placeholder="Ej: Fondo inicial, Retiro cierre, Gastos chicos…"></div>
         <div class="ii">
+          <div class="fg"><label>Concepto</label><input type="text" id="ret-concepto" placeholder="Ej: Fondo apertura, Retiro cierre…"></div>
           <div class="fg"><label>Tipo</label>
             <select id="ret-tipo">
-              <option value="retiro">💸 Retiro / Salida</option>
               <option value="fondo">💰 Fondo inicial / Apertura</option>
+              <option value="retiro">💸 Retiro / Salida</option>
               <option value="deposito">📥 Depósito / Entrada extra</option>
             </select>
           </div>
-          <div style="display:flex;align-items:flex-end;padding-bottom:11px;">
-            <button class="btn bp bfull" onclick="addRetiro()">+ Registrar</button>
-          </div>
         </div>
-        <!-- Resumen caja efectivo hoy -->
-        <div id="retiros-resumen"></div>
-        <!-- Lista retiros -->
-        <div id="retiros-lista" style="margin-top:10px;"></div>
+        <button class="btn bp bfull bsm" onclick="addRetiro()">+ Registrar Movimiento</button>
+        <div id="retiros-resumen" style="margin-top:10px;"></div>
+        <div id="retiros-lista" style="margin-top:8px;"></div>
       </div>
     </div>
+
+    <!-- COLUMNA DERECHA: Resumen semanal + Historiales -->
     <div>
-      <div class="card" id="caja-sem" style="margin-bottom:10px;"></div>
+      <div class="card" id="caja-sem" style="margin-bottom:12px;"></div>
+
+      <!-- Historial de Cortes Formales -->
+      <div class="card" style="margin-bottom:12px;">
+        <div class="ct">Historial de Cortes</div>
+        <div id="cortes-hist"></div>
+      </div>
+
+      <!-- Historial Ventas por día (corte manual legacy) -->
       <div class="card">
-        <div class="ct">Historial Cortes</div>
+        <div class="sh"><span class="ct" style="margin-bottom:0;">Ventas por Día</span>
+          <button class="btn bs bxs" onclick="csvX('caja')">⬇ CSV</button>
+        </div>
         <div class="tw"><table class="tbl">
           <thead><tr><th>Fecha</th><th>Efvo</th><th>TC</th><th>Total</th><th></th></tr></thead>
           <tbody id="caja-hist"></tbody>
         </table></div>
-        <div style="margin-top:8px;text-align:right;"><button class="btn bs bsm" onclick="csvX('caja')">⬇ CSV</button></div>
       </div>
-    </div>
-  </div>
-  <!-- CORTE DE CAJA FORMAL -->
-  <div class="card" style="margin-top:10px;">
-    <div class="sh">
-      <span class="ct" style="margin-bottom:0;">🧾 Corte de Caja</span>
-      <span style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;" id="corte-fecha-label"></span>
-    </div>
-    <div style="background:var(--surface2);border-radius:var(--rsm);padding:12px;margin-bottom:10px;">
-      <div style="font-size:11px;font-weight:700;margin-bottom:8px;">Cálculo Automático del Sistema</div>
-      <div class="sr"><span style="font-size:12px;">💰 Fondo inicial</span><span class="mono ab" id="corte-fondo">$0.00</span></div>
-      <div class="sr"><span style="font-size:12px;">💵 Ventas efectivo</span><span class="mono ag" id="corte-vef">$0.00</span></div>
-      <div class="sr"><span style="font-size:12px;">📥 Depósitos</span><span class="mono ab" id="corte-dep">$0.00</span></div>
-      <div class="sr"><span style="font-size:12px;">💸 Retiros</span><span class="mono ar" id="corte-ret">$0.00</span></div>
-      <div style="border-top:2px solid var(--border2);margin-top:5px;padding-top:5px;display:flex;justify-content:space-between;font-weight:700;">
-        <span>EFECTIVO ESPERADO</span>
-        <span class="mono at" style="font-size:16px;" id="corte-esperado">$0.00</span>
-      </div>
-      <div class="div"></div>
-      <div class="sr"><span style="font-size:12px;">💳 Ventas tarjeta</span><span class="mono ay" id="corte-vtc">$0.00</span></div>
-      <div class="sr fw7"><span style="font-size:12px;">Total ventas día</span><span class="mono ag" id="corte-vtot">$0.00</span></div>
-      <div class="sr"><span style="font-size:12px;">Número de ventas</span><span class="mono" id="corte-nventas">0</span></div>
-    </div>
-    <div class="ii">
-      <div class="fg">
-        <label>💵 Efectivo contado en caja</label>
-        <input type="number" id="corte-contado" placeholder="$0.00" step="0.01" oninput="calcCorte()">
-      </div>
-      <div class="fg">
-        <label>Diferencia</label>
-        <div id="corte-diff" style="font-family:'DM Mono',monospace;font-size:18px;font-weight:700;padding:8px 10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
-      </div>
-    </div>
-    <div class="fg"><label>Desglose de billetes (opcional)</label>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:8px;">
-        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$1000</label><input type="number" class="corte-bill" data-val="1000" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
-        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$500</label><input type="number" class="corte-bill" data-val="500" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
-        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$200</label><input type="number" class="corte-bill" data-val="200" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
-        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$100</label><input type="number" class="corte-bill" data-val="100" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
-        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$50</label><input type="number" class="corte-bill" data-val="50" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
-        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">$20</label><input type="number" class="corte-bill" data-val="20" placeholder="0" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
-        <div style="flex:1;min-width:60px;"><label style="font-size:8px;">Monedas</label><input type="number" id="corte-monedas" placeholder="0" step="0.5" oninput="calcBilletes()" style="padding:5px;font-size:12px;"></div>
-      </div>
-    </div>
-    <div class="fg"><label>Nota del corte</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
-    <div style="display:flex;gap:8px;">
-      <button class="btn bp bfull" onclick="realizarCorte()">🧾 Realizar Corte</button>
-      <button class="btn bs" onclick="printUltimoCorte()">🖨</button>
-    </div>
-    <!-- Historial de cortes -->
-    <div style="margin-top:12px;">
-      <div class="ct">Historial de Cortes Formales</div>
-      <div id="cortes-hist"></div>
+
+      <!-- Corte manual legacy (colapsado) -->
+      <details class="card" style="margin-top:12px;">
+        <summary style="cursor:pointer;font-size:11px;color:var(--text3);font-weight:600;">⚙ Corte Manual (avanzado)</summary>
+        <div style="margin-top:10px;">
+          <div class="fg"><label>Fecha</label><input type="date" id="cf"></div>
+          <div class="ii">
+            <div class="fg"><label>💵 Efectivo</label><input type="number" id="cef" placeholder="0" oninput="calcT()"></div>
+            <div class="fg"><label>💳 Tarjeta</label><input type="number" id="ctc" placeholder="0" oninput="calcT()"></div>
+          </div>
+          <div class="fg"><label>Suscripción cobrada</label><select id="css"><option value="">— No —</option></select></div>
+          <div class="fg"><label>Nota</label><input type="text" id="cnota" placeholder="Opcional"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+            <span style="font-size:12px;color:var(--text2)">Total:</span>
+            <span class="mono fw7 ag" style="font-size:17px;" id="ctp">$0.00</span>
+          </div>
+          <button class="btn bp bfull bsm" onclick="guardarCaja()">Guardar Corte Manual</button>
+        </div>
+      </details>
     </div>
   </div>
 </div>
@@ -2526,8 +2543,12 @@ window.addRetiro=async()=>{
 window.delRetiro=async id=>{await fsDel('retiros',id);toast('✓ Eliminado');};
 
 function getEnCaja(fecha){
+  // Fuente de verdad: ventas POS del día (no caja manual)
+  const ventasPOS=D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
+  const efvPOS=ventasPOS.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  // Fallback a caja manual si no hay ventas POS
   const cj=D.caja.find(c=>c.fecha===fecha);
-  const efv=cj?cj.ef:0;
+  const efv=efvPOS>0?efvPOS:(cj?cj.ef:0);
   const rets=D.retiros.filter(r=>r.fecha===fecha);
   const retTotal=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
   const fondoTotal=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
