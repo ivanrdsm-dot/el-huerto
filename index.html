@@ -527,7 +527,10 @@ select option{background:var(--surface2);}
 <!-- ══ MI PERFIL (empleadas) ══ -->
 <div id="page-miperfil" class="page">
   <div class="sh"><span class="st">👤 Mi Perfil</span>
-    <span id="mp-nombre" style="font-size:13px;color:var(--text3);"></span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <select id="mp-selector" onchange="renderMiPerfil()" style="display:none;width:auto;padding:5px 8px;font-size:12px;"></select>
+      <span id="mp-nombre" style="font-size:13px;color:var(--text3);"></span>
+    </div>
   </div>
 
   <!-- KPIs personales -->
@@ -4029,8 +4032,25 @@ window.renderReloj=renderReloj;
 
 // ─── MI PERFIL (empleadas) ───
 function renderMiPerfil(){
-  // Determinar empleado actual
-  const empId = SESSION?.tipo==='emp' ? SESSION.id : (activeVend?.id);
+  // Para admin: selector de empleada. Para empleadas: solo su perfil.
+  const sel=$('mp-selector');
+  let empId;
+
+  if(SESSION?.tipo==='admin'){
+    if(sel){
+      sel.style.display='';
+      const prevVal=sel.value;
+      sel.innerHTML=D.empleados.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
+      sel.value=prevVal||D.empleados[0]?.id||'';
+    }
+    empId=parseInt(sel?.value)||D.empleados[0]?.id;
+  } else if(SESSION?.tipo==='emp'){
+    if(sel) sel.style.display='none';
+    empId=SESSION.id;
+  } else {
+    empId=activeVend?.id;
+  }
+
   const emp = D.empleados.find(e=>e.id===empId);
   if(!emp){
     if($('mp-nombre'))$('mp-nombre').textContent='Sin sesión activa';
@@ -4045,8 +4065,11 @@ function renderMiPerfil(){
   const wd=getWDays(td);
   const cm=curM();
 
-  // Filtrar ventas del empleado
-  const misVentasTodas=D.ventas.filter(v=>v.vendedorId===empId && !v.anulada);
+  // Filtrar ventas del empleado — por ID o por nombre (fallback para ventas viejas)
+  const misVentasTodas=D.ventas.filter(v=>!v.anulada && (
+    v.vendedorId===empId ||
+    (v.vendedorNombre && v.vendedorNombre.toLowerCase()===emp.nombre.toLowerCase())
+  ));
 
   let misVentas;
   if(periodo==='hoy') misVentas=misVentasTodas.filter(v=>v.fecha===td);
