@@ -273,7 +273,7 @@ select option{background:var(--surface2);}
 .vend-bar{height:6px;border-radius:3px;margin-top:4px;}
 
 /* MOBILE NAV */
-.mnav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -2px 10px rgba(0,0,0,.08);padding:4px 2px;z-index:250;grid-template-columns:repeat(6,1fr);}
+.mnav{display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);box-shadow:0 -2px 10px rgba(0,0,0,.08);padding:4px 2px;z-index:250;grid-template-columns:repeat(auto-fit,minmax(60px,1fr));}
 @media(max-width:768px){.mnav{display:grid;}main{padding-bottom:65px;}}
 .mnbtn{background:none;border:none;color:var(--text3);font-size:9.5px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px 2px;font-family:'DM Sans',sans-serif;transition:color .12s;}
 .mnbtn.active{color:var(--accent);font-weight:700;}
@@ -418,6 +418,7 @@ select option{background:var(--surface2);}
   <div class="logo">El <em>Huerto</em></div>
   <div class="ntabs">
     <button class="ntab active" onclick="go('dashboard')">🏠 Inicio</button>
+    <button class="ntab" onclick="go('miperfil')">👤 Mi Perfil</button>
     <button class="ntab" onclick="go('reloj')">🕐 Reloj</button>
     <button class="ntab" onclick="go('pos')">🛒 Ventas</button>
     <button class="ntab" onclick="go('historial')">📋 Historial</button>
@@ -446,6 +447,7 @@ select option{background:var(--surface2);}
 
 <div class="mnav">
   <button class="mnbtn" onclick="go('dashboard')"><span class="mni">🏠</span>Inicio</button>
+  <button class="mnbtn" onclick="go('miperfil')"><span class="mni">👤</span>Mi Perfil</button>
   <button class="mnbtn" onclick="go('reloj')"><span class="mni">🕐</span>Reloj</button>
   <button class="mnbtn active" onclick="go('pos')"><span class="mni">🛒</span>Ventas</button>
   <button class="mnbtn" onclick="go('caja')"><span class="mni">💰</span>Caja</button>
@@ -519,6 +521,34 @@ select option{background:var(--surface2);}
     <div class="tw" style="margin-top:10px;" id="reloj-week-table"></div>
     <!-- Resumen totales -->
     <div class="g2" style="gap:10px;margin-top:12px;" id="reloj-totales"></div>
+  </div>
+</div>
+
+<!-- ══ MI PERFIL (empleadas) ══ -->
+<div id="page-miperfil" class="page">
+  <div class="sh"><span class="st">👤 Mi Perfil</span>
+    <span id="mp-nombre" style="font-size:13px;color:var(--text3);"></span>
+  </div>
+
+  <!-- KPIs personales -->
+  <div class="g4" style="margin-bottom:12px;" id="mp-kpis"></div>
+
+  <!-- Reloj y estado actual -->
+  <div class="g2" style="gap:12px;margin-bottom:12px;">
+    <div class="card" id="mp-reloj-card" style="text-align:center;"></div>
+    <div class="card" id="mp-ventas-hoy"></div>
+  </div>
+
+  <!-- Historial propio -->
+  <div class="card">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Mis Ventas Recientes</span>
+      <select id="mp-periodo" onchange="renderMiPerfil()" style="width:auto;padding:5px 8px;font-size:12px;">
+        <option value="hoy">Hoy</option>
+        <option value="semana" selected>Esta semana</option>
+        <option value="mes">Este mes</option>
+      </select>
+    </div>
+    <div class="tw" id="mp-ventas-tabla" style="margin-top:10px;"></div>
   </div>
 </div>
 
@@ -646,7 +676,7 @@ select option{background:var(--surface2);}
         </div>
         <!-- Conteo de efectivo -->
         <div style="background:#f0faf0;border:1px solid var(--accent);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;">Cuenta tu efectivo</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;">💵 Cuenta tu efectivo</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
             <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$1000</label><input type="number" class="corte-bill" data-val="1000" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
             <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$500</label><input type="number" class="corte-bill" data-val="500" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
@@ -662,8 +692,23 @@ select option{background:var(--surface2);}
               <input type="number" id="corte-contado" placeholder="$0.00" step="0.01" oninput="calcCorte()" style="font-size:16px;font-weight:700;text-align:center;padding:10px;">
             </div>
             <div class="fg" style="margin-bottom:0;">
-              <label>Diferencia</label>
-              <div id="corte-diff" style="font-family:'DM Mono',monospace;font-size:22px;font-weight:900;padding:10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
+              <label>Diferencia efectivo</label>
+              <div id="corte-diff" style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;padding:10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
+            </div>
+          </div>
+        </div>
+        <!-- Ajuste tarjeta -->
+        <div style="background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--goldd);font-weight:700;margin-bottom:10px;">💳 Verifica tarjetas (terminal bancario)</div>
+          <div class="ii" style="gap:10px;">
+            <div class="fg" style="margin-bottom:0;">
+              <label>Total tarjeta terminal</label>
+              <input type="number" id="corte-tc-real" placeholder="$0.00" step="0.01" oninput="calcCorteTC()" style="font-size:16px;font-weight:700;text-align:center;padding:10px;">
+              <div style="font-size:10px;color:var(--text3);margin-top:3px;">Del corte de la terminal</div>
+            </div>
+            <div class="fg" style="margin-bottom:0;">
+              <label>Diferencia tarjeta</label>
+              <div id="corte-diff-tc" style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;padding:10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
             </div>
           </div>
         </div>
@@ -2264,9 +2309,9 @@ const ADMIN_PASS = '12345@';
 const EMP_PASSWORDS = {}; // Populated from empleados.pin field
 const EMP_PASS_STATIC = {2001:'123456', 2002:'1234567'}; // Adilene=2001, Claudia=2002
 // Páginas restringidas a admin solamente (nadie más entra)
-const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes'];
+const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','inventario'];
 // Páginas que Clau (gerente) puede ver además de ventas
-const GERENTE_PERMS = ['caja','inventario'];
+const GERENTE_PERMS = []; // Claudia ahora solo tiene acceso a ventas/reloj/mi-perfil como Adilene
 // ID de Clau
 const GERENTE_ID = 2002;
 // Lista combinada para compatibilidad
@@ -2349,7 +2394,7 @@ function loginEmp(id){
   renderVendedorBar();
   // Check-in flow
   registrarCheckin(e);
-  go('pos');
+  go('miperfil');
   toast(`✓ Hola ${e.nombre}! Turno iniciado 🛒`);
   // Verificar apertura de caja
   setTimeout(()=>checkApertura(),600);
@@ -2804,7 +2849,14 @@ function printCorteTicket(corte){
     <div class="tk-row-bold"><span>Esperado</span><span>${fmt(corte.esperado)}</span></div>
     <div class="tk-row-bold"><span>Contado</span><span>${fmt(corte.contado)}</span></div>
     <hr class="tk-sep">
-    <div class="tk-big">${corte.diferencia>=0?'SOBRANTE':'FALTANTE'}: ${fmt(Math.abs(corte.diferencia))}</div>
+    <div class="tk-big">${corte.diferencia>=0?'SOBRANTE':'FALTANTE'} EFVO: ${fmt(Math.abs(corte.diferencia))}</div>
+    ${corte.tcReal>0?`<hr class="tk-sep">
+    <div style="font-size:11px;font-weight:700;margin-bottom:3px;">TARJETA</div>
+    <div class="tk-row"><span>Sistema</span><span>${fmt(corte.ventasTc)}</span></div>
+    <div class="tk-row"><span>Terminal</span><span>${fmt(corte.tcReal)}</span></div>
+    <div class="tk-row-bold"><span>Diferencia TC</span><span>${corte.tcDiff>=0?'+':''}${fmt(corte.tcDiff)}</span></div>`:''}
+    ${(corte.cerroE1||corte.cerroE2)?`<hr class="tk-sep">
+    <div style="font-size:10px;">Cerró: ${[corte.cerroE1?D.empleados.find(e=>e.id===2001)?.nombre:null,corte.cerroE2?D.empleados.find(e=>e.id===2002)?.nombre:null].filter(Boolean).join(' y ')}</div>`:''}
     ${corte.nota?`<div style="font-size:10px;margin-top:4px;">Nota: ${corte.nota}</div>`:''}
     <hr class="tk-sep">
     <div class="tk-footer">Corte #${String(corte.id).slice(-6)}</div>
@@ -3080,6 +3132,7 @@ function renderCorteInfo(){
           </div>
         </div>
         <div class="sr" style="font-size:11px;"><span>Ventas: ${fmt(c.ventasTotal)}</span><span>Esperado: ${fmt(c.esperado)}</span><span>Contado: ${fmt(c.contado)}</span></div>
+        ${c.tcReal>0?`<div class="sr" style="font-size:11px;color:var(--text2);"><span>TC sistema: ${fmt(c.ventasTc)}</span><span>TC terminal: ${fmt(c.tcReal)}</span><span class="${c.tcDiff>=0?'ag':'ar'}">${c.tcDiff>=0?'+':''}${fmt(c.tcDiff)}</span></div>`:''}
         ${c.realizadoPor?`<div style="font-size:10px;color:var(--text3);margin-top:3px;">Por: ${c.realizadoPor}</div>`:''}
         ${c.nota?`<div style="font-size:10px;color:var(--text3);">Nota: ${c.nota}</div>`:''}
       </div>`;
@@ -3116,9 +3169,22 @@ window.calcBilletes=()=>{
   calcCorte();
 };
 
+window.calcCorteTC=()=>{
+  const tcReal=parseFloat($('corte-tc-real')?.value)||0;
+  const td=today();
+  const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const diff=tcReal-vTc;
+  const el=$('corte-diff-tc');
+  if(!el) return;
+  if(tcReal<=0){el.textContent='—';el.style.color='var(--text3)';return;}
+  el.textContent=(diff>=0?'+':'')+fmt(diff);
+  el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
+};
+
 window.realizarCorte=async()=>{
   const contado=parseFloat($('corte-contado')?.value);
-  if(!contado&&contado!==0){toast('⚠ Ingresa el efectivo contado');return;}
+  if(!contado&&contado!==0){toast('⚠ Ingresa el efectivo contado',2400,'warn');return;}
   const td=today();
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
   const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
@@ -3129,6 +3195,9 @@ window.realizarCorte=async()=>{
   const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
   const esperado=fondos+vEf+deps-retiros;
   const diferencia=contado-esperado;
+  // Ajuste tarjeta
+  const tcReal=parseFloat($('corte-tc-real')?.value)||0;
+  const tcDiff=tcReal>0?tcReal-vTc:0;
 
   const corte={
     id:Date.now(),
@@ -3137,18 +3206,25 @@ window.realizarCorte=async()=>{
     ventasEf:vEf, ventasTc:vTc, ventasTotal:vEf+vTc,
     fondoInicial:fondos, depositos:deps, retiros,
     esperado, contado, diferencia,
+    tcReal, tcDiff,
     numVentas:ventasHoy.length,
+    cerroE1:$('cdc')?.checked||false,
+    cerroE2:$('ccc')?.checked||false,
     nota:$('corte-nota')?.value?.trim()||'',
     realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'
   };
   await fsSet('cortes',corte);
   if($('corte-contado'))$('corte-contado').value='';
+  if($('corte-tc-real'))$('corte-tc-real').value='';
   if($('corte-nota'))$('corte-nota').value='';
+  if($('cdc'))$('cdc').checked=false;
+  if($('ccc'))$('ccc').checked=false;
   document.querySelectorAll('.corte-bill').forEach(el=>el.value='');
   if($('corte-monedas'))$('corte-monedas').value='';
   if($('corte-diff')){$('corte-diff').textContent='—';$('corte-diff').style.color='var(--text3)';}
+  if($('corte-diff-tc')){$('corte-diff-tc').textContent='—';$('corte-diff-tc').style.color='var(--text3)';}
   printCorteTicket(corte);
-  toast(`🧾 Corte realizado · ${diferencia>=0?'Sobrante':'Faltante'}: ${fmt(Math.abs(diferencia))}`);
+  toast(`🧾 Corte realizado · Efvo: ${diferencia>=0?'+':''}${fmt(diferencia)} · TC: ${tcReal>0?(tcDiff>=0?'+':'')+fmt(tcDiff):'sin ajuste'}`,4000);
 };
 
 window.printCorteById=id=>{const c=D.cortes.find(x=>x.id===id);if(c)printCorteTicket(c);};
@@ -3950,6 +4026,106 @@ function renderReloj(){
   }
 }
 window.renderReloj=renderReloj;
+
+// ─── MI PERFIL (empleadas) ───
+function renderMiPerfil(){
+  // Determinar empleado actual
+  const empId = SESSION?.tipo==='emp' ? SESSION.id : (activeVend?.id);
+  const emp = D.empleados.find(e=>e.id===empId);
+  if(!emp){
+    if($('mp-nombre'))$('mp-nombre').textContent='Sin sesión activa';
+    if($('mp-kpis'))$('mp-kpis').innerHTML='<div class="card" style="text-align:center;padding:20px;grid-column:1/-1;"><p style="color:var(--text3);">Inicia sesión como empleada para ver tu perfil</p></div>';
+    return;
+  }
+
+  if($('mp-nombre'))$('mp-nombre').textContent=emp.nombre;
+
+  const td=today();
+  const periodo=$('mp-periodo')?.value||'semana';
+  const wd=getWDays(td);
+  const cm=curM();
+
+  // Filtrar ventas del empleado
+  const misVentasTodas=D.ventas.filter(v=>v.vendedorId===empId && !v.anulada);
+
+  let misVentas;
+  if(periodo==='hoy') misVentas=misVentasTodas.filter(v=>v.fecha===td);
+  else if(periodo==='semana') misVentas=misVentasTodas.filter(v=>wd.includes(v.fecha));
+  else misVentas=misVentasTodas.filter(v=>mOf(v.fecha)===cm);
+
+  const misVentasHoy=misVentasTodas.filter(v=>v.fecha===td);
+  const totalHoy=misVentasHoy.reduce((s,v)=>s+v.total,0);
+  const totalSemana=misVentasTodas.filter(v=>wd.includes(v.fecha)).reduce((s,v)=>s+v.total,0);
+  const totalMes=misVentasTodas.filter(v=>mOf(v.fecha)===cm).reduce((s,v)=>s+v.total,0);
+  const numVentasHoy=misVentasHoy.length;
+
+  // KPIs
+  if($('mp-kpis'))$('mp-kpis').innerHTML=`
+    <div class="card" style="text-align:center;"><div class="ct">Ventas Hoy</div><div class="kv">${fmt(totalHoy)}</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">${numVentasHoy} ${numVentasHoy===1?'venta':'ventas'}</div></div>
+    <div class="card" style="text-align:center;"><div class="ct">Esta Semana</div><div class="kv gold">${fmt(totalSemana)}</div></div>
+    <div class="card" style="text-align:center;"><div class="ct">Este Mes</div><div class="kv teal">${fmt(totalMes)}</div></div>
+    <div class="card" style="text-align:center;border:2px solid ${emp.color||'var(--accent)'};"><div class="ct">Mi Comisión Sem.</div><div class="kv blue">—</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">(depende de nómina)</div></div>
+  `;
+
+  // Tarjeta de reloj personal
+  const abierto=D.checkins.find(c=>c.empId===empId && c.fecha===td && !c.horaSalida);
+  const todosHoy=D.checkins.filter(c=>c.empId===empId && c.fecha===td);
+  const minsHoy=calcMinsFromCheckins(todosHoy,true);
+  if($('mp-reloj-card')){
+    $('mp-reloj-card').innerHTML=`
+      <div class="ct" style="margin-bottom:10px;">🕐 Mi Turno</div>
+      <div class="reloj-av" style="background:${emp.color||'var(--accent)'};margin:0 auto 8px;">${emp.nombre[0]}</div>
+      <span class="reloj-status ${abierto?'on':'off'}">${abierto?'🟢 En turno':'⚪ Fuera'}</span>
+      ${abierto?`
+        <div class="reloj-hora" style="margin-top:8px;">Entrada: <strong>${abierto.hora}</strong></div>
+        <div class="reloj-elapsed" data-elapsed-from="${abierto.hora}" style="margin-top:4px;">0h 00m</div>
+      `:''}
+      ${minsHoy>0?`<div style="font-size:13px;color:var(--accent);font-weight:700;margin-top:6px;">Total hoy: ${fmtMins(minsHoy)}</div>`:''}
+      <div style="margin-top:12px;display:flex;gap:6px;justify-content:center;">
+        ${abierto
+          ?`<button class="btn bd bsm" onclick="checkarSalida(${empId})">🔴 Salida</button>`
+          :`<button class="btn bp bsm" onclick="checkarEntrada(${empId})">🟢 Entrada</button>`}
+        <button class="btn bs bsm" onclick="go('reloj')">Ver Reloj →</button>
+      </div>`;
+  }
+
+  // Ventas hoy detalle
+  if($('mp-ventas-hoy')){
+    const ef=misVentasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+    const tc=misVentasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+    const topProd=Object.entries(misVentasHoy.flatMap(v=>v.items).reduce((a,i)=>{a[i.nombre]=(a[i.nombre]||0)+i.qty;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
+    $('mp-ventas-hoy').innerHTML=`
+      <div class="ct">💼 Ventas Hoy</div>
+      <div class="sr"><span style="font-size:12.5px;">💵 Efectivo</span><span class="mono ab fw7">${fmt(ef)}</span></div>
+      <div class="sr"><span style="font-size:12.5px;">💳 Tarjeta</span><span class="mono ay fw7">${fmt(tc)}</span></div>
+      <div class="sr fw7" style="border-top:2px solid var(--accent);margin-top:4px;padding-top:6px;"><span>Total</span><span class="mono ag" style="font-size:16px;">${fmt(ef+tc)}</span></div>
+      ${topProd.length>0?`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">⭐ MIS TOP PRODUCTOS HOY</div>
+        ${topProd.map(([n,q])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${q}x</span></div>`).join('')}
+      </div>`:''}
+      <button class="btn bs bsm bfull" onclick="go('pos')" style="margin-top:10px;">🛒 Ir a Vender →</button>
+    `;
+  }
+
+  // Tabla de ventas del período
+  if($('mp-ventas-tabla')){
+    misVentas.sort((a,b)=>b.id-a.id);
+    if(misVentas.length===0){
+      $('mp-ventas-tabla').innerHTML='<p style="text-align:center;color:var(--text3);padding:14px;font-size:12px;">Sin ventas en este período</p>';
+    } else {
+      $('mp-ventas-tabla').innerHTML=`<table class="tbl"><thead><tr><th>Fecha</th><th>Hora</th><th>Ticket</th><th>Productos</th><th>Método</th><th>Total</th></tr></thead><tbody>`+
+        misVentas.slice(0,50).map(v=>`<tr>
+          <td class="mono" style="font-size:11px;">${v.fecha}</td>
+          <td class="mono" style="font-size:11px;">${v.hora}</td>
+          <td class="mono" style="font-size:11px;">${v.ticket}</td>
+          <td style="font-size:11px;">${v.items.length} items</td>
+          <td>${v.metodo==='efectivo'?'💵':'💳'}</td>
+          <td class="mono fw7 ag">${fmt(v.total)}</td>
+        </tr>`).join('')+'</tbody></table>';
+    }
+  }
+}
+window.renderMiPerfil=renderMiPerfil;
 
 // PDF Reporte de Horas
 window.pdfReporteHoras=()=>{
@@ -4924,7 +5100,7 @@ function renderAll(){
   renderNomina(); renderVendedores();
   renderProv(); renderSubs(); renderInv();
   renderRecetas(); renderReportes(); renderConfig();
-  renderAjustes(); renderReloj(); loadClaudeKey();
+  renderAjustes(); renderReloj(); renderMiPerfil(); loadClaudeKey();
 }
 
 function initD(){
