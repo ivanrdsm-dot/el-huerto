@@ -1267,6 +1267,7 @@ async function completeInit(){
   await loadInventario15Abr();
   await ajusteInventarioFisico15Abr();
   await ajusteManual15Abr();
+  await loadInventario19Abr();
   await setMinimosInteligentes();
   await autoSeedRecetas();
   renderLock();
@@ -1584,6 +1585,114 @@ async function loadInventario15Abr(){
     await fsSet('pedidos',{id:Date.now()+605,fecha:'2026-04-15',proveedor:'Costco Interlomas',tipo:'Insumos',ticket:'ARG-5683195',total:1203.95});
   localStorage.setItem(migKey,'1');
   if(added+updated>0) toast(`✓ Compras 15/abr: ${added} nuevos, ${updated} actualizados`,4000);
+}
+
+// Carga inventario 19-20/abr — Zorro, Costco, La Comer, Chilapita + compras sin nota
+async function loadInventario19Abr(){
+  const migKey='h5inv_19abr26';
+  if(localStorage.getItem(migKey)) return;
+
+  const items=[
+    // Zorro Las Armas 19/abr — $1,024.47
+    {nombre:'Zanahoria',cat:'verduras',qty:5.695,unit:'kg',precio:13.60},
+    {nombre:'Servilleta',cat:'empaque',qty:12,unit:'paq',precio:1.88},
+    {nombre:'Limón',cat:'frutas',qty:5.110,unit:'kg',precio:14.80},
+    {nombre:'Avena',cat:'granos',qty:3.020,unit:'kg',precio:17.70},
+    {nombre:'Salsa Botanera',cat:'salsas',qty:6,unit:'pz',precio:13.44},
+    {nombre:'Chamoy Mega',cat:'salsas',qty:4.1,unit:'kg',precio:24.82},
+    {nombre:'Salsa Valentina',cat:'salsas',qty:12,unit:'L',precio:2.79},
+    {nombre:'Leche deslactosada',cat:'lacteos',qty:12,unit:'L',precio:23},
+    {nombre:'Salsa de chipotle',cat:'salsas',qty:0.530,unit:'kg',precio:84.91},
+    {nombre:'Cacahuate japonés',cat:'granos',qty:1,unit:'kg',precio:75.80},
+    {nombre:'Lavatrastes líquido',cat:'limpieza',qty:0.480,unit:'L',precio:31.25},
+    {nombre:'Aceite de oliva',cat:'otros',qty:0.180,unit:'L',precio:188.33},
+    {nombre:'Fibra Scotch Brite',cat:'limpieza',qty:1,unit:'pz',precio:17.50},
+    {nombre:'Bolsas de basura',cat:'limpieza',qty:1,unit:'rollo',precio:40.80},
+    {nombre:'Chile Tajín',cat:'otros',qty:0.400,unit:'kg',precio:188.75},
+
+    // La Comer Bosque Real 20/abr — $79
+    {nombre:'Salsa Clemente Jacq',cat:'salsas',qty:1,unit:'pz',precio:45},
+    {nombre:'Hielo',cat:'otros',qty:2.5,unit:'kg',precio:13.60},
+
+    // Costco Interlomas 19/abr — $2,044
+    {nombre:'Leche de almendra',cat:'lacteos',qty:6,unit:'pz',precio:24.83},
+    {nombre:'Papas Susalias',cat:'otros',qty:20,unit:'bolsa',precio:14.95},
+    {nombre:'Salami seco',cat:'proteinas',qty:0.680,unit:'kg',precio:374.59},
+    {nombre:'Crema de almendra',cat:'granos',qty:1.53,unit:'kg',precio:239.36},
+    {nombre:'Queso americano',cat:'lacteos',qty:1.36,unit:'kg',precio:113.97},
+    {nombre:'Moras azules',cat:'frutas',qty:0.510,unit:'kg',precio:371.08},
+    {nombre:'Jamón gran reserva',cat:'proteinas',qty:1,unit:'kg',precio:663.92},
+
+    // Zorro Medio Mayoreo 19/abr — $679.39
+    {nombre:'Pechuga de pavo',cat:'proteinas',qty:3.8,unit:'kg',precio:52.53},
+    {nombre:'Pepperoni',cat:'proteinas',qty:1.01,unit:'kg',precio:119.40},
+    {nombre:'Queso crema Philadelphia',cat:'lacteos',qty:3,unit:'pz',precio:39.97},
+    {nombre:'Queso mozzarella',cat:'lacteos',qty:2.5,unit:'kg',precio:95.71},
+
+    // Chilapita Azcapotzalco 19/abr — $649
+    {nombre:'Canela molida',cat:'otros',qty:0.5,unit:'kg',precio:58},
+    {nombre:'Toalla en rollo',cat:'limpieza',qty:1,unit:'rollo',precio:58},
+    {nombre:'Tazón Reyma',cat:'empaque',qty:500,unit:'pz',precio:0.114},
+    {nombre:'Fajillas para vaso',cat:'empaque',qty:100,unit:'pz',precio:0.65},
+    {nombre:'Pulpa Michelada Tajín',cat:'salsas',qty:12,unit:'pz',precio:6.33},
+    {nombre:'Tapa transparente 95',cat:'empaque',qty:2,unit:'paq',precio:50},
+    {nombre:'Vaso Reyma 16oz',cat:'empaque',qty:100,unit:'pz',precio:1.24},
+    {nombre:'Crema de cacahuate Skippy',cat:'granos',qty:1,unit:'pz',precio:140},
+
+    // Compras sin nota (19/abr)
+    {nombre:'Plátano',cat:'frutas',qty:8,unit:'kg',precio:15},
+    {nombre:'Mango',cat:'frutas',qty:6,unit:'kg',precio:30},
+    {nombre:'Manzana',cat:'frutas',qty:2,unit:'kg',precio:50},
+    {nombre:'Jícama',cat:'verduras',qty:3,unit:'kg',precio:25},
+  ];
+
+  let added=0,updated=0;
+  for(const item of items){
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      existing.qty=(existing.qty||0)+item.qty;
+      if(item.precio>0) existing.precio=item.precio;
+      await fsSet('inventario',existing);
+      updated++;
+    } else {
+      await fsSet('inventario',{id:Date.now()+added+900,nombre:item.nombre,cat:item.cat,qty:item.qty,unit:item.unit,min:0,precio:item.precio});
+      added++;
+    }
+  }
+
+  // Gastos
+  const gastos=[
+    {fecha:'2026-04-19',concepto:'Zorro Las Armas — abarrotes',monto:1024.47,nota:'Ticket 400033'},
+    {fecha:'2026-04-20',concepto:'La Comer Bosque Real — salsa y hielo',monto:84,nota:'Ticket La Comer 20abr'},
+    {fecha:'2026-04-19',concepto:'Costco — lácteos y proteínas',monto:2044,nota:'Ticket Costco 8570'},
+    {fecha:'2026-04-19',concepto:'Zorro — medio mayoreo proteínas',monto:679.39,nota:'Ticket Zorro 103070781'},
+    {fecha:'2026-04-19',concepto:'Chilapita — desechables y canela',monto:649,nota:'Ticket Chilapita 162059'},
+    {fecha:'2026-04-19',concepto:'Compras mercado — frutas sin nota',monto:475,nota:'Sin ticket — plátano, mango, manzana, jícama'},
+  ];
+  for(let i=0;i<gastos.length;i++){
+    const g=gastos[i];
+    if(!D.gastos.find(x=>x.nota===g.nota)){
+      await fsSet('gastos',{id:Date.now()+1000+i,fecha:g.fecha,concepto:g.concepto,monto:g.monto,cat:'proveedor',nota:g.nota});
+    }
+  }
+
+  // Pedidos
+  const pedidos=[
+    {fecha:'2026-04-19',proveedor:'Zorro Abarrotero Las Armas',tipo:'Abarrotes',ticket:'400033',total:1024.47},
+    {fecha:'2026-04-20',proveedor:'La Comer Bosque Real',tipo:'Salsa y hielo',ticket:'LaComer-20abr',total:84},
+    {fecha:'2026-04-19',proveedor:'Costco Interlomas',tipo:'Lácteos y proteínas',ticket:'Costco-8570',total:2044},
+    {fecha:'2026-04-19',proveedor:'Zorro Medio Mayoreo',tipo:'Proteínas',ticket:'103070781',total:679.39},
+    {fecha:'2026-04-19',proveedor:'Chilapita Azcapotzalco',tipo:'Desechables',ticket:'162059',total:649},
+  ];
+  for(let i=0;i<pedidos.length;i++){
+    const p=pedidos[i];
+    if(!D.pedidos.find(x=>x.ticket===p.ticket)){
+      await fsSet('pedidos',{id:Date.now()+1100+i,...p});
+    }
+  }
+
+  localStorage.setItem(migKey,'1');
+  if(added+updated>0) toast(`✓ Compras 19-20/abr: ${added} nuevos, ${updated} actualizados`,4000);
 }
 
 // Ajuste de inventario físico 15/abr/2026 — reemplaza cantidades por conteo real
