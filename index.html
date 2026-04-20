@@ -1268,6 +1268,7 @@ async function completeInit(){
   await ajusteInventarioFisico15Abr();
   await ajusteManual15Abr();
   await loadInventario19Abr();
+  await ajusteFisico20Abr();
   await setMinimosInteligentes();
   await autoSeedRecetas();
   renderLock();
@@ -1747,6 +1748,65 @@ async function ajusteInventarioFisico15Abr(){
   }
   localStorage.setItem(migKey,'1');
   if(updated+added>0) toast(`✓ Inventario físico: ${updated} ajustados, ${added} nuevos`,4000);
+}
+
+// Ajuste inventario físico 20/abr — conteo real de las chicas después de compras
+async function ajusteFisico20Abr(){
+  const migKey='h5invfisico_20abr26';
+  if(localStorage.getItem(migKey)) return;
+
+  const conteo=[
+    // Reemplaza cantidad por el conteo físico real
+    {nombre:'Crema de almendra',qty:2,unit:'pz'},
+    {nombre:'Crema de cacahuate Skippy',qty:1,unit:'pz'},
+    {nombre:'Papas Susalias',qty:20,unit:'bolsa'}, // 1 caja = 20 bolsas
+    {nombre:'Leche de almendra',qty:6,unit:'pz'},
+    {nombre:'Leche deslactosada',qty:12,unit:'L'},
+    {nombre:'Café molido',qty:1,unit:'kg'},
+    {nombre:'Servilleta',qty:1,unit:'paq'},
+    {nombre:'Frutimich',qty:1,unit:'pz'},
+    {nombre:'Salsa Botanera',qty:4,unit:'L'},
+    {nombre:'Chamoy Mega',qty:4,unit:'L'},
+    {nombre:'Avena',qty:3.020,unit:'kg'},
+    {nombre:'Limón',qty:5.110,unit:'kg'},
+    {nombre:'Bowl sopero',qty:25,unit:'pz'},
+    {nombre:'Cacahuate japonés',qty:1,unit:'kg'},
+    {nombre:'Bolsas de basura',qty:1,unit:'rollo'},
+    {nombre:'Chile Tajín',qty:1,unit:'pz'},
+    {nombre:'Miel de abeja',qty:1,unit:'pz'},
+    {nombre:'Lavatrastes líquido',qty:1,unit:'pz'},
+    {nombre:'Salsa Valentina',qty:1,unit:'L'},
+    {nombre:'Zanahoria',qty:5.695,unit:'kg'},
+    {nombre:'Sandía',qty:1,unit:'pz'},
+    {nombre:'Jícama',qty:4.143,unit:'kg'},
+    {nombre:'Salsa de chipotle',qty:1,unit:'pz'},
+    {nombre:'Fibra Scotch Brite',qty:1,unit:'pz'},
+    {nombre:'Aceite de oliva',qty:1,unit:'pz'},
+    {nombre:'Vaso 16 oz',qty:100,unit:'pz'},
+    {nombre:'Piña',qty:3,unit:'pz'},
+    {nombre:'Manzana',qty:1.242,unit:'kg'},
+    {nombre:'Aguacate',qty:1.089,unit:'kg'},
+    {nombre:'Tapa 16 oz',qty:100,unit:'pz'},
+    {nombre:'Mangas para café',qty:100,unit:'pz'},
+    {nombre:'Canela molida',qty:0.497,unit:'kg'},
+    {nombre:'Mango',qty:6.005,unit:'kg'},
+    {nombre:'Fresa',qty:1.020,unit:'kg'},
+    {nombre:'Plátano',qty:7.559,unit:'kg'},
+  ];
+
+  let updated=0;
+  for(const item of conteo){
+    const existing=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase());
+    if(existing){
+      existing.qty=item.qty;
+      if(item.unit) existing.unit=item.unit;
+      await fsSet('inventario',existing);
+      updated++;
+    }
+  }
+
+  localStorage.setItem(migKey,'1');
+  if(updated>0) toast(`✓ Inventario físico 20/abr: ${updated} ajustados`,4000);
 }
 
 // Ajuste manual inventario 15/abr — datos del dueño
