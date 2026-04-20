@@ -2312,9 +2312,9 @@ const ADMIN_PASS = '12345@';
 const EMP_PASSWORDS = {}; // Populated from empleados.pin field
 const EMP_PASS_STATIC = {2001:'123456', 2002:'1234567'}; // Adilene=2001, Claudia=2002
 // Páginas restringidas a admin solamente (nadie más entra)
-const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','inventario'];
+const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja'];
 // Páginas que Clau (gerente) puede ver además de ventas
-const GERENTE_PERMS = []; // Claudia ahora solo tiene acceso a ventas/reloj/mi-perfil como Adilene
+const GERENTE_PERMS = ['inventario']; // Claudia puede ver inventario (sin dinero)
 // ID de Clau
 const GERENTE_ID = 2002;
 // Lista combinada para compatibilidad
@@ -4060,40 +4060,52 @@ function renderMiPerfil(){
 
   if($('mp-nombre'))$('mp-nombre').textContent=emp.nombre;
 
+  const isAdmin=SESSION?.tipo==='admin';
   const td=today();
-  const periodo=$('mp-periodo')?.value||'semana';
   const wd=getWDays(td);
   const cm=curM();
 
-  // Filtrar ventas del empleado — por ID o por nombre (fallback para ventas viejas)
+  // Filtrar ventas del empleado — solo para admin
   const misVentasTodas=D.ventas.filter(v=>!v.anulada && (
     v.vendedorId===empId ||
     (v.vendedorNombre && v.vendedorNombre.toLowerCase()===emp.nombre.toLowerCase())
   ));
-
-  let misVentas;
-  if(periodo==='hoy') misVentas=misVentasTodas.filter(v=>v.fecha===td);
-  else if(periodo==='semana') misVentas=misVentasTodas.filter(v=>wd.includes(v.fecha));
-  else misVentas=misVentasTodas.filter(v=>mOf(v.fecha)===cm);
-
   const misVentasHoy=misVentasTodas.filter(v=>v.fecha===td);
-  const totalHoy=misVentasHoy.reduce((s,v)=>s+v.total,0);
-  const totalSemana=misVentasTodas.filter(v=>wd.includes(v.fecha)).reduce((s,v)=>s+v.total,0);
-  const totalMes=misVentasTodas.filter(v=>mOf(v.fecha)===cm).reduce((s,v)=>s+v.total,0);
   const numVentasHoy=misVentasHoy.length;
 
-  // KPIs
-  if($('mp-kpis'))$('mp-kpis').innerHTML=`
-    <div class="card" style="text-align:center;"><div class="ct">Ventas Hoy</div><div class="kv">${fmt(totalHoy)}</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">${numVentasHoy} ${numVentasHoy===1?'venta':'ventas'}</div></div>
-    <div class="card" style="text-align:center;"><div class="ct">Esta Semana</div><div class="kv gold">${fmt(totalSemana)}</div></div>
-    <div class="card" style="text-align:center;"><div class="ct">Este Mes</div><div class="kv teal">${fmt(totalMes)}</div></div>
-    <div class="card" style="text-align:center;border:2px solid ${emp.color||'var(--accent)'};"><div class="ct">Mi Comisión Sem.</div><div class="kv blue">—</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">(depende de nómina)</div></div>
-  `;
-
-  // Tarjeta de reloj personal
+  // Reloj / turno
   const abierto=D.checkins.find(c=>c.empId===empId && c.fecha===td && !c.horaSalida);
   const todosHoy=D.checkins.filter(c=>c.empId===empId && c.fecha===td);
   const minsHoy=calcMinsFromCheckins(todosHoy,true);
+  const minsSemana=wd.reduce((s,d)=>{
+    const checks=D.checkins.filter(c=>c.empId===empId && c.fecha===d);
+    return s+calcMinsFromCheckins(checks, d===td);
+  },0);
+
+  // KPIs — para admin muestra dinero, para empleadas solo horas/ventas sin montos
+  if($('mp-kpis')){
+    if(isAdmin){
+      const totalHoy=misVentasHoy.reduce((s,v)=>s+v.total,0);
+      const totalSemana=misVentasTodas.filter(v=>wd.includes(v.fecha)).reduce((s,v)=>s+v.total,0);
+      const totalMes=misVentasTodas.filter(v=>mOf(v.fecha)===cm).reduce((s,v)=>s+v.total,0);
+      $('mp-kpis').innerHTML=`
+        <div class="card" style="text-align:center;"><div class="ct">Ventas Hoy</div><div class="kv">${fmt(totalHoy)}</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">${numVentasHoy} ${numVentasHoy===1?'venta':'ventas'}</div></div>
+        <div class="card" style="text-align:center;"><div class="ct">Esta Semana</div><div class="kv gold">${fmt(totalSemana)}</div></div>
+        <div class="card" style="text-align:center;"><div class="ct">Este Mes</div><div class="kv teal">${fmt(totalMes)}</div></div>
+        <div class="card" style="text-align:center;border:2px solid ${emp.color||'var(--accent)'};"><div class="ct">Horas Semana</div><div class="kv blue">${fmtMins(minsSemana)}</div></div>
+      `;
+    } else {
+      // Empleada: sin montos, solo actividad
+      $('mp-kpis').innerHTML=`
+        <div class="card" style="text-align:center;"><div class="ct">Ventas Hoy</div><div class="kv">${numVentasHoy}</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">${numVentasHoy===1?'venta registrada':'ventas registradas'}</div></div>
+        <div class="card" style="text-align:center;"><div class="ct">Horas Hoy</div><div class="kv gold">${fmtMins(minsHoy)||'0h 00m'}</div></div>
+        <div class="card" style="text-align:center;"><div class="ct">Horas Semana</div><div class="kv teal">${fmtMins(minsSemana)||'0h 00m'}</div></div>
+        <div class="card" style="text-align:center;border:2px solid ${emp.color||'var(--accent)'};"><div class="ct">Estado</div><div class="kv ${abierto?'teal':''}" style="font-size:18px;">${abierto?'🟢 En turno':'⚪ Fuera'}</div></div>
+      `;
+    }
+  }
+
+  // Tarjeta de reloj personal
   if($('mp-reloj-card')){
     $('mp-reloj-card').innerHTML=`
       <div class="ct" style="margin-bottom:10px;">🕐 Mi Turno</div>
@@ -4104,7 +4116,7 @@ function renderMiPerfil(){
         <div class="reloj-elapsed" data-elapsed-from="${abierto.hora}" style="margin-top:4px;">0h 00m</div>
       `:''}
       ${minsHoy>0?`<div style="font-size:13px;color:var(--accent);font-weight:700;margin-top:6px;">Total hoy: ${fmtMins(minsHoy)}</div>`:''}
-      <div style="margin-top:12px;display:flex;gap:6px;justify-content:center;">
+      <div style="margin-top:12px;display:flex;gap:6px;justify-content:center;flex-wrap:wrap;">
         ${abierto
           ?`<button class="btn bd bsm" onclick="checkarSalida(${empId})">🔴 Salida</button>`
           :`<button class="btn bp bsm" onclick="checkarEntrada(${empId})">🟢 Entrada</button>`}
@@ -4112,39 +4124,69 @@ function renderMiPerfil(){
       </div>`;
   }
 
-  // Ventas hoy detalle
+  // Accesos rápidos — sin dinero para empleadas
   if($('mp-ventas-hoy')){
-    const ef=misVentasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-    const tc=misVentasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
-    const topProd=Object.entries(misVentasHoy.flatMap(v=>v.items).reduce((a,i)=>{a[i.nombre]=(a[i.nombre]||0)+i.qty;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
-    $('mp-ventas-hoy').innerHTML=`
-      <div class="ct">💼 Ventas Hoy</div>
-      <div class="sr"><span style="font-size:12.5px;">💵 Efectivo</span><span class="mono ab fw7">${fmt(ef)}</span></div>
-      <div class="sr"><span style="font-size:12.5px;">💳 Tarjeta</span><span class="mono ay fw7">${fmt(tc)}</span></div>
-      <div class="sr fw7" style="border-top:2px solid var(--accent);margin-top:4px;padding-top:6px;"><span>Total</span><span class="mono ag" style="font-size:16px;">${fmt(ef+tc)}</span></div>
-      ${topProd.length>0?`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
-        <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">⭐ MIS TOP PRODUCTOS HOY</div>
-        ${topProd.map(([n,q])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${q}x</span></div>`).join('')}
-      </div>`:''}
-      <button class="btn bs bsm bfull" onclick="go('pos')" style="margin-top:10px;">🛒 Ir a Vender →</button>
-    `;
+    if(isAdmin){
+      const ef=misVentasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+      const tc=misVentasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+      const topProd=Object.entries(misVentasHoy.flatMap(v=>v.items).reduce((a,i)=>{a[i.nombre]=(a[i.nombre]||0)+i.qty;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
+      $('mp-ventas-hoy').innerHTML=`
+        <div class="ct">💼 Ventas Hoy</div>
+        <div class="sr"><span style="font-size:12.5px;">💵 Efectivo</span><span class="mono ab fw7">${fmt(ef)}</span></div>
+        <div class="sr"><span style="font-size:12.5px;">💳 Tarjeta</span><span class="mono ay fw7">${fmt(tc)}</span></div>
+        <div class="sr fw7" style="border-top:2px solid var(--accent);margin-top:4px;padding-top:6px;"><span>Total</span><span class="mono ag" style="font-size:16px;">${fmt(ef+tc)}</span></div>
+        ${topProd.length>0?`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">⭐ TOP PRODUCTOS HOY</div>
+          ${topProd.map(([n,q])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${q}x</span></div>`).join('')}
+        </div>`:''}
+        <button class="btn bs bsm bfull" onclick="go('pos')" style="margin-top:10px;">🛒 Ir a Vender →</button>
+      `;
+    } else {
+      // Empleada: solo accesos rápidos, sin montos
+      const topProd=Object.entries(misVentasHoy.flatMap(v=>v.items).reduce((a,i)=>{a[i.nombre]=(a[i.nombre]||0)+i.qty;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
+      const esGerente=SESSION?.id===GERENTE_ID;
+      $('mp-ventas-hoy').innerHTML=`
+        <div class="ct">🚀 Accesos Rápidos</div>
+        <button class="btn bp bfull" onclick="go('pos')" style="margin:6px 0;padding:14px;font-size:15px;font-weight:700;">🛒 Vender / POS</button>
+        <button class="btn bs bfull bsm" onclick="go('reloj')" style="margin-bottom:6px;">🕐 Reloj Checador</button>
+        ${esGerente?`<button class="btn bs bfull bsm" onclick="go('inventario')" style="margin-bottom:6px;">📦 Inventario</button>`:''}
+        ${topProd.length>0?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">⭐ PRODUCTOS QUE HE VENDIDO HOY</div>
+          ${topProd.map(([n,q])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${q}x</span></div>`).join('')}
+        </div>`:'<p style="font-size:11px;color:var(--text3);margin-top:8px;text-align:center;">Aún no has vendido hoy</p>'}
+      `;
+    }
   }
 
-  // Tabla de ventas del período
+  // Tabla de ventas del período — solo para admin
   if($('mp-ventas-tabla')){
-    misVentas.sort((a,b)=>b.id-a.id);
-    if(misVentas.length===0){
-      $('mp-ventas-tabla').innerHTML='<p style="text-align:center;color:var(--text3);padding:14px;font-size:12px;">Sin ventas en este período</p>';
+    if(!isAdmin){
+      // Empleada: oculta la tabla completa (montos)
+      $('mp-ventas-tabla').innerHTML='';
+      const wrap=$('mp-ventas-tabla').parentElement;
+      if(wrap) wrap.style.display='none';
     } else {
-      $('mp-ventas-tabla').innerHTML=`<table class="tbl"><thead><tr><th>Fecha</th><th>Hora</th><th>Ticket</th><th>Productos</th><th>Método</th><th>Total</th></tr></thead><tbody>`+
-        misVentas.slice(0,50).map(v=>`<tr>
-          <td class="mono" style="font-size:11px;">${v.fecha}</td>
-          <td class="mono" style="font-size:11px;">${v.hora}</td>
-          <td class="mono" style="font-size:11px;">${v.ticket}</td>
-          <td style="font-size:11px;">${v.items.length} items</td>
-          <td>${v.metodo==='efectivo'?'💵':'💳'}</td>
-          <td class="mono fw7 ag">${fmt(v.total)}</td>
-        </tr>`).join('')+'</tbody></table>';
+      const wrap=$('mp-ventas-tabla').parentElement;
+      if(wrap) wrap.style.display='';
+      const periodo=$('mp-periodo')?.value||'semana';
+      let misVentas;
+      if(periodo==='hoy') misVentas=misVentasHoy;
+      else if(periodo==='semana') misVentas=misVentasTodas.filter(v=>wd.includes(v.fecha));
+      else misVentas=misVentasTodas.filter(v=>mOf(v.fecha)===cm);
+      misVentas.sort((a,b)=>b.id-a.id);
+      if(misVentas.length===0){
+        $('mp-ventas-tabla').innerHTML='<p style="text-align:center;color:var(--text3);padding:14px;font-size:12px;">Sin ventas en este período</p>';
+      } else {
+        $('mp-ventas-tabla').innerHTML=`<table class="tbl"><thead><tr><th>Fecha</th><th>Hora</th><th>Ticket</th><th>Productos</th><th>Método</th><th>Total</th></tr></thead><tbody>`+
+          misVentas.slice(0,50).map(v=>`<tr>
+            <td class="mono" style="font-size:11px;">${v.fecha}</td>
+            <td class="mono" style="font-size:11px;">${v.hora}</td>
+            <td class="mono" style="font-size:11px;">${v.ticket}</td>
+            <td style="font-size:11px;">${v.items.length} items</td>
+            <td>${v.metodo==='efectivo'?'💵':'💳'}</td>
+            <td class="mono fw7 ag">${fmt(v.total)}</td>
+          </tr>`).join('')+'</tbody></table>';
+      }
     }
   }
 }
