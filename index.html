@@ -1764,7 +1764,7 @@ async function ajusteFisico20Abr(){
     {nombre:'Leche deslactosada',qty:12,unit:'L'},
     {nombre:'Café molido',qty:1,unit:'kg'},
     {nombre:'Servilleta',qty:1,unit:'paq'},
-    {nombre:'Frutimich',qty:1,unit:'pz'},
+    {nombre:'Pulpa Michelada Tajín',qty:1,unit:'pz'}, // reemplaza frutimich
     {nombre:'Salsa Botanera',qty:4,unit:'L'},
     {nombre:'Chamoy Mega',qty:4,unit:'L'},
     {nombre:'Avena',qty:3.020,unit:'kg'},
@@ -1804,6 +1804,43 @@ async function ajusteFisico20Abr(){
       updated++;
     }
   }
+
+  // Ajustes específicos del dueño:
+  // - Frutimich sustituido por Pulpa Michelada Tamamax ($76)
+  // - Tapa Domo nueva ($50/paq)
+  // - Sandía $20/kg
+  // - Miel abeja 1L $100
+  const precios=[
+    {nombre:'Pulpa Michelada Tajín',precio:76,unit:'pz'},
+    {nombre:'Sandía',precio:20,unit:'kg'}, // precio por kg
+    {nombre:'Miel de abeja',precio:100,qty:1,unit:'L'}, // 1 litro $100
+  ];
+  for(const p of precios){
+    const inv=D.inventario.find(x=>x.nombre.toLowerCase()===p.nombre.toLowerCase());
+    if(inv){
+      inv.precio=p.precio;
+      if(p.unit) inv.unit=p.unit;
+      if(p.qty) inv.qty=p.qty;
+      await fsSet('inventario',inv);
+    }
+  }
+
+  // Agregar Tapa Domo como nuevo producto ($50/paq de 100)
+  const tapaDomo=D.inventario.find(x=>x.nombre.toLowerCase()==='tapa domo');
+  if(!tapaDomo){
+    await fsSet('inventario',{id:Date.now()+2000,nombre:'Tapa Domo',cat:'empaque',qty:100,unit:'pz',min:30,precio:0.50});
+  }
+  // Eliminar "Tapa transparente 95" (era la tapa domo mal nombrada)
+  const tapaVieja=D.inventario.find(x=>x.nombre.toLowerCase()==='tapa transparente 95');
+  if(tapaVieja) await fsDel('inventario',tapaVieja.id);
+
+  // Eliminar "Frutimich" si aún existe (fue sustituido)
+  const frutimich=D.inventario.find(x=>x.nombre.toLowerCase()==='frutimich');
+  if(frutimich) await fsDel('inventario',frutimich.id);
+
+  // Eliminar "Vaso Reyma 16oz" duplicado — usar el Vaso 16 oz existente
+  const vasoReyma=D.inventario.find(x=>x.nombre.toLowerCase()==='vaso reyma 16oz');
+  if(vasoReyma) await fsDel('inventario',vasoReyma.id);
 
   localStorage.setItem(migKey,'1');
   if(updated>0) toast(`✓ Inventario físico 20/abr: ${updated} ajustados`,4000);
