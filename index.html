@@ -677,6 +677,20 @@ select option{background:var(--surface2);}
           <div class="sr"><span style="font-size:12.5px;">📊 Total ventas día</span><span class="mono ag fw7" id="corte-vtot">$0.00</span></div>
           <div class="sr"><span style="font-size:12.5px;">🧾 Número de ventas</span><span class="mono fw7" id="corte-nventas">0</span></div>
         </div>
+
+        <!-- Resumen de VENTAS REALES calculadas en vivo -->
+        <div style="background:#fff3e0;border:2px solid var(--orange);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);font-weight:700;margin-bottom:10px;">💰 Ventas reales del día (lo que vas a registrar)</div>
+          <div class="sr"><span style="font-size:12.5px;">💵 Ventas efectivo real</span><span class="mono ag fw7" id="corte-ef-real">$0.00</span></div>
+          <div class="sr"><span style="font-size:12.5px;">💳 Ventas tarjeta real</span><span class="mono ay fw7" id="corte-tc-real-lbl">$0.00</span></div>
+          <div style="border-top:2px solid var(--orange);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-weight:900;font-size:13px;">💰 TOTAL VENTAS REALES</span>
+            <span class="mono" style="font-size:20px;font-weight:900;color:var(--orange);" id="corte-total-real">$0.00</span>
+          </div>
+          <div style="font-size:10.5px;color:var(--text2);margin-top:6px;">
+            📊 Diferencia vs POS: <span class="mono fw7" id="corte-dif-pos">—</span>
+          </div>
+        </div>
         <!-- Conteo de efectivo -->
         <div style="background:#f0faf0;border:1px solid var(--accent);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
           <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;">💵 Cuenta tu efectivo</div>
@@ -723,8 +737,12 @@ select option{background:var(--surface2);}
           </div>
           <div class="fg" style="margin-bottom:0;"><label>Nota</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
         </div>
-        <div style="background:#e8f5e9;border:1px solid var(--accent);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:11px;color:var(--accentd);">
-          💡 <strong>Al realizar el corte</strong>, los montos reales contados (efectivo + tarjeta terminal) reemplazan los totales del POS en la semana y KPIs.
+        <div style="background:#fff3e0;border:1px solid var(--orange);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:11.5px;color:var(--orange);line-height:1.5;">
+          💡 <strong>Cómo funciona el corte:</strong><br>
+          • Cuentas el efectivo físico y pones el total<br>
+          • Pones el total de la terminal (tarjetas)<br>
+          • El sistema calcula tus <strong>VENTAS REALES</strong> del día (aunque no coincidan con el POS)<br>
+          • Esas ventas reales son las que aparecen en la semana y reportes
         </div>
         <button class="btn bp bfull" onclick="realizarCorte()" style="padding:14px;font-size:15px;font-weight:700;">🧾 Realizar Corte de Caja</button>
       </div>
@@ -2845,6 +2863,11 @@ function printCorteTicket(corte){
     <div class="tk-row"><span>Sistema</span><span>${fmt(corte.ventasTc)}</span></div>
     <div class="tk-row"><span>Terminal</span><span>${fmt(corte.tcReal)}</span></div>
     <div class="tk-row-bold"><span>Diferencia TC</span><span>${corte.tcDiff>=0?'+':''}${fmt(corte.tcDiff)}</span></div>`:''}
+    ${corte.ventasTotalReal!==undefined?`<hr class="tk-sep">
+    <div style="font-size:11px;font-weight:700;margin-bottom:3px;">VENTAS REALES DEL DÍA</div>
+    <div class="tk-row"><span>Efectivo real</span><span>${fmt(corte.ventasEfReal||0)}</span></div>
+    <div class="tk-row"><span>Tarjeta real</span><span>${fmt(corte.ventasTcReal||0)}</span></div>
+    <div class="tk-big">TOTAL REAL: ${fmt(corte.ventasTotalReal)}</div>`:''}
     ${(corte.cerroE1||corte.cerroE2)?`<hr class="tk-sep">
     <div style="font-size:10px;">Cerró: ${[corte.cerroE1?D.empleados.find(e=>e.id===2001)?.nombre:null,corte.cerroE2?D.empleados.find(e=>e.id===2002)?.nombre:null].filter(Boolean).join(' y ')}</div>`:''}
     ${corte.nota?`<div style="font-size:10px;margin-top:4px;">Nota: ${corte.nota}</div>`:''}
@@ -3142,6 +3165,7 @@ window.calcCorte=()=>{
   const td=today();
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
   const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
   const rets=D.retiros.filter(r=>r.fecha===td);
   const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
   const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
@@ -3149,11 +3173,49 @@ window.calcCorte=()=>{
   const esperado=fondos+vEf+deps-retiros;
   const diff=contado-esperado;
   const el=$('corte-diff');
-  if(!el) return;
-  if(contado<=0){el.textContent='—';el.style.color='var(--text3)';return;}
-  el.textContent=(diff>=0?'+':'')+fmt(diff);
-  el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
+  if(el){
+    if(contado<=0){el.textContent='—';el.style.color='var(--text3)';}
+    else{
+      el.textContent=(diff>=0?'+':'')+fmt(diff);
+      el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
+    }
+  }
+  // Actualizar panel de ventas reales
+  actualizarVentasReales();
 };
+
+// Calcula ventas reales y actualiza panel
+function actualizarVentasReales(){
+  const td=today();
+  const contado=parseFloat($('corte-contado')?.value)||0;
+  const tcReal=parseFloat($('corte-tc-real')?.value)||0;
+  const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const rets=D.retiros.filter(r=>r.fecha===td);
+  const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
+  const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
+  const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
+
+  const ventasEfReal = contado>0 ? Math.max(0, contado - fondos - deps + retiros) : 0;
+  const ventasTcReal = tcReal>0 ? tcReal : vTc;
+  const totalReal = ventasEfReal + ventasTcReal;
+  const totalPOS = vEf + vTc;
+  const difPOS = totalReal - totalPOS;
+
+  if($('corte-ef-real'))$('corte-ef-real').textContent=fmt(ventasEfReal);
+  if($('corte-tc-real-lbl'))$('corte-tc-real-lbl').textContent=fmt(ventasTcReal);
+  if($('corte-total-real'))$('corte-total-real').textContent=fmt(totalReal);
+  if($('corte-dif-pos')){
+    if(contado<=0 && tcReal<=0){
+      $('corte-dif-pos').textContent='—';
+      $('corte-dif-pos').style.color='var(--text3)';
+    } else {
+      $('corte-dif-pos').textContent=(difPOS>=0?'+':'')+fmt(difPOS)+' (POS: '+fmt(totalPOS)+')';
+      $('corte-dif-pos').style.color=Math.abs(difPOS)<0.01?'var(--teal)':difPOS>0?'var(--accent)':'var(--red)';
+    }
+  }
+}
 
 window.calcBilletes=()=>{
   let total=0;
@@ -3174,10 +3236,15 @@ window.calcCorteTC=()=>{
   const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
   const diff=tcReal-vTc;
   const el=$('corte-diff-tc');
-  if(!el) return;
-  if(tcReal<=0){el.textContent='—';el.style.color='var(--text3)';return;}
-  el.textContent=(diff>=0?'+':'')+fmt(diff);
-  el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
+  if(el){
+    if(tcReal<=0){el.textContent='—';el.style.color='var(--text3)';}
+    else{
+      el.textContent=(diff>=0?'+':'')+fmt(diff);
+      el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
+    }
+  }
+  // Actualizar panel de ventas reales
+  actualizarVentasReales();
 };
 
 window.realizarCorte=async()=>{
@@ -3193,17 +3260,29 @@ window.realizarCorte=async()=>{
   const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
   const esperado=fondos+vEf+deps-retiros;
   const diferencia=contado-esperado;
-  // Ajuste tarjeta
+
+  // ══ CÁLCULO DE VENTAS REALES DEL DÍA ══
+  // Ventas efectivo REAL = Efectivo en caja al cierre - Fondo inicial - Depósitos + Retiros
+  // (lo que quedó en caja descontando lo que no es venta)
+  const ventasEfReal = Math.max(0, contado - fondos - deps + retiros);
+  // Ventas tarjeta REAL = lo que reporta la terminal (si no se ingresó, usa POS)
   const tcReal=parseFloat($('corte-tc-real')?.value)||0;
-  const tcDiff=tcReal>0?tcReal-vTc:0;
+  const ventasTcReal = tcReal>0 ? tcReal : vTc;
+  const tcDiff = tcReal>0 ? tcReal-vTc : 0;
+  const ventasTotalReal = ventasEfReal + ventasTcReal;
 
   const corte={
     id:Date.now(),
     fecha:td,
     hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
+    // Totales POS (del sistema)
     ventasEf:vEf, ventasTc:vTc, ventasTotal:vEf+vTc,
+    // Totales REALES (ingresados/calculados del corte)
+    ventasEfReal, ventasTcReal, ventasTotalReal,
+    // Movimientos efectivo
     fondoInicial:fondos, depositos:deps, retiros,
     esperado, contado, diferencia,
+    // Tarjeta
     tcReal, tcDiff,
     numVentas:ventasHoy.length,
     cerroE1:$('cdc')?.checked||false,
@@ -3213,18 +3292,16 @@ window.realizarCorte=async()=>{
   };
   await fsSet('cortes',corte);
 
-  // ══ Actualizar registro de caja del día con montos REALES del corte ══
-  // Esto hace que strip semanal y KPIs muestren los montos reales, no los del POS automático.
-  const efReal = vEf + diferencia; // ventas efectivo ajustadas por diferencia real
-  const tcFinal = tcReal>0 ? tcReal : vTc;
+  // ══ Actualizar registro de caja del día con VENTAS REALES ══
+  // Estos montos son los que aparecerán en strip semanal, KPIs y reportes.
   const cajaHoy = D.caja.find(c=>c.fecha===td);
   const cajaData = {
     id: cajaHoy?.id || Date.now()+1,
     fecha: td,
-    ef: Math.max(0,efReal),
-    tc: tcFinal,
-    total: Math.max(0,efReal) + tcFinal,
-    nota: cajaHoy?.nota || 'Ajustado por corte de caja',
+    ef: ventasEfReal,
+    tc: ventasTcReal,
+    total: ventasTotalReal,
+    nota: 'Ajustado por corte de caja',
     dC: cajaHoy?.dC || false,
     cC: cajaHoy?.cC || false,
     subId: cajaHoy?.subId || null,
@@ -3243,7 +3320,8 @@ window.realizarCorte=async()=>{
   if($('corte-diff')){$('corte-diff').textContent='—';$('corte-diff').style.color='var(--text3)';}
   if($('corte-diff-tc')){$('corte-diff-tc').textContent='—';$('corte-diff-tc').style.color='var(--text3)';}
   printCorteTicket(corte);
-  toast(`🧾 Corte realizado · Efvo: ${diferencia>=0?'+':''}${fmt(diferencia)} · TC: ${tcReal>0?(tcDiff>=0?'+':'')+fmt(tcDiff):'sin ajuste'}`,4000);
+  const difPosVsReal = ventasTotalReal - (vEf+vTc);
+  toast(`🧾 Corte · Ventas reales: ${fmt(ventasTotalReal)} (${difPosVsReal>=0?'+':''}${fmt(difPosVsReal)} vs POS)`,5000);
 };
 
 window.printCorteById=id=>{const c=D.cortes.find(x=>x.id===id);if(c)printCorteTicket(c);};
