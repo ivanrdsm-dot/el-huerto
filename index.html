@@ -2340,9 +2340,11 @@ let pinTarget = null;
 let pinTargetEmpId = null; // for employee PIN flow
 
 function lockApp(){
-  // Registrar hora de salida si hay sesión activa de empleada
+  // IMPORTANTE: NO hacer checkout automático.
+  // El turno se mantiene abierto aunque cambien de sesión.
+  // El checkout debe ser MANUAL desde el Reloj Checador.
   if(SESSION && SESSION.tipo==='emp'){
-    registrarCheckout(SESSION);
+    toast(`👋 Hasta luego, ${SESSION.nombre} (tu turno sigue activo)`,2400);
   }
   SESSION = null;
   try{ localStorage.removeItem('h5session'); }catch(e){}
@@ -2412,10 +2414,18 @@ window.loginEmp = loginEmp;
 async function registrarCheckin(e){
   const td = today();
   const hora = new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
-  // Check if already checked in today (sin salida = sigue activo)
-  const yaExiste = D.checkins.find(c=>c.empId===e.id && c.fecha===td && !c.horaSalida);
-  if(yaExiste){
-    mostrarCheckinBanner(e.nombre, yaExiste.hora, null);
+  // Si ya tiene turno ABIERTO hoy → solo mostrar banner, no crear nuevo
+  const yaAbierto = D.checkins.find(c=>c.empId===e.id && c.fecha===td && !c.horaSalida);
+  if(yaAbierto){
+    mostrarCheckinBanner(e.nombre, yaAbierto.hora, null);
+    return;
+  }
+  // Si ya tuvo turno CERRADO hoy → NO crear nuevo automáticamente.
+  // Para evitar duplicar jornadas cuando solo cambia de sesión.
+  // El nuevo check-in debe ser manual desde el Reloj Checador.
+  const yaCerrado = D.checkins.find(c=>c.empId===e.id && c.fecha===td && c.horaSalida);
+  if(yaCerrado){
+    toast(`👋 Hola ${e.nombre} — tu turno anterior está cerrado. Usa el Reloj para abrir uno nuevo.`,3500);
     return;
   }
   const ci = {id:Date.now(), empId:e.id, empNombre:e.nombre, fecha:td, hora, horaSalida:null, color:e.color||'var(--accent)'};
@@ -2996,6 +3006,19 @@ window.addRetiro=async()=>{
   if(!monto||monto<=0){toast('⚠ Ingresa un monto');return;}
   const tipo=$('ret-tipo').value;
   const concepto=$('ret-concepto').value.trim()||'Sin concepto';
+  // Si es fondo, verificar que no haya otro fondo del mismo día (no duplicar)
+  if(tipo==='fondo'){
+    const fondoExistente=D.retiros.find(r=>r.fecha===fecha && r.tipo==='fondo');
+    if(fondoExistente){
+      if(!confirm(`Ya existe un fondo del ${fecha} por ${fmt(fondoExistente.monto)}.\n\n¿Reemplazarlo por ${fmt(monto)}?`)){
+        return;
+      }
+      await fsSet('retiros',{...fondoExistente,monto,concepto:concepto||'Fondo de apertura'});
+      $('ret-monto').value='';$('ret-concepto').value='';
+      toast(`💰 Fondo actualizado: ${fmt(monto)}`,3000);
+      return;
+    }
+  }
   const r={id:Date.now(),fecha,monto,tipo,concepto};
   await fsSet('retiros',r);
   $('ret-monto').value='';$('ret-concepto').value='';
@@ -3336,7 +3359,16 @@ window.delCorte=async id=>{if(!confirm('¿Eliminar este corte?'))return;await fs
 window.confirmarApertura=async()=>{
   const monto=parseFloat($('apertura-monto')?.value);
   if(!monto||monto<=0){toast('⚠ Ingresa un monto');return;}
-  const r={id:Date.now(),fecha:today(),monto,tipo:'fondo',concepto:'Fondo de apertura'};
+  const td=today();
+  // Si ya hay fondo del día, reemplazar (no duplicar)
+  const fondoExistente=D.retiros.find(r=>r.fecha===td && r.tipo==='fondo');
+  if(fondoExistente){
+    await fsSet('retiros',{...fondoExistente,monto,concepto:'Fondo de apertura (actualizado)'});
+    $('apertura-modal').style.display='none';
+    toast(`💰 Fondo actualizado: ${fmt(monto)}`,3000);
+    return;
+  }
+  const r={id:Date.now(),fecha:td,monto,tipo:'fondo',concepto:'Fondo de apertura'};
   await fsSet('retiros',r);
   $('apertura-modal').style.display='none';
   toast(`💰 Apertura registrada: ${fmt(monto)}`);
@@ -3345,7 +3377,8 @@ window.confirmarApertura=async()=>{
 function checkApertura(){
   const td=today();
   const fondoHoy=D.retiros.find(r=>r.fecha===td&&r.tipo==='fondo');
-  if(!fondoHoy&&SESSION){
+  // Solo mostrar modal si no hay fondo Y es admin (empleadas NO pueden abrir caja)
+  if(!fondoHoy && SESSION && SESSION.tipo==='admin'){
     $('apertura-modal').style.display='flex';
   }
 }
