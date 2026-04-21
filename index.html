@@ -663,7 +663,7 @@ select option{background:var(--surface2);}
         </div>
         <!-- Resumen automático del sistema -->
         <div style="background:var(--surface2);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:10px;">Cálculo automático</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:10px;">📊 Según el sistema (POS)</div>
           <div class="sr"><span style="font-size:12.5px;">💰 Fondo inicial</span><span class="mono ab fw7" id="corte-fondo">$0.00</span></div>
           <div class="sr"><span style="font-size:12.5px;">💵 Ventas efectivo</span><span class="mono ag fw7" id="corte-vef">$0.00</span></div>
           <div class="sr"><span style="font-size:12.5px;">📥 Depósitos</span><span class="mono ab" id="corte-dep">$0.00</span></div>
@@ -723,6 +723,9 @@ select option{background:var(--surface2);}
           </div>
           <div class="fg" style="margin-bottom:0;"><label>Nota</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
         </div>
+        <div style="background:#e8f5e9;border:1px solid var(--accent);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:11px;color:var(--accentd);">
+          💡 <strong>Al realizar el corte</strong>, los montos reales contados (efectivo + tarjeta terminal) reemplazan los totales del POS en la semana y KPIs.
+        </div>
         <button class="btn bp bfull" onclick="realizarCorte()" style="padding:14px;font-size:15px;font-weight:700;">🧾 Realizar Corte de Caja</button>
       </div>
 
@@ -770,24 +773,8 @@ select option{background:var(--surface2);}
         </table></div>
       </div>
 
-      <!-- Corte manual legacy (colapsado) -->
-      <details class="card" style="margin-top:12px;">
-        <summary style="cursor:pointer;font-size:11px;color:var(--text3);font-weight:600;">⚙ Corte Manual (avanzado)</summary>
-        <div style="margin-top:10px;">
-          <div class="fg"><label>Fecha</label><input type="date" id="cf"></div>
-          <div class="ii">
-            <div class="fg"><label>💵 Efectivo</label><input type="number" id="cef" placeholder="0" oninput="calcT()"></div>
-            <div class="fg"><label>💳 Tarjeta</label><input type="number" id="ctc" placeholder="0" oninput="calcT()"></div>
-          </div>
-          <div class="fg"><label>Suscripción cobrada</label><select id="css"><option value="">— No —</option></select></div>
-          <div class="fg"><label>Nota</label><input type="text" id="cnota" placeholder="Opcional"></div>
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
-            <span style="font-size:12px;color:var(--text2)">Total:</span>
-            <span class="mono fw7 ag" style="font-size:17px;" id="ctp">$0.00</span>
-          </div>
-          <button class="btn bp bfull bsm" onclick="guardarCaja()">Guardar Corte Manual</button>
-        </div>
-      </details>
+      <!-- Inputs hidden necesarios para compatibilidad con legacy JS (no mostrar) -->
+      <input type="hidden" id="cf"><input type="hidden" id="cef"><input type="hidden" id="ctc"><input type="hidden" id="cnota"><select id="css" style="display:none;"></select><span id="ctp" style="display:none;"></span>
     </div>
   </div>
 </div>
@@ -3108,7 +3095,15 @@ function renderCorteInfo(){
   const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
   const esperado=fondos+vEf+deps-retiros;
 
-  if($('corte-fecha-label'))$('corte-fecha-label').textContent=td;
+  // Badge si ya se hizo corte hoy
+  const corteHoy=[...D.cortes].filter(c=>c.fecha===td).sort((a,b)=>b.id-a.id)[0];
+  if($('corte-fecha-label')){
+    if(corteHoy){
+      $('corte-fecha-label').innerHTML=`${td} · <span class="badge xg">✓ Corte realizado ${corteHoy.hora}</span>`;
+    } else {
+      $('corte-fecha-label').textContent=td;
+    }
+  }
   if($('corte-fondo'))$('corte-fondo').textContent=fmt(fondos);
   if($('corte-vef'))$('corte-vef').textContent=fmt(vEf);
   if($('corte-dep'))$('corte-dep').textContent=fmt(deps);
@@ -3217,6 +3212,27 @@ window.realizarCorte=async()=>{
     realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'
   };
   await fsSet('cortes',corte);
+
+  // ══ Actualizar registro de caja del día con montos REALES del corte ══
+  // Esto hace que strip semanal y KPIs muestren los montos reales, no los del POS automático.
+  const efReal = vEf + diferencia; // ventas efectivo ajustadas por diferencia real
+  const tcFinal = tcReal>0 ? tcReal : vTc;
+  const cajaHoy = D.caja.find(c=>c.fecha===td);
+  const cajaData = {
+    id: cajaHoy?.id || Date.now()+1,
+    fecha: td,
+    ef: Math.max(0,efReal),
+    tc: tcFinal,
+    total: Math.max(0,efReal) + tcFinal,
+    nota: cajaHoy?.nota || 'Ajustado por corte de caja',
+    dC: cajaHoy?.dC || false,
+    cC: cajaHoy?.cC || false,
+    subId: cajaHoy?.subId || null,
+    corteId: corte.id,
+    corteHora: corte.hora
+  };
+  await fsSet('caja', cajaData);
+
   if($('corte-contado'))$('corte-contado').value='';
   if($('corte-tc-real'))$('corte-tc-real').value='';
   if($('corte-nota'))$('corte-nota').value='';
