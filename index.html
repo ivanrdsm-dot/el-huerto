@@ -604,7 +604,10 @@ select option{background:var(--surface2);}
         <button class="btn bp bfull" onclick="abrirCobro()" style="gap:6px;">💵 Efectivo</button>
         <button class="btn bbl bfull" onclick="cobrar('tarjeta',0)" style="gap:6px;">💳 Tarjeta</button>
       </div>
-      <button class="btn bs bfull bsm" onclick="clearOrder()" style="margin-top:4px;">✕ Limpiar orden</button>
+      <div style="display:flex;gap:6px;margin-top:4px;">
+        <button class="btn bs bfull bsm" onclick="clearOrder()">✕ Limpiar</button>
+        <button class="btn bs bfull bsm" onclick="reprintLastTicket()" title="Reimprimir último ticket">🖨 Reimprimir</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1220,7 +1223,32 @@ select option{background:var(--surface2);}
     <div class="ct">Ticket / Impresora</div>
     <div class="ii"><div class="fg"><label>Nombre en ticket</label><input type="text" id="cfg-neg" placeholder="El Huerto"></div><div class="fg"><label>Teléfono</label><input type="text" id="cfg-tel" placeholder="+52 56 4666 5718"></div></div>
     <div class="fg"><label>Pie de ticket</label><input type="text" id="cfg-msg" placeholder="¡Gracias por tu visita!"></div>
+    <div class="fg" style="display:flex;align-items:center;gap:10px;margin:10px 0;">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;color:var(--text);">
+        <input type="checkbox" id="cfg-autoprint" style="width:auto;transform:scale(1.3);">
+        <span>🖨 Imprimir ticket automáticamente al cobrar</span>
+      </label>
+    </div>
     <button class="btn bp bsm" onclick="saveConfig()">Guardar Config</button>
+    <button class="btn bs bsm" onclick="reprintLastTicket()" style="margin-left:6px;">🔁 Reimprimir último ticket</button>
+    <!-- Instrucciones Chrome kiosk -->
+    <div style="margin-top:14px;background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:12px;font-size:11.5px;color:#5c4e1a;line-height:1.6;">
+      <div style="font-weight:700;margin-bottom:6px;color:var(--goldd);">🖨 Impresión silenciosa (sin diálogo cada venta)</div>
+      Chrome pide confirmación por default. Para que <strong>imprima directo</strong> sin preguntar:
+      <ol style="margin:6px 0 6px 18px;padding:0;">
+        <li>Cierra Chrome completamente (Cmd+Q / Alt+F4)</li>
+        <li>Abre Terminal/PowerShell y pega:<br>
+        <code style="display:block;background:#000;color:#0f0;padding:6px 10px;border-radius:4px;margin:4px 0;font-size:10.5px;word-break:break-all;">
+        # Mac:<br>
+        open -a "Google Chrome" --args --kiosk-printing<br><br>
+        # Windows:<br>
+        "C:\Program Files\Google\Chrome\Application\chrome.exe" --kiosk-printing
+        </code></li>
+        <li>En Ajustes de Chrome → Impresión, pon <strong>Viso Office</strong> como predeterminada</li>
+        <li>En el primer ticket, elige "Viso Office" y marca "Recordar"</li>
+      </ol>
+      <strong>Alternativa fácil:</strong> crea un acceso directo de Chrome en el escritorio y añade <code style="background:var(--surface3);padding:1px 4px;border-radius:3px;">--kiosk-printing</code> al final del destino.
+    </div>
   </div>
 </div>
 
@@ -1293,7 +1321,7 @@ const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto
 const app=initializeApp(FB); const db=getFirestore(app);
 
 let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[]};
-let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!'};
+let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true};
 let READY=false;
 let activeVend=null; // {id, nombre, color}
 
@@ -2840,7 +2868,20 @@ function printTicket(v){
     <hr class="tk-sep">
     <div class="tk-footer">${CFG.msg}<br>*** Gracias por su compra ***</div>
   </div>`;
-  setTimeout(()=>{try{window.print();}catch(e){console.warn('Print error:',e);}},250);
+  // Imprimir solo si está activada la impresión automática
+  if(CFG.autoPrint===false){
+    return; // usuario desactivó auto-print
+  }
+  // Guardar última venta para reimpresión rápida
+  try{localStorage.setItem('h5_last_ticket',v.id);}catch(e){}
+  setTimeout(()=>{
+    try{
+      window.print();
+    }catch(e){
+      console.warn('Print error:',e);
+      toast('⚠ Error al imprimir. Usa el botón de reimprimir.',3500,'warn');
+    }
+  },300);
 }
 // Imprimir ticket de corte de caja
 function printCorteTicket(corte){
@@ -5058,6 +5099,7 @@ function renderConfig(){
   if($('cfg-neg')&&CFG.negocio)$('cfg-neg').value=CFG.negocio;
   if($('cfg-tel')&&CFG.tel)$('cfg-tel').value=CFG.tel;
   if($('cfg-msg')&&CFG.msg)$('cfg-msg').value=CFG.msg;
+  if($('cfg-autoprint'))$('cfg-autoprint').checked=CFG.autoPrint!==false;
   if($('cfg-empleados'))$('cfg-empleados').innerHTML=D.empleados.map(e=>`<div class="sr">
     <div style="display:flex;align-items:center;gap:9px;">
       <div style="width:28px;height:28px;border-radius:50%;background:${e.color||'var(--accent)'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#1a2e18;">${e.nombre[0]}</div>
@@ -5087,7 +5129,19 @@ window.editProd=id=>{
   fsSet('productos',{...p,nombre:n,precio:pr,desc:d||''});toast('✓ Actualizado');
 };
 window.toggleProd=async id=>{const p=D.productos.find(x=>x.id===id);if(!p)return;await fsSet('productos',{...p,activo:!p.activo});toast(p.activo?'⚫ Ocultado':'✓ Activado');};
-window.saveConfig=()=>{CFG={negocio:$('cfg-neg').value.trim()||'El Huerto',tel:$('cfg-tel').value.trim(),msg:$('cfg-msg').value.trim()||'¡Gracias!'};try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}toast('✓ Config guardada');};
+window.saveConfig=()=>{CFG={negocio:$('cfg-neg').value.trim()||'El Huerto',tel:$('cfg-tel').value.trim(),msg:$('cfg-msg').value.trim()||'¡Gracias!',autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true};try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}toast('✓ Config guardada');};
+
+window.reprintLastTicket=()=>{
+  const lastId=localStorage.getItem('h5_last_ticket');
+  if(!lastId){toast('⚠ No hay ticket reciente para reimprimir',3000,'warn');return;}
+  const v=D.ventas.find(x=>String(x.id)===String(lastId));
+  if(!v){toast('⚠ Ticket no encontrado',3000,'warn');return;}
+  const prevAuto=CFG.autoPrint;
+  CFG.autoPrint=true; // forzar impresión
+  printTicket(v);
+  CFG.autoPrint=prevAuto;
+  toast(`🔁 Reimprimiendo ticket ${v.ticket}`,2400);
+};
 
 // ─── CSV ───
 window.csvX=tipo=>{
