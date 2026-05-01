@@ -169,8 +169,9 @@ select option{background:var(--surface2);}
 }
 .pcat:hover{border-color:var(--accent);color:var(--accent);}
 .pcat.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700;box-shadow:0 2px 8px rgba(46,125,50,.25);}
-.pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(125px,1fr));gap:8px;}
-@media(max-width:480px){.pos-grid{grid-template-columns:repeat(3,1fr);gap:5px;}}
+.pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:10px;}
+@media(max-width:768px){.pos-grid{grid-template-columns:repeat(3,1fr);gap:8px;}}
+@media(max-width:480px){.pos-grid{grid-template-columns:repeat(2,1fr);gap:8px;}.pitem{min-height:110px;padding:14px 8px;}}
 .pitem{
   background:#fff;
   border:1.5px solid var(--border);
@@ -196,6 +197,8 @@ select option{background:var(--surface2);}
 }
 .pitem:hover::before{opacity:1;}
 .pitem:active{transform:scale(.94) translateY(0);}
+.pitem-added{animation:pitemAdded .25s ease;}
+@keyframes pitemAdded{0%{transform:scale(1);background:#fff;}50%{transform:scale(1.05);background:#e8f5e9;border-color:var(--accent);box-shadow:0 0 0 4px rgba(46,125,50,.2);}100%{transform:scale(1);background:#fff;}}
 .picat{font-size:9px;color:var(--text3);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px;font-weight:600;}
 .piname{font-size:12px;font-weight:700;line-height:1.25;margin-bottom:5px;color:var(--text);}
 .piprice{
@@ -216,7 +219,9 @@ select option{background:var(--surface2);}
 .oi{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);}
 .oi-name{flex:1;font-size:12.5px;line-height:1.2;}
 .oi-qty{display:flex;align-items:center;gap:4px;}
-.qbtn{width:22px;height:22px;border-radius:5px;border:1px solid var(--border);background:var(--surface3);color:var(--text);font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:700;}
+.qbtn{width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--surface3);color:var(--text);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:700;flex-shrink:0;}
+.qbtn:active{transform:scale(.9);background:var(--accent);color:#fff;}
+@media(max-width:768px){.qbtn{width:34px;height:34px;font-size:19px;}}
 .qval{font-family:'DM Mono',monospace;font-size:12.5px;font-weight:700;min-width:16px;text-align:center;}
 .oi-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);min-width:52px;text-align:right;}
 .oi-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 2px;}
@@ -437,6 +442,7 @@ select option{background:var(--surface2);}
   <div class="nright">
     <span id="navDate"></span>
     <span class="nbadge" id="nav-alerta" onclick="go('inventario')"></span>
+    <span id="conn-status" title="Estado de conexión" style="font-size:13px;cursor:default;">🟢</span>
     <div class="sess-badge" id="sess-badge" onclick="lockApp()" title="Cerrar sesión">
       <div class="sess-av" id="sess-av" style="background:var(--accent);">?</div>
       <span id="sess-name">—</span>
@@ -592,7 +598,10 @@ select option{background:var(--surface2);}
         </div>
         <div class="ototal"><span>Total</span><span id="op-tot">$0.00</span></div>
       </div>
-      <div class="fg" style="margin-top:6px;"><label>Mesa / Nota</label><input id="op-nota" placeholder="Ej: Mesa 4, Para llevar…"></div>
+      <div class="ii" style="margin-top:6px;">
+        <div class="fg"><label>Mesa / Nota</label><input id="op-nota" placeholder="Ej: Mesa 4"></div>
+        <div class="fg"><label>Cliente (opcional)</label><input id="op-cliente" placeholder="Tel/nombre" autocomplete="off"></div>
+      </div>
       <div id="op-fecha-wrap" style="display:none;margin-bottom:6px;">
         <div style="display:flex;align-items:center;gap:7px;background:#fff8e1;border:1px solid #4a2a05;border-radius:var(--rsm);padding:7px 10px;">
           <span style="font-size:11px;color:var(--gold);">📅 Fecha de venta:</span>
@@ -1149,7 +1158,18 @@ select option{background:var(--surface2);}
     <div id="ajprod-form" style="display:none;background:var(--surface2);border-radius:var(--rsm);padding:12px;margin-bottom:10px;">
       <div class="ii"><div class="fg"><label>Nombre</label><input type="text" id="aj-pr-n" placeholder="Nombre del producto"></div>
         <div class="fg"><label>Categoría</label><select id="aj-pr-cat"><option value="acai">🫐 Açaí Bowl</option><option value="oats">🥣 Overnight Oats</option><option value="smoothie">🥤 Smoothies</option><option value="coctel">🍓 Cocteles</option><option value="combo">⭐ Combos</option><option value="panini">🥖 Paninis</option><option value="cafe">☕ Café</option><option value="te">🍵 Té</option><option value="pan">🍞 Panes Renee</option><option value="papas">🌶 Papas Locas</option><option value="otro">➕ Extras</option></select></div></div>
-      <div class="ii"><div class="fg"><label>Precio</label><input type="number" id="aj-pr-p" placeholder="$0"></div><div class="fg"><label>Descripción</label><input type="text" id="aj-pr-d" placeholder="Ej: Con granola"></div></div>
+      <div class="ii3">
+        <div class="fg"><label>Precio venta</label><input type="number" id="aj-pr-p" placeholder="$0" step="0.01"></div>
+        <div class="fg"><label>Costo (MXN)</label><input type="number" id="aj-pr-costo" placeholder="$0" step="0.01"></div>
+        <div class="fg"><label>Línea estratégica</label><select id="aj-pr-linea">
+          <option value="otros">Otros</option>
+          <option value="pal">Pal'... (smoothies)</option>
+          <option value="bowls">Bowls</option>
+          <option value="paninis">Paninis</option>
+          <option value="cafe">Café & Té</option>
+        </select></div>
+      </div>
+      <div class="fg"><label>Descripción</label><input type="text" id="aj-pr-d" placeholder="Ej: Con granola"></div>
       <div style="display:flex;gap:8px;"><button class="btn bp" onclick="saveAjProd()">Guardar</button><button class="btn bs" onclick="$('ajprod-form').style.display='none'">Cancelar</button></div>
     </div>
     <div id="ajprod-list"></div>
@@ -1339,7 +1359,9 @@ let activeVend=null; // {id, nombre, color}
 
 const colRef=c=>collection(db,c);
 const docRef=(c,id)=>doc(db,c,String(id));
-const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);}catch(e){toast('⚠ '+e.message,4000,'error');}};
+const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);return true;}catch(e){toast('⚠ '+e.message,4000,'error');console.error('fsSet error:',c,e);return false;}};
+// Versión que SÍ tira error — para flujos críticos como ventas que NO pueden silenciarse
+const fsSetCritical=async(c,item)=>{await setDoc(docRef(c,item.id),item);return true;};
 const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
 
 async function completeInit(){
@@ -2666,7 +2688,7 @@ function renderPOS(){
   if(poscat!=='all') items=items.filter(p=>p.cat===poscat);
   if(q) items=items.filter(p=>p.nombre.toLowerCase().includes(q)||(p.desc||'').toLowerCase().includes(q));
   $('pgrid').innerHTML=items.length===0?`<p style="color:var(--text3);grid-column:1/-1;text-align:center;padding:20px">Sin productos</p>`:
-    items.map(p=>`<div class="pitem" onclick="addItem(${p.id})">
+    items.map(p=>`<div class="pitem" data-pid="${p.id}" onclick="addItem(${p.id})">
       <div style="font-size:26px;line-height:1;margin-bottom:5px;">${catEmoji[p.cat]||'🌿'}</div>
       <div class="piname">${p.nombre}</div>
       ${p.desc?`<div style="font-size:9px;color:var(--text3);margin-bottom:4px;line-height:1.3;">${p.desc}</div>`:''}
@@ -2682,7 +2704,13 @@ function addItem(pid){
   if(ex) ex.qty++;
   else order.push({id:pid,nombre:p.nombre,precio:p.precio,qty:1,nota:''});
   renderOrder();
-  if(window.innerWidth<=960&&!opOpen){opOpen=true;$('order-panel').classList.remove('hidden');$('op-arr').textContent='▲';}
+  // Feedback inmediato — la cajera ve y siente que el producto se agregó
+  try{navigator.vibrate&&navigator.vibrate(20);}catch(_){}
+  // Animación visual del item agregado
+  const target=document.querySelector(`.pitem[data-pid="${pid}"]`);
+  if(target){target.classList.add('pitem-added');setTimeout(()=>target.classList.remove('pitem-added'),250);}
+  // SIEMPRE mostrar el carrito en mobile cuando agregan algo
+  if(window.innerWidth<=960){opOpen=true;$('order-panel').classList.remove('hidden');$('op-arr').textContent='▲';}
 }
 window.addItem=addItem;
 
@@ -2837,23 +2865,41 @@ async function cobrar(metodo,recibido=0){
       recibido:metodo==='efectivo'?recibido:total,
       cambio:Math.max(0,cambio)
     };
-    await fsSet('ventas',venta);
-    await descontarInventario(venta.items);
+    // ══ CRÍTICO: usa fsSetCritical que SÍ tira error si Firestore falla ══
+    // Antes: si Firebase fallaba, fsSet silenciaba y el carrito se limpiaba igual.
+    // Ahora: si falla, el carrito se mantiene y la cajera puede reintentar.
+    venta.tsCreacion=venta.tsCreacion||tid;
+    venta.tsCobro=Date.now();
+    venta.cliente=$('op-cliente')?.value?.trim()||null;
+    await fsSetCritical('ventas',venta);
+    // Caja también es crítica — si falla, la venta queda guardada pero hay que reintentar caja
     if(!esRetroactiva){
-      const ex=D.caja.find(c=>c.fecha===fechaVenta);
-      const ef=metodo==='efectivo'?total:0; const tc=metodo==='tarjeta'?total:0;
-      if(ex){ex.ef=(ex.ef||0)+ef;ex.tc=(ex.tc||0)+tc;ex.total=ex.ef+ex.tc;await fsSet('caja',ex);}
-      else{await fsSet('caja',{id:tid+1,fecha:fechaVenta,ef,tc,total,nota:'Auto-POS',dC:false,cC:false,subId:null});}
+      try{
+        const ex=D.caja.find(c=>c.fecha===fechaVenta);
+        const ef=metodo==='efectivo'?total:0; const tc=metodo==='tarjeta'?total:0;
+        if(ex){ex.ef=(ex.ef||0)+ef;ex.tc=(ex.tc||0)+tc;ex.total=ex.ef+ex.tc;await fsSetCritical('caja',ex);}
+        else{await fsSetCritical('caja',{id:tid+1,fecha:fechaVenta,ef,tc,total,nota:'Auto-POS',dC:false,cC:false,subId:null});}
+      }catch(cajaErr){
+        console.error('Caja no se actualizó pero venta sí:',cajaErr);
+        // No bloquear — la venta ya quedó registrada
+      }
     }
+    // Inventario es secundario — si falla no debe bloquear la venta
+    try{await descontarInventario(venta.items);}catch(invErr){console.warn('Inv:',invErr);}
     printTicket(venta);
     playSaleSound();
     showSaleSuccess(venta);
+    // Limpiar SOLO si la venta se guardó (esto solo se ejecuta si no hubo throw)
     order=[]; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
+    if($('op-cliente'))$('op-cliente').value='';
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
     renderOrder();
   }catch(e){
     console.error('Error en venta:',e);
-    toast('❌ Error al registrar venta. Intenta de nuevo.',4000,'error');
+    // ══ NO LIMPIAR EL CARRITO ══ Permitir que la cajera reintente
+    toast('❌ ERROR: Venta NO registrada. Verifica conexión y reintenta. Tu orden está intacta.',6000,'error');
+    // Vibración fuerte para alertar
+    try{navigator.vibrate&&navigator.vibrate([200,100,200,100,200]);}catch(_){}
   }finally{
     cobrandoEnProceso=false;
     btns.forEach(b=>b.classList.remove('loading'));
@@ -5262,16 +5308,33 @@ function renderAjustes(){
   // Catálogo de productos
   if($('ajprod-list')){
     const items=[...D.productos].sort((a,b)=>a.nombre.localeCompare(b.nombre));
-    $('ajprod-list').innerHTML=`<div class="tw"><table class="tbl"><thead><tr><th>Nombre</th><th>Cat.</th><th>Precio</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`+
-    items.map(p=>`<tr>
-      <td style="font-size:12.5px;font-weight:600;">${p.nombre}</td>
-      <td><span class="badge xb">${catPOS[p.cat]||p.cat}</span></td>
-      <td class="mono ag">${fmt(p.precio)}</td>
-      <td>${p.activo?'<span class="badge xg">Activo</span>':'<span class="badge xr">Oculto</span>'}</td>
-      <td style="display:flex;gap:3px;">
-        <button class="btn bs bxs" onclick="editAjProd(${p.id})">✏️</button>
-        <button class="btn ${p.activo?'bd':'bp'} bxs" onclick="toggleAjProd(${p.id})">${p.activo?'Ocultar':'Activar'}</button>
-      </td></tr>`).join('')+
+    const lineaL={pal:"Pal'…",bowls:'Bowls',paninis:'Paninis',cafe:'Café/Té',otros:'Otros'};
+    $('ajprod-list').innerHTML=`<div class="tw"><table class="tbl"><thead><tr><th>Nombre</th><th>Cat.</th><th>Línea</th><th>Precio</th><th>Costo</th><th>Margen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`+
+    items.map(p=>{
+      const costo=p.costo??0;
+      const linea=p.lineaEstrategica??'otros';
+      const margenPct=(p.precio>0&&costo>0)?((p.precio-costo)/p.precio*100):null;
+      let margenHTML='—';
+      if(margenPct!==null){
+        const color=margenPct>=60?'#2e7d32':margenPct>=40?'#f57c00':'#c62828';
+        const bg=margenPct>=60?'#e8f5e9':margenPct>=40?'#fff8e1':'#ffebee';
+        margenHTML=`<span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;">${margenPct.toFixed(1)}%</span>`;
+      } else if(costo===0){
+        margenHTML='<span style="color:#c62828;font-size:10px;">⚠ sin costo</span>';
+      }
+      return `<tr>
+        <td style="font-size:12.5px;font-weight:600;">${p.nombre}</td>
+        <td><span class="badge xb">${catPOS[p.cat]||p.cat}</span></td>
+        <td style="font-size:11px;color:var(--text2);">${lineaL[linea]||linea}</td>
+        <td class="mono ag">${fmt(p.precio)}</td>
+        <td class="mono ${costo>0?'':'ar'}" style="font-size:11px;">${costo>0?fmt(costo):'—'}</td>
+        <td>${margenHTML}</td>
+        <td>${p.activo?'<span class="badge xg">Activo</span>':'<span class="badge xr">Oculto</span>'}</td>
+        <td style="display:flex;gap:3px;">
+          <button class="btn bs bxs" onclick="editAjProd(${p.id})">✏️</button>
+          <button class="btn ${p.activo?'bd':'bp'} bxs" onclick="toggleAjProd(${p.id})">${p.activo?'Ocultar':'Activar'}</button>
+        </td></tr>`;
+    }).join('')+
     '</tbody></table></div>';
   }
 
@@ -5316,15 +5379,38 @@ function renderAjustes(){
 window.showAjProd=()=>{$('ajprod-form').style.display=$('ajprod-form').style.display==='none'?'block':'none';};
 window.saveAjProd=async()=>{
   const n=$('aj-pr-n').value.trim(); if(!n){toast('⚠ Ingresa nombre');return;}
-  const p={id:Date.now(),nombre:n,cat:$('aj-pr-cat').value,precio:parseFloat($('aj-pr-p').value)||0,desc:$('aj-pr-d').value.trim(),activo:true};
-  await fsSet('productos',p);$('aj-pr-n').value='';$('aj-pr-p').value='';$('aj-pr-d').value='';$('ajprod-form').style.display='none';toast('✓ Producto: '+n);
+  const editId=$('aj-pr-n').dataset.editId;
+  const costo=parseFloat($('aj-pr-costo')?.value)||0;
+  const linea=$('aj-pr-linea')?.value||'otros';
+  const precio=parseFloat($('aj-pr-p').value)||0;
+  if(editId){
+    const existing=D.productos.find(x=>x.id==editId);
+    if(existing){
+      await fsSet('productos',{...existing,nombre:n,cat:$('aj-pr-cat').value,precio,costo,lineaEstrategica:linea,desc:$('aj-pr-d').value.trim()});
+    }
+    delete $('aj-pr-n').dataset.editId;
+  } else {
+    const p={id:Date.now(),nombre:n,cat:$('aj-pr-cat').value,precio,costo,lineaEstrategica:linea,desc:$('aj-pr-d').value.trim(),activo:true};
+    await fsSet('productos',p);
+  }
+  $('aj-pr-n').value='';$('aj-pr-p').value='';$('aj-pr-d').value='';
+  if($('aj-pr-costo'))$('aj-pr-costo').value='';
+  if($('aj-pr-linea'))$('aj-pr-linea').value='otros';
+  $('ajprod-form').style.display='none';
+  toast(editId?'✓ Actualizado: '+n:'✓ Producto: '+n);
+  if(costo===0) setTimeout(()=>toast('💡 Define el costo para que tu margen aparezca en KPIs',3500,'warn'),1500);
 };
 window.editAjProd=id=>{
   const p=D.productos.find(x=>x.id===id); if(!p) return;
-  const n=prompt('Nombre:',p.nombre); if(n===null) return;
-  const pr=parseFloat(prompt('Precio:',p.precio)); if(isNaN(pr)) return;
-  const d=prompt('Descripción:',p.desc||'');
-  fsSet('productos',{...p,nombre:n,precio:pr,desc:d||''});toast('✓ Actualizado');
+  $('aj-pr-n').value=p.nombre;
+  $('aj-pr-n').dataset.editId=id;
+  $('aj-pr-cat').value=p.cat;
+  $('aj-pr-p').value=p.precio;
+  if($('aj-pr-costo'))$('aj-pr-costo').value=p.costo??0;
+  if($('aj-pr-linea'))$('aj-pr-linea').value=p.lineaEstrategica??'otros';
+  $('aj-pr-d').value=p.desc||'';
+  $('ajprod-form').style.display='block';
+  $('aj-pr-n').focus();
 };
 window.toggleAjProd=async id=>{const p=D.productos.find(x=>x.id===id);if(!p)return;await fsSet('productos',{...p,activo:!p.activo});toast(p.activo?'⚫ Ocultado':'✓ Activado');};
 
@@ -5404,6 +5490,22 @@ window.renderReportes=renderReportes;
 window.renderInv=renderInv;
 function clock(){const el=$('navDate');if(el)el.textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});}
 clock(); setInterval(clock,60000);
+
+// Indicador de conexión a internet (crítico para no perder ventas)
+function updateConnStatus(){
+  const el=$('conn-status');
+  if(!el) return;
+  if(navigator.onLine){
+    el.textContent='🟢';
+    el.title='Conectado — las ventas se registran en tiempo real';
+  } else {
+    el.textContent='🔴';
+    el.title='SIN CONEXIÓN — NO REGISTRES VENTAS hasta que vuelva';
+  }
+}
+window.addEventListener('online',()=>{updateConnStatus();toast('🟢 Conexión restaurada',2400);});
+window.addEventListener('offline',()=>{updateConnStatus();toast('🔴 SIN CONEXIÓN — No se pueden registrar ventas',6000,'error');});
+updateConnStatus();
 startRelojTick();
 listenAll();
 </script>
