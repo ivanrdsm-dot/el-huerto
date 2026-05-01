@@ -1320,8 +1320,20 @@ import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "ht
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
 const app=initializeApp(FB); const db=getFirestore(app);
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[]};
-let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[]};
+let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true,
+  kpiTargets:{
+    ticketPromedio:130,
+    conversionCombo:30,
+    pctVentasPal:35,
+    recurrentes:40,
+    npsMin:50,
+    margenProducto:60,
+    mermasMaxPct:5,
+    tiempoServicioMaxMin:4,
+    margenBrutoMin:50
+  }
+};
 let READY=false;
 let activeVend=null; // {id, nombre, color}
 
@@ -1332,7 +1344,16 @@ const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){to
 
 async function completeInit(){
   READY=true;
-  try{const c=localStorage.getItem('h5cfg');if(c)CFG={...CFG,...JSON.parse(c)};}catch(e){}
+  try{
+    const c=localStorage.getItem('h5cfg');
+    if(c){
+      const saved=JSON.parse(c);
+      // Deep-merge kpiTargets para asegurar que todos los 9 valores existan
+      const defaultTargets=CFG.kpiTargets;
+      CFG={...CFG,...saved};
+      CFG.kpiTargets={...defaultTargets,...(saved.kpiTargets||{})};
+    }
+  }catch(e){}
   try{const v=localStorage.getItem('h5vend');if(v)activeVend=JSON.parse(v);}catch(e){}
   if(D.productos.length===0) await seedMenu();
   if(D.empleados.length===0) await seedEmps();
@@ -1367,7 +1388,7 @@ async function completeInit(){
 }
 
 function listenAll(){
-  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes'];
+  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura'];
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
   const loaded=new Set();
 
@@ -5129,7 +5150,11 @@ window.editProd=id=>{
   fsSet('productos',{...p,nombre:n,precio:pr,desc:d||''});toast('✓ Actualizado');
 };
 window.toggleProd=async id=>{const p=D.productos.find(x=>x.id===id);if(!p)return;await fsSet('productos',{...p,activo:!p.activo});toast(p.activo?'⚫ Ocultado':'✓ Activado');};
-window.saveConfig=()=>{CFG={negocio:$('cfg-neg').value.trim()||'El Huerto',tel:$('cfg-tel').value.trim(),msg:$('cfg-msg').value.trim()||'¡Gracias!',autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true};try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}toast('✓ Config guardada');};
+window.saveConfig=()=>{
+  const prevTargets=CFG.kpiTargets;
+  CFG={negocio:$('cfg-neg').value.trim()||'El Huerto',tel:$('cfg-tel').value.trim(),msg:$('cfg-msg').value.trim()||'¡Gracias!',autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true,kpiTargets:prevTargets};
+  try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}toast('✓ Config guardada');
+};
 
 window.reprintLastTicket=()=>{
   const lastId=localStorage.getItem('h5_last_ticket');
@@ -5332,7 +5357,8 @@ window.ajustarStock=id=>{
   toast(`✓ Stock: ${x.qty} → ${newQty} ${x.unit||''}`);
 };
 window.saveAjConfig=()=>{
-  CFG={negocio:$('aj-cfg-neg').value.trim()||'El Huerto',tel:$('aj-cfg-tel').value.trim(),msg:$('aj-cfg-msg').value.trim()||'¡Gracias!'};
+  // Preservar autoPrint y kpiTargets
+  CFG={...CFG,negocio:$('aj-cfg-neg').value.trim()||'El Huerto',tel:$('aj-cfg-tel').value.trim(),msg:$('aj-cfg-msg').value.trim()||'¡Gracias!'};
   try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}
   toast('✓ Config guardada');
 };
