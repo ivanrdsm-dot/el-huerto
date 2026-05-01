@@ -854,6 +854,24 @@ select option{background:var(--surface2);}
         <div class="fg"><label>Proveedor</label><input type="text" id="gprov" placeholder="Nombre" list="pvdl"></div>
         <div class="fg"><label>Ticket/Folio</label><input type="text" id="gtk" placeholder="001"></div>
       </div>
+      <div class="ii">
+        <div class="fg"><label>Tipo estratégico</label>
+          <select id="g-tipoest" onchange="document.getElementById('g-canal-wrap').style.display=this.value==='marketing'?'':'none';">
+            <option value="general">📦 General</option>
+            <option value="operacion">⚙️ Operación (insumos, mant.)</option>
+            <option value="marketing">📣 Marketing (CAC)</option>
+          </select>
+        </div>
+        <div class="fg" id="g-canal-wrap" style="display:none;"><label>Canal Mkt</label>
+          <select id="g-canal">
+            <option value="instagram">📷 Instagram</option>
+            <option value="tiktok">🎵 TikTok</option>
+            <option value="sampling">🎁 Sampling</option>
+            <option value="alianza">🤝 Alianza</option>
+            <option value="otros">Otros</option>
+          </select>
+        </div>
+      </div>
       <div class="fg"><label>Notas</label><input type="text" id="gnota" placeholder="Opcional"></div>
       <button class="btn bp bfull" onclick="addGasto()">+ Registrar Gasto</button>
     </div>
@@ -873,7 +891,7 @@ select option{background:var(--surface2);}
       </div>
     </div>
     <div class="tw"><table class="tbl">
-      <thead><tr><th>Fecha</th><th>Cat</th><th>Proveedor</th><th>Ticket</th><th>Método</th><th>Monto</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Cat</th><th>Tipo</th><th>Proveedor</th><th>Ticket</th><th>Método</th><th>Monto</th><th></th></tr></thead>
       <tbody id="gtable"></tbody>
     </table></div>
   </div>
@@ -3495,9 +3513,13 @@ function checkApertura(){
 window.addGasto=async()=>{
   const fecha=$('gf').value||today(); const monto=parseFloat($('gm').value);
   if(!monto||monto<=0){toast('⚠ Monto inválido');return;}
-  const g={id:Date.now(),fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim()};
+  const tipoEst=$('g-tipoest')?.value||'general';
+  const canal=tipoEst==='marketing'?($('g-canal')?.value||'otros'):null;
+  const g={id:Date.now(),fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal};
   await fsSet('gastos',g);
   $('gm').value='';$('gprov').value='';$('gtk').value='';$('gnota').value='';
+  if($('g-tipoest'))$('g-tipoest').value='general';
+  if($('g-canal-wrap'))$('g-canal-wrap').style.display='none';
   toast('✓ Gasto: '+fmt(monto));
 };
 window.delGasto=async id=>{await fsDel('gastos',id);toast('✓ Eliminado');};
@@ -3544,9 +3566,27 @@ function renderGastos(){
   if($('ghist-titulo'))$('ghist-titulo').textContent=periodoLabel||'Historial completo';
   if($('gcats-titulo'))$('gcats-titulo').textContent='Distribución — '+(periodo==='semana'?'Semana':periodo==='mes'?'Mes':'Total');
 
-  // Tabla historial
-  if($('gtable'))$('gtable').innerHTML=rows.length===0?`<tr><td colspan="7" style="color:var(--text3);text-align:center;padding:20px;">${periodo==='semana'?'Sin gastos esta semana':'Sin gastos en este período'}</td></tr>`:
-    rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td><span class="badge xr">${catL[r.cat]||r.cat}</span></td><td>${r.prov||'—'}</td><td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td><td>${mi[r.metodo]||''}</td><td class="mono ar fw7">${fmt(r.monto)}</td><td><button class="btn bd bxs" onclick="delGasto(${r.id})">✕</button></td></tr>`).join('');
+  // Tabla historial — incluye badge de tipo estratégico
+  const tipoBadge=(t,canal)=>{
+    const tipo=t??'general';
+    if(tipo==='marketing'){
+      const cBadge=canal?` <span style="font-size:9px;color:var(--purple);">·${canal}</span>`:'';
+      return `<span class="badge" style="background:#f3e5f5;color:#6a1b9a;">📣 Mkt${cBadge}</span>`;
+    }
+    if(tipo==='operacion') return '<span class="badge" style="background:#e0f2f1;color:#00695c;">⚙️ Op</span>';
+    return '<span class="badge" style="background:#f5f5f5;color:#616161;">📦 Gen</span>';
+  };
+  if($('gtable'))$('gtable').innerHTML=rows.length===0?`<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:20px;">${periodo==='semana'?'Sin gastos esta semana':'Sin gastos en este período'}</td></tr>`:
+    rows.map(r=>`<tr>
+      <td class="mono">${r.fecha}</td>
+      <td><span class="badge xr">${catL[r.cat]||r.cat}</span></td>
+      <td>${tipoBadge(r.tipoEstrategico,r.canal)}</td>
+      <td>${r.prov||'—'}</td>
+      <td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td>
+      <td>${mi[r.metodo]||''}</td>
+      <td class="mono ar fw7">${fmt(r.monto)}</td>
+      <td><button class="btn bd bxs" onclick="delGasto(${r.id})">✕</button></td>
+    </tr>`).join('');
 
   // Distribución por categoría
   const bC={}; rows.forEach(r=>{bC[r.cat]=(bC[r.cat]||0)+r.monto;});
