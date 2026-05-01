@@ -291,6 +291,35 @@ select option{background:var(--surface2);}
 .checkin-info{flex:1;}
 .checkin-time{font-family:'DM Mono',monospace;font-size:11px;color:var(--accent);font-weight:700;}
 .checkin-absent{color:var(--text3);font-size:11px;}
+/* ══ KPIs ESTRATÉGICOS ══ */
+.kpi-tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;border-bottom:2px solid var(--border);padding-bottom:10px;}
+.kpi-tab{padding:8px 16px;border:1.5px solid var(--border);background:#fff;border-radius:20px;cursor:pointer;font-size:12.5px;font-weight:600;color:var(--text2);transition:all .15s;}
+.kpi-tab:hover{border-color:var(--accent);color:var(--accent);}
+.kpi-tab.on{background:var(--accent);color:#fff;border-color:var(--accent);box-shadow:0 2px 8px rgba(46,125,50,.25);}
+.kpi-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:12px;}
+.kpi-card{background:#fff;border:1px solid var(--border);border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.05);transition:transform .15s;position:relative;overflow:hidden;}
+.kpi-card:hover{transform:translateY(-2px);box-shadow:0 4px 14px rgba(0,0,0,.08);}
+.kpi-card.cumple{border-left:4px solid #2e7d32;}
+.kpi-card.cerca{border-left:4px solid #f57c00;}
+.kpi-card.lejos{border-left:4px solid #c62828;}
+.kpi-title{font-size:11px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);font-weight:700;margin-bottom:6px;display:flex;justify-content:space-between;align-items:center;}
+.kpi-value{font-family:'Playfair Display',serif;font-size:28px;font-weight:900;line-height:1;margin-bottom:4px;}
+.kpi-target{font-size:11.5px;color:var(--text3);margin-bottom:8px;font-family:'DM Mono',monospace;}
+.kpi-delta{font-size:12px;font-weight:700;padding:3px 8px;border-radius:12px;display:inline-block;}
+.kpi-delta.up{background:#e8f5e9;color:#2e7d32;}
+.kpi-delta.down{background:#ffebee;color:#c62828;}
+.kpi-delta.neutral{background:#f5f5f5;color:#616161;}
+.kpi-trend{margin-top:10px;padding-top:10px;border-top:1px dashed var(--border);font-size:11px;color:var(--text2);}
+.kpi-info{font-size:11px;color:var(--text3);margin-top:6px;line-height:1.4;}
+.kpi-action-bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px;}
+.kpi-range-sel{padding:6px 10px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:#fff;}
+.kpi-target-input{width:100%;padding:6px 8px;font-size:13px;border:1px solid var(--border);border-radius:6px;}
+.kpi-list-item{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border);font-size:12px;}
+.kpi-list-item:last-child{border-bottom:none;}
+.kpi-mini-bar{height:6px;background:var(--surface3);border-radius:3px;overflow:hidden;margin-top:4px;}
+.kpi-mini-bar-fill{height:100%;background:var(--accent);border-radius:3px;transition:width .3s;}
+@media(max-width:600px){.kpi-grid{grid-template-columns:1fr;}.kpi-tab{padding:7px 12px;font-size:12px;}}
+
 /* RELOJ CHECADOR */
 .reloj-clock{font-family:'DM Mono',monospace;font-size:42px;font-weight:700;color:var(--accent);text-align:center;letter-spacing:2px;line-height:1;}
 .reloj-date{font-size:13px;color:var(--text2);text-align:center;margin-top:4px;}
@@ -436,6 +465,7 @@ select option{background:var(--surface2);}
     <button class="ntab" onclick="go('inventario')">📦 Inventario</button>
     <button class="ntab" onclick="go('recetas')">📖 Recetas</button>
     <button class="ntab" onclick="go('reportes')">📊 Reportes</button>
+    <button class="ntab" onclick="go('kpis')">📈 KPIs</button>
     <button class="ntab" onclick="go('config')">⚙️ Config</button>
     <button class="ntab" onclick="go('ajustes')">🔧 Ajustes</button>
   </div>
@@ -558,6 +588,83 @@ select option{background:var(--surface2);}
       </select>
     </div>
     <div class="tw" id="mp-ventas-tabla" style="margin-top:10px;"></div>
+  </div>
+</div>
+
+<!-- ══ KPIs ESTRATÉGICOS ══ -->
+<div id="page-kpis" class="page">
+  <div class="sh">
+    <span class="st">📈 KPIs Estratégicos</span>
+    <span id="kpi-readonly-badge" style="display:none;font-size:11px;color:var(--text3);background:var(--surface2);padding:3px 10px;border-radius:12px;">👁️ Solo lectura</span>
+  </div>
+
+  <!-- Barra de acciones: rango + acciones -->
+  <div class="kpi-action-bar">
+    <label style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:700;">Rango:</label>
+    <select id="kpi-rango" class="kpi-range-sel" onchange="renderKPIs()">
+      <option value="hoy">Hoy</option>
+      <option value="semana" selected>Esta semana</option>
+      <option value="mes">Este mes</option>
+      <option value="3m">Últimos 3 meses</option>
+    </select>
+    <div style="flex:1;"></div>
+    <button class="btn bs bsm" onclick="kpiCapturarNPS()" id="kpi-btn-nps">+ Capturar NPS</button>
+    <button class="btn bp bsm" onclick="kpiAbrirTargets()" id="kpi-btn-targets">⚙️ Targets</button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="kpi-tabs">
+    <button class="kpi-tab on" onclick="setKpiTab('comerciales')" data-tab="comerciales">💰 Comerciales</button>
+    <button class="kpi-tab" onclick="setKpiTab('marketing')" data-tab="marketing">📣 Marketing</button>
+    <button class="kpi-tab" onclick="setKpiTab('operacion')" data-tab="operacion">⚙️ Operación</button>
+    <button class="kpi-tab" onclick="setKpiTab('financieros')" data-tab="financieros">📊 Financieros</button>
+  </div>
+
+  <!-- Contenido de cada pestaña -->
+  <div id="kpi-content"></div>
+</div>
+
+<!-- Modal: Capturar NPS -->
+<div class="modal-bg" id="kpi-nps-modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" style="max-width:380px;text-align:center;">
+    <div class="modal-head"><span class="modal-title">📊 Capturar NPS</span><button class="btn bs bxs" onclick="$('kpi-nps-modal').style.display='none'">✕</button></div>
+    <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">Pregunta: "¿Qué tan probable es que recomiendes El Huerto?" (0-10)</p>
+    <div class="fg"><label>Respuesta (0-10)</label>
+      <input type="number" id="kpi-nps-val" min="0" max="10" placeholder="0-10" style="font-size:24px;font-weight:700;text-align:center;padding:14px;" autofocus>
+    </div>
+    <div class="fg"><label>Notas (opcional)</label><input type="text" id="kpi-nps-notas" placeholder="Cliente recurrente, primera vez…"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn bp bfull" onclick="kpiGuardarNPS(false)">Guardar</button>
+      <button class="btn bbl bfull" onclick="kpiGuardarNPS(true)">Guardar y siguiente</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Editar Targets -->
+<div class="modal-bg" id="kpi-targets-modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-head"><span class="modal-title">⚙️ Configurar Targets</span><button class="btn bs bxs" onclick="$('kpi-targets-modal').style.display='none'">✕</button></div>
+    <p style="font-size:11.5px;color:var(--text2);margin-bottom:14px;">Define las metas de cada KPI. Los semáforos se calculan vs estos valores.</p>
+    <div class="ii">
+      <div class="fg"><label>Ticket promedio ($)</label><input type="number" id="tgt-ticketPromedio" class="kpi-target-input"></div>
+      <div class="fg"><label>Conversión a combo (%)</label><input type="number" id="tgt-conversionCombo" class="kpi-target-input"></div>
+    </div>
+    <div class="ii">
+      <div class="fg"><label>% Ventas Pal'… (%)</label><input type="number" id="tgt-pctVentasPal" class="kpi-target-input"></div>
+      <div class="fg"><label>Clientes recurrentes (%)</label><input type="number" id="tgt-recurrentes" class="kpi-target-input"></div>
+    </div>
+    <div class="ii">
+      <div class="fg"><label>NPS mínimo</label><input type="number" id="tgt-npsMin" class="kpi-target-input"></div>
+      <div class="fg"><label>Margen producto (%)</label><input type="number" id="tgt-margenProducto" class="kpi-target-input"></div>
+    </div>
+    <div class="ii">
+      <div class="fg"><label>Mermas máx (%)</label><input type="number" id="tgt-mermasMaxPct" class="kpi-target-input"></div>
+      <div class="fg"><label>Tiempo servicio máx (min)</label><input type="number" id="tgt-tiempoServicioMaxMin" class="kpi-target-input"></div>
+    </div>
+    <div class="fg"><label>Margen bruto mensual mín (%)</label><input type="number" id="tgt-margenBrutoMin" class="kpi-target-input"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button class="btn bp bfull" onclick="kpiGuardarTargets()">💾 Guardar Targets</button>
+    </div>
   </div>
 </div>
 
@@ -748,6 +855,12 @@ select option{background:var(--surface2);}
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="ccc" style="width:auto;"> <span id="lbl-e2">Clau</span> cerró</label>
           </div>
           <div class="fg" style="margin-bottom:0;"><label>Nota</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
+        </div>
+        <div class="ii" style="margin-bottom:10px;">
+          <div class="fg" style="margin-bottom:0;"><label>🍂 Mermas del día (MXN)</label>
+            <input type="number" id="corte-mermas" placeholder="$0" step="0.01" min="0">
+            <div style="font-size:10px;color:var(--text3);margin-top:3px;">Producto descompuesto, derramado, etc.</div>
+          </div>
         </div>
         <div style="background:#fff3e0;border:1px solid var(--orange);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:11.5px;color:var(--orange);line-height:1.5;">
           💡 <strong>Cómo funciona el corte:</strong><br>
@@ -2406,9 +2519,9 @@ const ADMIN_PASS = '12345@';
 const EMP_PASSWORDS = {}; // Populated from empleados.pin field
 const EMP_PASS_STATIC = {2001:'123456', 2002:'1234567'}; // Adilene=2001, Claudia=2002
 // Páginas restringidas a admin solamente (nadie más entra)
-const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja'];
+const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','kpis'];
 // Páginas que Clau (gerente) puede ver además de ventas
-const GERENTE_PERMS = ['inventario']; // Claudia puede ver inventario (sin dinero)
+const GERENTE_PERMS = ['inventario','kpis']; // Claudia puede ver inventario y KPIs (lectura)
 // ID de Clau
 const GERENTE_ID = 2002;
 // Lista combinada para compatibilidad
@@ -2422,6 +2535,13 @@ function canAccess(page){
     if(!ADMIN_ONLY.includes(page) && !GERENTE_PERMS.includes(page)) return true; // pos etc
     return false;
   }
+  return false;
+}
+// True si la sesión actual solo puede leer (no modificar) — usado en KPIs para Claudia
+function isReadOnly(page){
+  if(!SESSION) return true;
+  if(SESSION.tipo==='admin') return false;
+  if(SESSION.tipo==='emp' && SESSION.id===GERENTE_ID && GERENTE_PERMS.includes(page)) return true;
   return false;
 }
 let SESSION = null;
@@ -2716,11 +2836,14 @@ function renderPOS(){
 window.setPcat=c=>{poscat=c;renderPOS();};
 window.renderPOS=renderPOS;
 
+let orderStartedAt=null; // timestamp de cuando se inició la orden actual
 function addItem(pid){
   const p=D.productos.find(x=>x.id===pid); if(!p) return;
   const ex=order.find(o=>o.id===pid);
   if(ex) ex.qty++;
   else order.push({id:pid,nombre:p.nombre,precio:p.precio,qty:1,nota:''});
+  // Capturar timestamp de inicio (primer item de la orden)
+  if(!orderStartedAt) orderStartedAt=Date.now();
   renderOrder();
   // Feedback inmediato — la cajera ve y siente que el producto se agregó
   try{navigator.vibrate&&navigator.vibrate(20);}catch(_){}
@@ -2773,7 +2896,7 @@ function renderOrder(){
 
 window.chgQty=(pid,d)=>{const i=order.findIndex(o=>o.id===pid);if(i<0)return;order[i].qty+=d;if(order[i].qty<=0)order.splice(i,1);renderOrder();};
 window.setNota=(pid,v)=>{const o=order.find(x=>x.id===pid);if(o)o.nota=v;};
-window.clearOrder=()=>{order=[];if($('op-desc-val'))$('op-desc-val').value='';renderOrder();toast('Orden limpiada');};
+window.clearOrder=()=>{order=[];orderStartedAt=null;if($('op-desc-val'))$('op-desc-val').value='';renderOrder();toast('Orden limpiada');};
 window.toggleOP=()=>{opOpen=!opOpen;$('order-panel').classList.toggle('hidden',!opOpen);$('op-arr').textContent=opOpen?'▲':'▼';};
 
 // ABRIR modal efectivo
@@ -2886,8 +3009,8 @@ async function cobrar(metodo,recibido=0){
     // ══ CRÍTICO: usa fsSetCritical que SÍ tira error si Firestore falla ══
     // Antes: si Firebase fallaba, fsSet silenciaba y el carrito se limpiaba igual.
     // Ahora: si falla, el carrito se mantiene y la cajera puede reintentar.
-    venta.tsCreacion=venta.tsCreacion||tid;
-    venta.tsCobro=Date.now();
+    venta.tsCreacion=orderStartedAt||tid; // cuándo empezó la orden (primer producto)
+    venta.tsCobro=Date.now(); // cuándo se cobró
     venta.cliente=$('op-cliente')?.value?.trim()||null;
     await fsSetCritical('ventas',venta);
     // Caja también es crítica — si falla, la venta queda guardada pero hay que reintentar caja
@@ -2908,7 +3031,7 @@ async function cobrar(metodo,recibido=0){
     playSaleSound();
     showSaleSuccess(venta);
     // Limpiar SOLO si la venta se guardó (esto solo se ejecuta si no hubo throw)
-    order=[]; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
+    order=[]; orderStartedAt=null; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
     if($('op-cliente'))$('op-cliente').value='';
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
     renderOrder();
@@ -3440,6 +3563,21 @@ window.realizarCorte=async()=>{
     realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'
   };
   await fsSet('cortes',corte);
+
+  // Mermas → kpiCaptura
+  const mermas=parseFloat($('corte-mermas')?.value)||0;
+  if(mermas>0){
+    await fsSet('kpiCaptura',{
+      id:Date.now()+10,
+      fecha:td,
+      tipo:'merma',
+      valor:mermas,
+      notas:'Capturado en corte',
+      capturadoPor:SESSION?.id||0,
+      ts:Date.now()
+    });
+    if($('corte-mermas'))$('corte-mermas').value='';
+  }
 
   // ══ Actualizar registro de caja del día con VENTAS REALES ══
   // Estos montos son los que aparecerán en strip semanal, KPIs y reportes.
@@ -4304,6 +4442,399 @@ function renderReloj(){
   }
 }
 window.renderReloj=renderReloj;
+
+// ══════════════════════════════════════════════════════════════
+// ─── KPIs ESTRATÉGICOS (v13) ───
+// ══════════════════════════════════════════════════════════════
+let kpiTabActiva='comerciales';
+
+window.setKpiTab=t=>{
+  kpiTabActiva=t;
+  document.querySelectorAll('.kpi-tab').forEach(b=>{
+    b.classList.toggle('on', b.dataset.tab===t);
+  });
+  renderKPIs();
+};
+
+// Función reutilizable: devuelve {color, icono, estado, claseCard}
+function semaforo(valor, target, mejor='mayor'){
+  if(target===0||target==null||valor==null||isNaN(valor)) return {color:'#616161',icono:'⚪',estado:'neutral',claseCard:''};
+  if(mejor==='mayor'){
+    if(valor>=target) return {color:'#2e7d32',icono:'🟢',estado:'cumple',claseCard:'cumple'};
+    if(valor>=target*0.8) return {color:'#f57c00',icono:'🟡',estado:'cerca',claseCard:'cerca'};
+    return {color:'#c62828',icono:'🔴',estado:'lejos',claseCard:'lejos'};
+  } else {
+    if(valor<=target) return {color:'#2e7d32',icono:'🟢',estado:'cumple',claseCard:'cumple'};
+    if(valor<=target*1.2) return {color:'#f57c00',icono:'🟡',estado:'cerca',claseCard:'cerca'};
+    return {color:'#c62828',icono:'🔴',estado:'lejos',claseCard:'lejos'};
+  }
+}
+
+// Devuelve fechas según el rango seleccionado
+function kpiRangoFechas(){
+  const td=today();
+  const r=$('kpi-rango')?.value||'semana';
+  if(r==='hoy') return [td];
+  if(r==='semana') return getWDays(td);
+  if(r==='mes'){
+    const cm=curM();
+    const fechas=[];
+    for(let i=0;i<31;i++){
+      const d=new Date(cm+'-01T12:00:00');d.setDate(d.getDate()+i);
+      const f=localDate(d);
+      if(mOf(f)!==cm) break;
+      fechas.push(f);
+    }
+    return fechas;
+  }
+  if(r==='3m'){
+    const fechas=[];
+    for(let i=0;i<92;i++){
+      const d=new Date(); d.setDate(d.getDate()-i);
+      fechas.push(localDate(d));
+    }
+    return fechas;
+  }
+  return [td];
+}
+
+// Render principal del módulo
+function renderKPIs(){
+  if(!$('kpi-content')) return;
+  // Mostrar/ocultar acciones según permisos
+  const readOnly=isReadOnly('kpis');
+  if($('kpi-readonly-badge'))$('kpi-readonly-badge').style.display=readOnly?'':'none';
+  if($('kpi-btn-targets'))$('kpi-btn-targets').style.display=readOnly?'none':'';
+  // Renderizar pestaña activa
+  const fechas=kpiRangoFechas();
+  if(kpiTabActiva==='comerciales') renderKpiComerciales(fechas);
+  else if(kpiTabActiva==='marketing') renderKpiMarketing(fechas);
+  else if(kpiTabActiva==='operacion') renderKpiOperacion(fechas);
+  else if(kpiTabActiva==='financieros') renderKpiFinancieros(fechas);
+}
+window.renderKPIs=renderKPIs;
+
+// Helper para crear una KPI card
+function kpiCard({titulo, valor, valorFmt, target, targetFmt, mejor='mayor', subtexto, info, mostrarSemaforo=true}){
+  const sem=mostrarSemaforo&&target!=null?semaforo(valor,target,mejor):{icono:'',estado:'neutral',claseCard:'',color:'#616161'};
+  const deltaPct=(target>0&&valor!=null)?((valor-target)/target*100):null;
+  const deltaTxt=deltaPct==null?'':((deltaPct>=0?'+':'')+deltaPct.toFixed(1)+'% vs target');
+  const deltaClass=deltaPct==null?'neutral':(mejor==='mayor'?(deltaPct>=0?'up':'down'):(deltaPct<=0?'up':'down'));
+  return `<div class="kpi-card ${sem.claseCard}">
+    <div class="kpi-title"><span>${titulo}</span><span>${sem.icono}</span></div>
+    <div class="kpi-value" style="${sem.estado!=='neutral'?'color:'+sem.color:''}">${valorFmt}</div>
+    ${target!=null?`<div class="kpi-target">▶ Target: ${targetFmt}</div>`:''}
+    ${deltaPct!=null?`<span class="kpi-delta ${deltaClass}">${deltaTxt}</span>`:''}
+    ${subtexto?`<div class="kpi-trend">${subtexto}</div>`:''}
+    ${info?`<div class="kpi-info">${info}</div>`:''}
+  </div>`;
+}
+
+// ─── PESTAÑA COMERCIALES ───
+function renderKpiComerciales(fechas){
+  const T=CFG.kpiTargets;
+  const ventas=D.ventas.filter(v=>fechas.includes(v.fecha)&&!v.anulada);
+  const totalVentas=ventas.reduce((s,v)=>s+v.total,0);
+  const numTickets=ventas.length;
+  const ticketProm=numTickets>0?totalVentas/numTickets:0;
+  const ticketsPorDia=fechas.length>0?numTickets/fechas.length:0;
+  const clientesUnicos=new Set(ventas.map(v=>v.cliente).filter(Boolean)).size;
+  // Conversión a combo: ventas que tienen un producto categoría 'combo'
+  const ventasConCombo=ventas.filter(v=>v.items.some(i=>{
+    const p=D.productos.find(x=>x.id===i.id);
+    return p&&p.cat==='combo';
+  })).length;
+  const conversionCombo=numTickets>0?(ventasConCombo/numTickets*100):0;
+  // % ventas de línea Pal'...
+  let totalPal=0;
+  ventas.forEach(v=>{
+    v.items.forEach(i=>{
+      const p=D.productos.find(x=>x.id===i.id);
+      if(p&&((p.lineaEstrategica==='pal')||p.nombre.toLowerCase().startsWith("pal'"))){
+        totalPal+=i.precio*i.qty;
+      }
+    });
+  });
+  const pctPal=totalVentas>0?(totalPal/totalVentas*100):0;
+  // Top 5 productos
+  const prodCount={};
+  ventas.forEach(v=>v.items.forEach(i=>{prodCount[i.nombre]=(prodCount[i.nombre]||0)+i.qty;}));
+  const top5=Object.entries(prodCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+
+  let html=`<div class="kpi-grid">
+    ${kpiCard({titulo:'Ticket Promedio',valor:ticketProm,valorFmt:fmt(ticketProm),target:T.ticketPromedio,targetFmt:'$'+T.ticketPromedio,mejor:'mayor'})}
+    ${kpiCard({titulo:'Tickets / día (avg)',valor:ticketsPorDia,valorFmt:ticketsPorDia.toFixed(1),target:null,info:`${numTickets} tickets en ${fechas.length} días`})}
+    ${kpiCard({titulo:'Clientes Únicos',valor:clientesUnicos,valorFmt:String(clientesUnicos),target:null,info:'Identificados por tel/nombre'})}
+    ${kpiCard({titulo:'Conversión a Combo',valor:conversionCombo,valorFmt:conversionCombo.toFixed(1)+'%',target:T.conversionCombo,targetFmt:T.conversionCombo+'%',mejor:'mayor',info:`${ventasConCombo} de ${numTickets} tickets incluyen combo`})}
+    ${kpiCard({titulo:"% Ventas Pal'…",valor:pctPal,valorFmt:pctPal.toFixed(1)+'%',target:T.pctVentasPal,targetFmt:T.pctVentasPal+'%',mejor:'mayor',info:'Línea estratégica de smoothies'})}
+  </div>`;
+
+  // Top 5 productos como tarjeta especial
+  if(top5.length>0){
+    html+=`<div class="card" style="margin-top:14px;">
+      <div class="ct">⭐ Top 5 Productos del período</div>
+      ${top5.map(([n,q],i)=>{
+        const max=top5[0][1];
+        const pct=Math.round(q/max*100);
+        return `<div class="kpi-list-item">
+          <span style="font-weight:600;">#${i+1} ${n}</span>
+          <div style="display:flex;align-items:center;gap:10px;min-width:140px;">
+            <div class="kpi-mini-bar" style="flex:1;"><div class="kpi-mini-bar-fill" style="width:${pct}%;"></div></div>
+            <span class="mono ag fw7" style="min-width:35px;text-align:right;">${q}u</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+  $('kpi-content').innerHTML=html;
+}
+
+// ─── PESTAÑA MARKETING ───
+function renderKpiMarketing(fechas){
+  const T=CFG.kpiTargets;
+  const ventas=D.ventas.filter(v=>fechas.includes(v.fecha)&&!v.anulada);
+  const totalVentas=ventas.reduce((s,v)=>s+v.total,0);
+  // Clientes recurrentes (3+ ventas en período)
+  const clientCount={};
+  ventas.forEach(v=>{if(v.cliente)clientCount[v.cliente]=(clientCount[v.cliente]||0)+1;});
+  const clientesUnicos=Object.keys(clientCount).length;
+  const recurrentes=Object.values(clientCount).filter(c=>c>=3).length;
+  const pctRecurrentes=clientesUnicos>0?(recurrentes/clientesUnicos*100):0;
+  // NPS
+  const npsCapturas=D.kpiCaptura.filter(c=>c.tipo==='nps'&&fechas.includes(c.fecha));
+  const npsTotal=npsCapturas.length;
+  let nps=null;
+  if(npsTotal>0){
+    const promotores=npsCapturas.filter(c=>c.valor>=9).length;
+    const detractores=npsCapturas.filter(c=>c.valor<=6).length;
+    nps=Math.round(((promotores-detractores)/npsTotal)*100);
+  }
+  // Gastos marketing
+  const gastosMkt=D.gastos.filter(g=>fechas.includes(g.fecha)&&g.tipoEstrategico==='marketing');
+  const totalMkt=gastosMkt.reduce((s,g)=>s+g.monto,0);
+  // Clientes nuevos: capturados manualmente o detectados
+  const clientesNuevos=new Set();
+  ventas.forEach(v=>{
+    if(v.cliente){
+      const ventasAnteriores=D.ventas.filter(x=>x.cliente===v.cliente && !x.anulada && x.id<v.id);
+      if(ventasAnteriores.length===0) clientesNuevos.add(v.cliente);
+    }
+  });
+  const numClientesNuevos=clientesNuevos.size;
+  const cac=numClientesNuevos>0?totalMkt/numClientesNuevos:null;
+  const pctMktVsVentas=totalVentas>0?(totalMkt/totalVentas*100):0;
+  // Mix por canal
+  const canalCount={};
+  gastosMkt.forEach(g=>{const c=g.canal||'otros';canalCount[c]=(canalCount[c]||0)+g.monto;});
+
+  let html=`<div class="kpi-grid">
+    ${kpiCard({titulo:'Clientes Recurrentes',valor:pctRecurrentes,valorFmt:pctRecurrentes.toFixed(1)+'%',target:T.recurrentes,targetFmt:T.recurrentes+'%',mejor:'mayor',info:`${recurrentes} de ${clientesUnicos} clientes con 3+ visitas`})}
+    ${kpiCard({titulo:'NPS',valor:nps,valorFmt:nps==null?'Sin datos':nps,target:T.npsMin,targetFmt:T.npsMin,mejor:'mayor',info:`${npsTotal} respuestas capturadas`})}
+    ${kpiCard({titulo:'CAC',valor:cac,valorFmt:cac==null?'—':fmt(cac),target:null,info:`${numClientesNuevos} clientes nuevos · ${fmt(totalMkt)} en marketing`})}
+    ${kpiCard({titulo:'% Mkt vs Ventas',valor:pctMktVsVentas,valorFmt:pctMktVsVentas.toFixed(1)+'%',target:8,targetFmt:'<8%',mejor:'menor'})}
+    ${kpiCard({titulo:'Clientes Nuevos',valor:numClientesNuevos,valorFmt:String(numClientesNuevos),target:null,info:'Primera venta detectada'})}
+  </div>`;
+
+  // Mix por canal
+  const canales=Object.entries(canalCount).sort((a,b)=>b[1]-a[1]);
+  if(canales.length>0){
+    const totalCanales=canales.reduce((s,[,v])=>s+v,0);
+    html+=`<div class="card" style="margin-top:14px;">
+      <div class="ct">📊 Distribución de Gastos Marketing por Canal</div>
+      ${canales.map(([c,v])=>{
+        const pct=totalCanales>0?Math.round(v/totalCanales*100):0;
+        return `<div class="kpi-list-item">
+          <span style="font-weight:600;">${c}</span>
+          <div style="display:flex;align-items:center;gap:10px;min-width:200px;">
+            <div class="kpi-mini-bar" style="flex:1;"><div class="kpi-mini-bar-fill" style="width:${pct}%;background:#6a1b9a;"></div></div>
+            <span class="mono ar fw7" style="min-width:80px;text-align:right;">${fmt(v)} (${pct}%)</span>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  } else {
+    html+=`<div class="card" style="margin-top:14px;text-align:center;color:var(--text3);font-size:12px;padding:20px;">Sin gastos de marketing registrados en el período. Etiqueta gastos como "Marketing" en el módulo Gastos.</div>`;
+  }
+  $('kpi-content').innerHTML=html;
+}
+
+// ─── PESTAÑA OPERACIÓN ───
+function renderKpiOperacion(fechas){
+  const T=CFG.kpiTargets;
+  const ventas=D.ventas.filter(v=>fechas.includes(v.fecha)&&!v.anulada);
+  const totalVentas=ventas.reduce((s,v)=>s+v.total,0);
+  // Margen contribución promedio
+  const prodsConCosto=D.productos.filter(p=>p.activo&&(p.costo??0)>0);
+  let margenProm=0;
+  if(prodsConCosto.length>0){
+    margenProm=prodsConCosto.reduce((s,p)=>s+((p.precio-p.costo)/p.precio*100),0)/prodsConCosto.length;
+  }
+  const sinCosto=D.productos.filter(p=>p.activo&&(p.costo??0)===0).length;
+  // Mermas
+  const mermas=D.kpiCaptura.filter(c=>c.tipo==='merma'&&fechas.includes(c.fecha)).reduce((s,c)=>s+c.valor,0);
+  const pctMermas=totalVentas>0?(mermas/totalVentas*100):0;
+  // Tiempo de servicio promedio
+  const ventasConTiempo=ventas.filter(v=>v.tsCreacion&&v.tsCobro&&v.tsCobro>v.tsCreacion);
+  const tiempoProm=ventasConTiempo.length>0?
+    ventasConTiempo.reduce((s,v)=>s+((v.tsCobro-v.tsCreacion)/60000),0)/ventasConTiempo.length:null;
+  // Productividad por empleado
+  const empProd={};
+  ventas.forEach(v=>{
+    if(v.vendedorId){
+      if(!empProd[v.vendedorId]) empProd[v.vendedorId]={ventas:0,total:0};
+      empProd[v.vendedorId].ventas++;
+      empProd[v.vendedorId].total+=v.total;
+    }
+  });
+
+  let html=`<div class="kpi-grid">
+    ${kpiCard({titulo:'Margen Contribución Prom.',valor:margenProm,valorFmt:margenProm.toFixed(1)+'%',target:T.margenProducto,targetFmt:T.margenProducto+'%',mejor:'mayor',info:`Calculado de ${prodsConCosto.length} productos con costo definido`})}
+    ${kpiCard({titulo:'Productos sin costo',valor:sinCosto,valorFmt:String(sinCosto),target:0,targetFmt:'0',mejor:'menor',info:sinCosto>0?'⚠ Define el costo en Ajustes → Productos':'✓ Todos los productos tienen costo'})}
+    ${kpiCard({titulo:'Mermas (% ventas)',valor:pctMermas,valorFmt:pctMermas.toFixed(2)+'%',target:T.mermasMaxPct,targetFmt:'<'+T.mermasMaxPct+'%',mejor:'menor',info:`${fmt(mermas)} en mermas / ${fmt(totalVentas)} en ventas`})}
+    ${kpiCard({titulo:'Tiempo Servicio',valor:tiempoProm,valorFmt:tiempoProm==null?'Sin datos':tiempoProm.toFixed(1)+' min',target:T.tiempoServicioMaxMin,targetFmt:'<'+T.tiempoServicioMaxMin+' min',mejor:'menor',info:`${ventasConTiempo.length} ventas con tiempo registrado`})}
+  </div>`;
+
+  // Productividad por empleado
+  const empData=Object.entries(empProd).map(([id,d])=>{
+    const e=D.empleados.find(x=>x.id==id);
+    return {nombre:e?.nombre||'?',color:e?.color||'#616161',...d};
+  }).sort((a,b)=>b.total-a.total);
+  if(empData.length>0){
+    html+=`<div class="card" style="margin-top:14px;">
+      <div class="ct">👩 Productividad por Empleada</div>
+      ${empData.map(e=>`<div class="kpi-list-item">
+        <span style="display:flex;align-items:center;gap:8px;">
+          <span style="width:14px;height:14px;border-radius:50%;background:${e.color};"></span>
+          <span style="font-weight:600;">${e.nombre}</span>
+        </span>
+        <span style="font-size:11.5px;color:var(--text2);">
+          ${e.ventas} ventas · <span class="mono ag fw7">${fmt(e.total)}</span> · prom: <span class="mono">${fmt(e.total/e.ventas)}</span>
+        </span>
+      </div>`).join('')}
+    </div>`;
+  }
+  $('kpi-content').innerHTML=html;
+}
+
+// ─── PESTAÑA FINANCIEROS ───
+function renderKpiFinancieros(fechas){
+  const T=CFG.kpiTargets;
+  const ventas=D.ventas.filter(v=>fechas.includes(v.fecha)&&!v.anulada);
+  const totalVentas=ventas.reduce((s,v)=>s+v.total,0);
+  // Costo de productos vendidos (si tienen costo definido)
+  let costoProductos=0;
+  ventas.forEach(v=>{
+    v.items.forEach(i=>{
+      const p=D.productos.find(x=>x.id===i.id);
+      if(p&&(p.costo??0)>0) costoProductos+=p.costo*i.qty;
+    });
+  });
+  const margenBruto=totalVentas>0?((totalVentas-costoProductos)/totalVentas*100):0;
+  // Gastos del período
+  const gastos=D.gastos.filter(g=>fechas.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
+  // Punto de equilibrio (gastos fijos / margen contribución)
+  const prodsConCosto=D.productos.filter(p=>p.activo&&(p.costo??0)>0);
+  const margenContribProm=prodsConCosto.length>0?
+    prodsConCosto.reduce((s,p)=>s+((p.precio-p.costo)/p.precio),0)/prodsConCosto.length:0;
+  const puntoEquilibrio=margenContribProm>0?gastos/margenContribProm:null;
+  // Crecimiento MoM (mes actual vs anterior)
+  const cm=curM();
+  const mesAnterior=(()=>{const d=new Date(cm+'-01T12:00:00');d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7);})();
+  const ventasMesActual=D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).reduce((s,v)=>s+v.total,0);
+  const ventasMesAnterior=D.ventas.filter(v=>mOf(v.fecha)===mesAnterior&&!v.anulada).reduce((s,v)=>s+v.total,0);
+  const crecimientoMoM=ventasMesAnterior>0?((ventasMesActual-ventasMesAnterior)/ventasMesAnterior*100):null;
+  // Cash burn (si gastos > ventas)
+  const utilidad=totalVentas-gastos;
+
+  let html=`<div class="kpi-grid">
+    ${kpiCard({titulo:'Margen Bruto',valor:margenBruto,valorFmt:margenBruto.toFixed(1)+'%',target:T.margenBrutoMin,targetFmt:T.margenBrutoMin+'%',mejor:'mayor',info:`${fmt(totalVentas)} ventas - ${fmt(costoProductos)} costos`})}
+    ${kpiCard({titulo:'Total Ventas',valor:totalVentas,valorFmt:fmt(totalVentas),target:null,info:`${ventas.length} tickets`})}
+    ${kpiCard({titulo:'Total Gastos',valor:gastos,valorFmt:fmt(gastos),target:null})}
+    ${kpiCard({titulo:'Utilidad Bruta',valor:utilidad,valorFmt:fmt(utilidad),target:null,info:utilidad>=0?'✓ Positivo':'⚠ En pérdida'})}
+    ${kpiCard({titulo:'Punto de Equilibrio',valor:puntoEquilibrio,valorFmt:puntoEquilibrio==null?'—':fmt(puntoEquilibrio),target:null,info:'Ventas necesarias para cubrir gastos'})}
+    ${kpiCard({titulo:'Crecimiento MoM',valor:crecimientoMoM,valorFmt:crecimientoMoM==null?'—':((crecimientoMoM>=0?'+':'')+crecimientoMoM.toFixed(1)+'%'),target:15,targetFmt:'≥15%',mejor:'mayor',info:`${cm}: ${fmt(ventasMesActual)} vs ${mesAnterior}: ${fmt(ventasMesAnterior)}`})}
+  </div>`;
+
+  // Comparativa ventas vs gastos por mes (últimos 6 meses)
+  const meses=[];
+  for(let i=5;i>=0;i--){
+    const d=new Date(); d.setMonth(d.getMonth()-i);
+    meses.push(d.toISOString().slice(0,7));
+  }
+  const mesData=meses.map(m=>({
+    mes:m,
+    ventas:D.ventas.filter(v=>mOf(v.fecha)===m&&!v.anulada).reduce((s,v)=>s+v.total,0),
+    gastos:D.gastos.filter(g=>mOf(g.fecha)===m).reduce((s,g)=>s+g.monto,0)
+  }));
+  const maxV=Math.max(...mesData.flatMap(m=>[m.ventas,m.gastos]),1);
+  html+=`<div class="card" style="margin-top:14px;">
+    <div class="ct">📊 Ventas vs Gastos (últimos 6 meses)</div>
+    <div style="display:flex;align-items:flex-end;gap:8px;height:160px;margin:14px 0 8px;">
+      ${mesData.map(m=>`<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;">
+        <div style="display:flex;gap:2px;align-items:flex-end;height:130px;width:100%;">
+          <div title="Ventas: ${fmt(m.ventas)}" style="flex:1;background:var(--accent);border-radius:3px 3px 0 0;height:${Math.round(m.ventas/maxV*100)}%;min-height:2px;"></div>
+          <div title="Gastos: ${fmt(m.gastos)}" style="flex:1;background:var(--red);border-radius:3px 3px 0 0;height:${Math.round(m.gastos/maxV*100)}%;min-height:2px;"></div>
+        </div>
+        <span style="font-size:9px;color:var(--text3);font-family:'DM Mono',monospace;">${m.mes.slice(5)}</span>
+      </div>`).join('')}
+    </div>
+    <div style="font-size:11px;color:var(--text3);text-align:center;">🟢 Ventas · 🔴 Gastos</div>
+  </div>`;
+
+  $('kpi-content').innerHTML=html;
+}
+
+// ═══ MODALES DE CAPTURA ═══
+window.kpiCapturarNPS=()=>{
+  if($('kpi-nps-val'))$('kpi-nps-val').value='';
+  if($('kpi-nps-notas'))$('kpi-nps-notas').value='';
+  $('kpi-nps-modal').style.display='flex';
+  setTimeout(()=>$('kpi-nps-val')?.focus(),120);
+};
+
+window.kpiGuardarNPS=async(continuar)=>{
+  const val=parseInt($('kpi-nps-val')?.value);
+  if(isNaN(val)||val<0||val>10){toast('⚠ Ingresa un valor entre 0 y 10',2400,'warn');return;}
+  const captura={
+    id:Date.now(),
+    fecha:today(),
+    tipo:'nps',
+    valor:val,
+    notas:$('kpi-nps-notas')?.value?.trim()||'',
+    capturadoPor:SESSION?.id||0,
+    ts:Date.now()
+  };
+  await fsSet('kpiCaptura',captura);
+  toast(`✓ NPS ${val} guardado`,1500);
+  if(continuar){
+    $('kpi-nps-val').value='';
+    $('kpi-nps-notas').value='';
+    $('kpi-nps-val').focus();
+  } else {
+    $('kpi-nps-modal').style.display='none';
+  }
+  renderKPIs();
+};
+
+window.kpiAbrirTargets=()=>{
+  if(isReadOnly('kpis')){toast('👁️ Solo lectura — no puedes editar targets',2400,'warn');return;}
+  const T=CFG.kpiTargets;
+  Object.keys(T).forEach(k=>{const el=$('tgt-'+k);if(el)el.value=T[k];});
+  $('kpi-targets-modal').style.display='flex';
+};
+
+window.kpiGuardarTargets=async()=>{
+  const nuevos={};
+  Object.keys(CFG.kpiTargets).forEach(k=>{
+    const v=parseFloat($('tgt-'+k)?.value);
+    nuevos[k]=isNaN(v)?CFG.kpiTargets[k]:v;
+  });
+  CFG.kpiTargets=nuevos;
+  try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}
+  $('kpi-targets-modal').style.display='none';
+  toast('✓ Targets actualizados',2000);
+  renderKPIs();
+};
 
 // ─── MI PERFIL (empleadas) ───
 function renderMiPerfil(){
@@ -5498,7 +6029,7 @@ function renderAll(){
   renderNomina(); renderVendedores();
   renderProv(); renderSubs(); renderInv();
   renderRecetas(); renderReportes(); renderConfig();
-  renderAjustes(); renderReloj(); renderMiPerfil(); loadClaudeKey();
+  renderAjustes(); renderReloj(); renderMiPerfil(); renderKPIs(); loadClaudeKey();
 }
 
 function initD(){
