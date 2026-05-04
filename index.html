@@ -2289,25 +2289,165 @@ const INVENTARIO_OFICIAL = [
   {id:7517,nombre:'Vaso expreso',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
 ];
 
+// Normaliza nombres para detectar duplicados (sin acentos, espacios, símbolos)
+function normInvNombre(s){
+  if(!s) return '';
+  return s.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'') // quitar acentos
+    .replace(/[^a-z0-9]/g,'') // solo letras y números
+    .trim();
+}
+
+// Mapa de aliases — productos viejos que deben mapearse a uno oficial
+// formato: nombreNormalizado(viejo) → nombreOficial
+const ALIAS_INV = {
+  'platano':'Plátano',
+  'pia':'Piña','pina':'Piña','pinaa':'Piña',
+  'sandia':'Sandía',
+  'fresa':'Fresa','fresas':'Fresa',
+  'mango':'Mango verde','mangoverde':'Mango verde','mangotomi':'Mango verde',
+  'manzana':'Manzana','manzanagala':'Manzana','manzanaamer':'Manzana',
+  'aguacate':'Aguacate',
+  'limon':'Limón agrio','limonagrio':'Limón agrio','limonchico':'Limón agrio',
+  'jitomate':'Jitomate','jitomatebola':'Jitomate',
+  'zanahoria':'Zanahoria',
+  'jicama':'Jícama',
+  'pepino':'Pepino',
+  'aceitunas':'Aceitunas negras','aceitunasnegras':'Aceitunas negras','aceitunanegra':'Aceitunas negras','aceitunanegrarodajas':'Aceitunas negras',
+  'quesophiladelphia':'Queso Philadelphia','quesocrema':'Queso Philadelphia','quesocremaphiladelphia':'Queso Philadelphia',
+  'quesomozzarella':'Queso mozzarella','mozzarella':'Queso mozzarella','quesomozzrellaralla':'Queso mozzarella','quesocubmozzarellasaucito':'Queso mozzarella','mozzarellarallado':'Queso mozzarella',
+  'yogurt':'Yogurth natural','yogurthnatural':'Yogurth natural','yogurtnatural':'Yogurth natural',
+  'cremadealmendra':'Crema de almendras','cremadealmendras':'Crema de almendras',
+  'cremadecacahuate':'Crema de cacahuate','cremadecacahuateskippy':'Crema de cacahuate',
+  'jamonserrano':'Jamón serrano',
+  'chorizo':'Chorizo pamplona','chorizopamplona':'Chorizo pamplona',
+  'pechugadepavo':'Pechuga de pavo','pechugapavo':'Pechuga de pavo','pechugadepavonurgati':'Pechuga de pavo',
+  'proteina':'Proteína','proteinaenpolvo':'Proteína',
+  'avena':'Avena','avenahojuela':'Avena',
+  'azucar':'Azúcar',
+  'miel':'Miel','mieldeabeja':'Miel',
+  'chai':'Chai',
+  'matcha':'Matcha',
+  'canela':'Canela','canelamolida':'Canela',
+  'aceite':'Aceite de oliva','aceitedeoliva':'Aceite de oliva','aceiteolivopuro':'Aceite de oliva',
+  'cacahuate':'Cacahuate japonés','cacahuatejapones':'Cacahuate japonés','cacahuatejaponesesnafer':'Cacahuate japonés',
+  'tajin':'Chilito Tojín','chilitotojin':'Chilito Tojín','chiletajin':'Chilito Tojín','chileenpolvotajin':'Chilito Tojín',
+  'chamoy':'Chamoy','chamoymega':'Chamoy',
+  'valentina':'Valentina','salsavalentina':'Valentina','salsavalentinaroja':'Valentina',
+  'salsachipotle':'Salsa chipotle','salsadechipotle':'Salsa chipotle','aderezochipotle':'Salsa chipotle','salsazaaschilachipotle':'Salsa chipotle',
+  'aderezos':'Aderezos cremosos','aderezoscremosos':'Aderezos cremosos','salsabotanera':'Aderezos cremosos','salsabotaneraclasica':'Aderezos cremosos',
+  'salsamaggi':'Salsa Maggi','salsamag':'Salsa Maggi','jugosazonadormaggi':'Salsa Maggi','salsaclementejacq':'Salsa Maggi',
+  'pinol':'Pinol','lavatrastesliquido':'Pinol','lavatrasteslivido':'Pinol','jabondetrastes':'Pinol',
+  'palitas':'Palitas de madera','palitasdemadera':'Palitas de madera',
+  'bolsasdebasura':'Bolsas de basura','bolsabasura':'Bolsas de basura',
+  'blueberry':'Blueberry','morasazules':'Blueberry',
+  'susalias':'Susalias','papassusalias':'Susalias','susalitas':'Susalias','susaliasenchilada':'Susalias','totoposhorneados':'Susalias',
+  'cafe':'Café','cafemolido':'Café',
+  'panparapanini':'Pan para panini','pandepanini':'Pan para panini',
+  'guantes':'Guantes',
+  'hielos':'Hielos','hielo':'Hielos','hielocolden':'Hielos',
+  'quesoamericano':'Queso americano','quesosuizoamericano':'Queso americano','quesosuizoameric':'Queso americano',
+  'lechedeslactosada':'Leche deslactosada','lechealpurardeslactosadalight':'Leche deslactosada','lechealpura':'Leche deslactosada',
+  'lechedealmendra':'Leche de almendra','bebidadealmendraorganica':'Leche de almendra','bebidaalmendra':'Leche de almendra',
+  'pantiarenee':'Pan tía Renee','pantiareneechilaquiles':'Pan Tía Renee — Chilaquiles','pantiareneequeso':'Pan Tía Renee — Queso','pantiareneepizza':'Pan Tía Renee — Pizza',
+  'vasoplastico16oz':'Vaso plástico 16 oz','vaso16oz':'Vaso plástico 16 oz',
+  'tapa16oz':'Tapa 16 oz',
+  'mangaspcafe':'Mangas p/café','mangasparacafe':'Mangas p/café',
+  'platosdesechables':'Platos desechables','platodesechable':'Platos desechables',
+  'tenedores':'Tenedores','tenedordesechable':'Tenedores',
+  'cucharas':'Cucharas','cucharadesechable':'Cucharas',
+  'servitoallas':'Servitoallas','servilleta':'Servitoallas','toallaenrollo':'Servitoallas',
+  'tapasmoothie':'Tapa Smoothie','tapadomo':'Tapa Smoothie',
+  'tapa14oz':'Tapa 14 oz',
+  'tapaunicel':'Tapa unicel','tapaparacafe':'Tapa unicel','tapatransparente95':'Tapa unicel',
+  'vasonevero':'Vaso nevero',
+  'vaso14oz':'Vaso 14 oz','vasoplastico14oz':'Vaso 14 oz',
+  'vasodegustador':'Vaso degustador',
+  'bowl12l':'Bowl 1/2 L','bowlsopero':'Bowl 1/2 L',
+  'vasocafe16oz':'Vaso p/café 16 oz','vasoreyma16oz':'Vaso p/café 16 oz','reymavaso16oz':'Vaso p/café 16 oz',
+  'vasocafe12oz':'Vaso p/café 12 oz','vaso12oz':'Vaso p/café 12 oz',
+  'vasoexpreso':'Vaso expreso',
+  'fibrascotchbrite':'Fibra Scotch','fibra':'Fibra Scotch',
+  'tazonreyma':'Tazón Reyma',
+  'fajillasparavaso':'Fajillas para vaso',
+  'pulpamicheladatajin':'Pulpa Michelada Tajín','pulpatamamaxmichelada':'Pulpa Michelada Tajín',
+  'frutimich':'Pulpa Michelada Tajín',
+  'salami':'Salami seco','salamiseco':'Salami seco',
+  'jamongranreserva':'Jamón gran reserva',
+  'pepperoni':'Pepperoni','pepperonigalicia':'Pepperoni',
+  'overnightbase':'Avena overnight base','avenaovernightbase':'Avena overnight base',
+};
+
+// Encuentra el producto canónico (oficial) para un producto cualquiera
+function findCanonical(producto){
+  // 1. Si ya tiene ID oficial 7100-7599, ese es el canónico
+  if(producto.id>=7100&&producto.id<7600) return producto;
+  // 2. Buscar por alias
+  const norm=normInvNombre(producto.nombre);
+  const oficialNombre=ALIAS_INV[norm];
+  if(oficialNombre){
+    const oficial=D.inventario.find(p=>p.nombre===oficialNombre&&p.id>=7100);
+    if(oficial) return oficial;
+  }
+  // 3. Buscar por nombre normalizado exacto contra los oficiales
+  const oficial=D.inventario.find(p=>p.id>=7100&&normInvNombre(p.nombre)===norm);
+  return oficial||null;
+}
+
+// Función de deduplicación — corre automáticamente al cargar
+async function dedupeInventario(silent=true){
+  let mergeados=0, eliminados=0;
+  // Para cada producto del inventario que NO sea oficial, ver si tiene canónico
+  const noOficiales=D.inventario.filter(p=>p.id<7100||p.id>=7600);
+  for(const viejo of noOficiales){
+    const canonical=findCanonical(viejo);
+    if(!canonical) continue; // sin canónico, mantener
+    if(canonical.id===viejo.id) continue; // ya es canónico
+    // Migrar capturas de invDiario al ID canónico
+    const capturasViejas=D.invDiario.filter(c=>c.productoId===viejo.id);
+    for(const c of capturasViejas){
+      await fsSet('invDiario',{...c,productoId:canonical.id});
+    }
+    // Migrar recetas que apuntan al viejo
+    for(const rec of D.recetas){
+      let modificada=false;
+      if(rec.ings){
+        rec.ings.forEach(ing=>{
+          if(ing.invId==viejo.id){ing.invId=canonical.id;ing.nombre=canonical.nombre;modificada=true;}
+        });
+        if(modificada) await fsSet('recetas',rec);
+      }
+    }
+    // Sumar cantidades al canónico (la suma puede no ser deseable, mejor mantener el más reciente)
+    // Por seguridad: si el canónico tiene qty=0, copiar el qty del viejo
+    if((canonical.qty||0)===0 && (viejo.qty||0)>0){
+      canonical.qty=viejo.qty;
+      if(!canonical.precio && viejo.precio) canonical.precio=viejo.precio;
+      if(!canonical.min && viejo.min) canonical.min=viejo.min;
+      await fsSet('inventario',canonical);
+    }
+    // Eliminar el viejo
+    await fsDel('inventario',viejo.id);
+    eliminados++;
+    mergeados++;
+  }
+  if(!silent && mergeados>0) toast(`🧹 Limpieza: ${eliminados} duplicados eliminados, datos mergeados`,4000);
+  return {mergeados,eliminados};
+}
+
 async function seedInventarioOficial(){
-  const migKey='h5inv_oficial_v1';
+  const migKey='h5inv_oficial_v2'; // v2 incluye dedupe
   if(localStorage.getItem(migKey)) return;
   let added=0,updated=0;
+  // Primero crear/actualizar todos los oficiales
   for(const item of INVENTARIO_OFICIAL){
     const existeId=D.inventario.find(x=>x.id===item.id);
-    const existeNombre=D.inventario.find(x=>x.nombre.toLowerCase()===item.nombre.toLowerCase() && x.id!==item.id);
     if(existeId){
-      // Ya existe con ID oficial — solo agregar campos catOf/unidadOf si faltan
       const upd={...existeId,catOf:item.catOf,unidadOf:item.unidadOf,esInterno:item.esInterno||false};
       await fsSet('inventario',upd);
       updated++;
-    } else if(existeNombre){
-      // Producto con mismo nombre pero ID viejo — agregar campos pero NO duplicar
-      const upd={...existeNombre,catOf:item.catOf,unidadOf:item.unidadOf,esInterno:item.esInterno||false};
-      await fsSet('inventario',upd);
-      updated++;
     } else {
-      // Crear nuevo
+      // No buscar por nombre — el dedupe se encarga de migrar capturas/recetas/qty
       await fsSet('inventario',{
         id:item.id,nombre:item.nombre,
         cat:item.cat,unit:item.unit,
@@ -2318,9 +2458,23 @@ async function seedInventarioOficial(){
       added++;
     }
   }
+  // Esperar un tick para que D.inventario tenga los nuevos
+  await new Promise(r=>setTimeout(r,300));
+  // Limpiar duplicados
+  const dedupe=await dedupeInventario(true);
   localStorage.setItem(migKey,'1');
-  if(added+updated>0) toast(`✓ Inventario oficial: ${added} nuevos, ${updated} actualizados`,3000);
+  if(added+updated+dedupe.eliminados>0){
+    toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados, ${dedupe.eliminados} duplicados eliminados`,4000);
+  }
 }
+
+// Función exportada para limpieza manual desde el botón del admin
+window.invLimpiarDuplicados=async()=>{
+  if(!confirm('🧹 Limpieza de duplicados\n\nEsto buscará productos repetidos (con nombres similares) y dejará solo la versión oficial. Las cantidades capturadas se migran al producto oficial.\n\n¿Continuar?')) return;
+  const r=await dedupeInventario(false);
+  if(r.eliminados===0) toast('✓ No se encontraron duplicados',2400);
+  renderInv();
+};
 
 async function setMinimosInteligentes(){
   const migKey='h5minimos_v2';
@@ -4607,7 +4761,10 @@ function renderInvAdmin(){
     return ca!==0?ca:a.nombre.localeCompare(b.nombre);
   });
   let html=`<div class="card" style="margin-bottom:12px;">
-    <div class="ct">⚙️ Configuración de Productos</div>
+    <div class="sh">
+      <span class="ct" style="margin-bottom:0;">⚙️ Configuración de Productos</span>
+      <button class="btn bor bsm" onclick="invLimpiarDuplicados()">🧹 Limpiar duplicados</button>
+    </div>
     <p style="font-size:11.5px;color:var(--text2);margin:6px 0 12px;">Edita mínimos, precios y elimina productos. Los precios y costos solo los ves tú (Admin).</p>
     <div class="tw">
       <table class="tbl">
