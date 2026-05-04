@@ -2476,6 +2476,126 @@ window.invLimpiarDuplicados=async()=>{
   renderInv();
 };
 
+// ─── LIMPIEZA AGRESIVA: solo dejar productos oficiales del Excel ───
+window.invMostrarSoloOficiales=()=>{
+  // Listar productos NO oficiales
+  const noOficiales=D.inventario.filter(p=>p.id<7100||p.id>=7600);
+  if(noOficiales.length===0){
+    toast('✓ Ya solo tienes productos oficiales',2400);
+    return;
+  }
+  // Categorizar para preview
+  const conCanonico=[];
+  const sinCanonico=[];
+  noOficiales.forEach(p=>{
+    const c=findCanonical(p);
+    if(c) conCanonico.push({viejo:p,nuevo:c});
+    else sinCanonico.push(p);
+  });
+
+  // Construir HTML del modal
+  let html=`<div class="modal-bg" id="inv-clean-modal" style="display:flex;" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:680px;max-height:85vh;overflow-y:auto;">
+      <div class="modal-head">
+        <span class="modal-title">🧹 Limpiar Inventario</span>
+        <button class="btn bs bxs" onclick="document.getElementById('inv-clean-modal').remove()">✕</button>
+      </div>
+      <p style="font-size:12px;color:var(--text2);margin-bottom:12px;">
+        Tienes <strong>${noOficiales.length}</strong> productos que NO están en la lista oficial del Excel.
+        Esta limpieza dejará solo los <strong>${INVENTARIO_OFICIAL.length} productos oficiales</strong>.
+      </p>`;
+
+  if(conCanonico.length>0){
+    html+=`<div style="background:#e8f5e9;border:1px solid var(--accent);border-radius:var(--rsm);padding:10px;margin-bottom:10px;">
+      <div style="font-weight:700;color:var(--accentd);margin-bottom:6px;font-size:12.5px;">
+        ✅ ${conCanonico.length} duplicados (se MERGEAN con oficial — cantidades preservadas)
+      </div>
+      <div style="max-height:180px;overflow-y:auto;font-size:11px;">
+        ${conCanonico.slice(0,40).map(({viejo,nuevo})=>`
+          <div style="padding:3px 0;border-bottom:1px solid #c8e6c9;">
+            <span class="ar">${viejo.nombre}</span> <span style="color:var(--text3);">(qty:${viejo.qty||0})</span>
+            → <span class="ag fw7">${nuevo.nombre}</span>
+          </div>
+        `).join('')}
+        ${conCanonico.length>40?`<div style="padding:6px 0;color:var(--text3);font-style:italic;">…y ${conCanonico.length-40} más</div>`:''}
+      </div>
+    </div>`;
+  }
+
+  if(sinCanonico.length>0){
+    html+=`<div style="background:#ffebee;border:1px solid var(--red);border-radius:var(--rsm);padding:10px;margin-bottom:10px;">
+      <div style="font-weight:700;color:var(--red);margin-bottom:6px;font-size:12.5px;">
+        ⚠️ ${sinCanonico.length} productos SIN equivalente oficial (se ELIMINAN)
+      </div>
+      <div style="max-height:180px;overflow-y:auto;font-size:11px;">
+        ${sinCanonico.map(p=>`
+          <div style="padding:3px 0;border-bottom:1px solid #ffcdd2;">
+            <span class="ar">${p.nombre}</span> <span style="color:var(--text3);">(qty:${p.qty||0}, ${p.unit||''})</span>
+          </div>
+        `).join('')}
+      </div>
+      <div style="font-size:10.5px;color:var(--text3);margin-top:6px;line-height:1.4;">
+        Si alguno DEBE quedarse en el inventario oficial, dime el nombre y lo agrego antes de limpiar.
+      </div>
+    </div>`;
+  }
+
+  html+=`<div style="display:flex;gap:8px;">
+      <button class="btn bs bfull" onclick="document.getElementById('inv-clean-modal').remove()">Cancelar</button>
+      <button class="btn bd bfull" onclick="invEjecutarLimpiezaTotal()">🗑 Confirmar y limpiar</button>
+    </div>
+    </div>
+  </div>`;
+
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+
+window.invEjecutarLimpiezaTotal=async()=>{
+  const modal=document.getElementById('inv-clean-modal');
+  if(modal) modal.remove();
+  toast('🧹 Limpiando inventario, espera...',5000);
+  const noOficiales=D.inventario.filter(p=>p.id<7100||p.id>=7600);
+  let mergeados=0,eliminadosSinDatos=0;
+
+  for(const viejo of noOficiales){
+    const canonical=findCanonical(viejo);
+    if(canonical && canonical.id!==viejo.id){
+      // MIGRAR datos al canónico antes de eliminar
+      // Capturas invDiario
+      const caps=D.invDiario.filter(c=>c.productoId===viejo.id);
+      for(const c of caps){
+        await fsSet('invDiario',{...c,productoId:canonical.id});
+      }
+      // Recetas
+      for(const rec of D.recetas){
+        if(rec.ings){
+          let mod=false;
+          rec.ings.forEach(ing=>{
+            if(ing.invId==viejo.id){ing.invId=canonical.id;ing.nombre=canonical.nombre;mod=true;}
+          });
+          if(mod) await fsSet('recetas',rec);
+        }
+      }
+      // Sumar qty al canónico (no reemplazar — preservar lo que ya tenía)
+      if((viejo.qty||0)>0){
+        canonical.qty=(canonical.qty||0)+viejo.qty;
+        if(!canonical.precio && viejo.precio) canonical.precio=viejo.precio;
+        if(!canonical.min && viejo.min) canonical.min=viejo.min;
+        await fsSet('inventario',canonical);
+      }
+      mergeados++;
+    } else {
+      // Sin canónico — solo eliminar (puede que el usuario no lo necesite)
+      eliminadosSinDatos++;
+    }
+    // Eliminar el viejo
+    await fsDel('inventario',viejo.id);
+  }
+
+  toast(`✅ Limpieza completa: ${mergeados} mergeados al oficial, ${eliminadosSinDatos} eliminados sin datos`,5000);
+  setTimeout(()=>renderInv(),500);
+};
+
 async function setMinimosInteligentes(){
   const migKey='h5minimos_v2';
   if(localStorage.getItem(migKey)) return;
@@ -4763,7 +4883,10 @@ function renderInvAdmin(){
   let html=`<div class="card" style="margin-bottom:12px;">
     <div class="sh">
       <span class="ct" style="margin-bottom:0;">⚙️ Configuración de Productos</span>
-      <button class="btn bor bsm" onclick="invLimpiarDuplicados()">🧹 Limpiar duplicados</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn bor bsm" onclick="invLimpiarDuplicados()" title="Buscar nombres similares y mergearlos">🧹 Mergear duplicados</button>
+        <button class="btn bd bsm" onclick="invMostrarSoloOficiales()" title="Eliminar todo lo que no esté en el Excel oficial">🗑 Solo oficiales</button>
+      </div>
     </div>
     <p style="font-size:11.5px;color:var(--text2);margin:6px 0 12px;">Edita mínimos, precios y elimina productos. Los precios y costos solo los ves tú (Admin).</p>
     <div class="tw">
