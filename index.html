@@ -351,34 +351,160 @@ select option{background:var(--surface2);}
 @media(max-width:700px){.reloj-emp-card{padding:14px;}.reloj-av{width:52px;height:52px;font-size:22px;}.reloj-btn{padding:12px 20px;font-size:14px;}}
 @media(max-width:380px){.sale-ok-total{font-size:32px;}.sale-ok-check{width:70px;height:70px;font-size:36px;}.mnbtn{font-size:8.5px;padding:3px 1px;}}
 
-/* ══ MOBILE OPTIMIZATIONS ══ */
-/* Inputs: font-size 16px+ para evitar zoom auto en iOS Safari */
+/* ══════════════════════════════════════════════════════
+   MOBILE OPTIMIZATIONS — Sistema mobile-first profesional
+   ══════════════════════════════════════════════════════ */
+
+/* Safe-area para iPhone con notch */
+body{padding-bottom:env(safe-area-inset-bottom);}
+.mnav{padding-bottom:calc(4px + env(safe-area-inset-bottom))!important;}
+nav{padding-top:env(safe-area-inset-top);}
+
+/* Tap highlight removido para sensación más nativa */
+*{-webkit-tap-highlight-color:transparent;}
+
+/* TABLET y MOBILE (≤768px) */
 @media(max-width:768px){
+  /* Inputs: font-size 16px+ para evitar zoom auto en iOS Safari */
   input,select,textarea{font-size:16px!important;}
+  input[type="date"],input[type="time"]{min-height:44px;}
+
+  /* Botones con tap target mínimo de 44px (WCAG) */
+  .btn{min-height:40px;padding:9px 14px;}
+  .btn.bsm{min-height:36px;padding:7px 12px;}
+  .btn.bxs{min-height:32px;padding:5px 9px;}
+
+  /* Main: padding inferior para que contenido no quede tras mnav */
+  main{padding:10px;padding-bottom:90px!important;max-width:100%;}
+
   /* Tabs scrollables horizontalmente */
-  .kpi-tabs,#inv-modo-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
-  .kpi-tabs::-webkit-scrollbar,#inv-modo-tabs::-webkit-scrollbar{display:none;}
-  .kpi-tab{flex-shrink:0;}
-  /* Mobile nav: scroll horizontal cuando hay muchos botones */
-  .mnav{overflow-x:auto;scrollbar-width:none;display:flex!important;grid-template-columns:none!important;}
+  .kpi-tabs,#inv-modo-tabs,.ntabs,.pos-cats,.wstrip{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;-webkit-overflow-scrolling:touch;}
+  .kpi-tabs::-webkit-scrollbar,#inv-modo-tabs::-webkit-scrollbar,.ntabs::-webkit-scrollbar,.pos-cats::-webkit-scrollbar,.wstrip::-webkit-scrollbar{display:none;}
+  .kpi-tab,.pcat,.wday{flex-shrink:0;}
+
+  /* Mobile nav: scroll horizontal */
+  .mnav{overflow-x:auto;scrollbar-width:none;display:flex!important;grid-template-columns:none!important;-webkit-overflow-scrolling:touch;}
   .mnav::-webkit-scrollbar{display:none;}
-  .mnbtn{flex:0 0 64px;min-width:64px;}
-  /* Tablas con scroll horizontal */
-  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
-  /* Captura de inventario en mobile: input más grande */
-  .inv-cap-row input[type="number"]{font-size:18px!important;width:80px!important;}
+  .mnbtn{flex:0 0 64px;min-width:64px;font-size:9.5px;}
+
+  /* Sticky nav superior */
+  nav{position:sticky;top:0;z-index:300;}
+
+  /* Tablas con scroll horizontal y borde visible */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--border);border-radius:var(--rsm);}
+  .tw::-webkit-scrollbar{height:4px;}
+  .tw::-webkit-scrollbar-thumb{background:var(--border2);border-radius:2px;}
+  .tbl{font-size:12px;min-width:max-content;}
+  .tbl th,.tbl td{padding:8px 6px;white-space:nowrap;}
+
   /* Cards más compactas */
   .card{padding:12px;}
-  /* Modales con padding reducido */
-  .modal{padding:14px;}
-  /* Botones de pago POS más grandes */
-  .pago-row .btn{min-height:54px;font-size:15px;}
-  /* Lock screen botones grandes */
-  .lock-btn{padding:14px 16px;}
+  .ct{font-size:10px;}
+
+  /* Modales: fullscreen en mobile */
+  .modal-bg{padding:0;align-items:flex-end;}
+  .modal{max-width:100%!important;width:100%;max-height:95vh;border-radius:var(--r) var(--r) 0 0;padding:18px 14px 24px;animation:slideUpModal .25s ease;}
+  @keyframes slideUpModal{from{transform:translateY(100%);}to{transform:translateY(0);}}
+
+  /* Headers con menos padding */
+  .sh{flex-wrap:wrap;gap:6px;}
+  .st{font-size:17px;}
+  .kv{font-size:22px;}
+
+  /* Grids responsivos */
+  .g4{grid-template-columns:repeat(2,1fr)!important;gap:8px;}
+  .g3{grid-template-columns:1fr!important;gap:8px;}
+  .g3 > [style*="span 2"]{grid-column:auto!important;}
+
+  /* Captura de inventario: input más grande */
+  .inv-cap-row input[type="number"]{font-size:18px!important;width:80px!important;}
+
+  /* POS botones de pago grandes */
+  .pago-row .btn{min-height:54px;font-size:15px;font-weight:700;}
+
+  /* Lock screen botones grandes y centrados */
+  .lock-btn{padding:14px 16px;min-height:60px;}
+  .lock-card{padding:16px;}
+
+  /* Order panel POS: bottom sheet en mobile */
+  .order-panel{box-shadow:0 -4px 20px rgba(0,0,0,.12);}
+
+  /* Toast más arriba para no chocar con nav */
+  .toast{bottom:calc(80px + env(safe-area-inset-bottom));}
+
+  /* Sale success overlay más compacto */
+  .sale-ok-total{font-size:38px;}
+
+  /* KPI cards más compactas */
+  .kpi-grid{grid-template-columns:1fr 1fr!important;gap:8px;}
+  .kpi-card{padding:12px;}
+  .kpi-value{font-size:22px;}
+  .kpi-title{font-size:9.5px;}
+  .kpi-target{font-size:10.5px;}
+  .kpi-action-bar{flex-wrap:wrap;}
+
+  /* Reloj checador mobile */
+  .reloj-clock{font-size:38px!important;}
+  .reloj-emp-card{padding:14px;}
+  .reloj-av{width:54px;height:54px;font-size:24px;}
+
+  /* Mi Perfil mobile */
+  #mp-kpis{grid-template-columns:1fr 1fr!important;}
+
+  /* Captura inventario row: vertical layout en mobile */
+  .inv-cap-row{padding:10px;}
 }
+
+/* PHONE (≤480px) */
 @media(max-width:480px){
-  .inv-cap-row{grid-template-columns:1fr!important;}
+  .g4{grid-template-columns:1fr 1fr!important;}
+  .g2{grid-template-columns:1fr!important;}
+  .ii,.ii3{grid-template-columns:1fr!important;}
+
+  /* Captura inventario en una columna */
+  .inv-cap-row{grid-template-columns:1fr!important;gap:8px!important;}
   .inv-cap-row > div:last-child{justify-content:flex-end;}
+
+  /* POS grid más grandes para tap */
+  .pos-grid{gap:6px;}
+  .pitem{padding:14px 6px;min-height:115px;}
+  .piname{font-size:11.5px;}
+  .piprice{font-size:13px;}
+
+  /* KPIs tarjeta única */
+  .kpi-grid{grid-template-columns:1fr!important;}
+
+  /* Stats summary cards compactas */
+  .db-kpi .kv,.kv{font-size:20px;}
+
+  /* Modales fullheight en pantallas chicas */
+  .modal{max-height:100vh;border-radius:0;padding-bottom:calc(20px + env(safe-area-inset-bottom));}
+
+  /* Centro de descargas: botones en columna en pantallas chiquitas */
+  .rp-quick{flex:1 1 calc(50% - 5px);min-width:0;}
+
+  /* Logo más chico */
+  .logo{font-size:15px;}
+
+  /* Session badge oculta texto en pantallas chiquitas */
+  #sess-name{display:none;}
+
+  /* Title pages más chico */
+  .st{font-size:16px;}
+}
+
+/* PHONE PEQUEÑO (≤360px) */
+@media(max-width:360px){
+  .pos-grid{grid-template-columns:repeat(2,1fr)!important;}
+  .mnbtn{flex:0 0 56px;font-size:8.5px;padding:3px 1px;}
+  .ntab{font-size:11px;padding:4px 8px;}
+  .kv{font-size:18px;}
+}
+
+/* LANDSCAPE en mobile: aprovechar ancho */
+@media(max-width:900px) and (orientation:landscape){
+  .pos-wrap{grid-template-columns:1fr 320px;}
+  .order-panel{max-height:calc(100vh - 100px);}
 }
 
 /* AJUSTES */
