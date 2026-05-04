@@ -2,7 +2,15 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#2e7d32">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="El Huerto">
+<meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%232e7d32'/><text x='96' y='130' font-size='110' text-anchor='middle' fill='white'>🌿</text></svg>">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232e7d32'/><text x='16' y='23' font-size='20' text-anchor='middle'>🌿</text></svg>">
 <title>El Huerto — Sistema de Gestión</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 <style>
@@ -530,6 +538,8 @@ select option{background:var(--surface2);}
     <span class="st">Panel Principal</span>
     <span id="db-fecha" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;"></span>
   </div>
+  <!-- ⚡ Widget en vivo: Hoy vs Ayer al mismo horario -->
+  <div id="db-live-widget" style="margin-bottom:14px;"></div>
   <!-- KPIs fila 1 -->
   <div class="g4" style="margin-bottom:10px;" id="db-kpis"></div>
   <!-- Fila 2: gráfica + estado de resultados + retiros -->
@@ -3459,6 +3469,20 @@ async function cobrar(metodo,recibido=0){
     printTicket(venta);
     playSaleSound();
     showSaleSuccess(venta);
+    // Notif para admin si venta > $500 (solo cuando está en background)
+    if(typeof notifPush==='function' && venta.total>=500){
+      notifPush(`💰 Venta de ${fmt(venta.total)}`,
+        `${venta.items.length} productos · ${venta.metodo==='efectivo'?'💵 Efectivo':'💳 Tarjeta'}${venta.vendedorNombre&&venta.vendedorNombre!=='Sin asignar'?' · '+venta.vendedorNombre:''}`,
+        {tag:'venta-grande'}
+      );
+    }
+    // Detectar cliente recurrente
+    if(venta.cliente){
+      const previas=D.ventas.filter(x=>x.cliente===venta.cliente && !x.anulada && x.id<venta.id).length;
+      if(previas>=3 && typeof notifPush==='function'){
+        notifPush(`🌟 Cliente recurrente`,`${venta.cliente} ya viene ${previas+1} veces · ${fmt(venta.total)}`,{tag:'cliente-recur'});
+      }
+    }
     // Limpiar SOLO si la venta se guardó (esto solo se ejecuta si no hubo throw)
     order=[]; orderStartedAt=null; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
     if($('op-cliente'))$('op-cliente').value='';
@@ -6188,6 +6212,46 @@ function renderDashboard(){
   const totalVentasHoyTc=hoyDB.tc;
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
 
+  // ══ WIDGET EN VIVO: Hoy vs Ayer al mismo horario ══
+  if($('db-live-widget')){
+    const ayer=(()=>{const d=new Date();d.setDate(d.getDate()-1);return localDate(d);})();
+    const ahora=new Date();
+    const horaActual=ahora.getHours()*60+ahora.getMinutes();
+    // Ventas de ayer hasta esta misma hora del día
+    const ventasAyerMismaHora=D.ventas.filter(v=>{
+      if(v.fecha!==ayer||v.anulada) return false;
+      if(!v.hora) return true;
+      const [h,m]=v.hora.split(':').map(Number);
+      return (h*60+m)<=horaActual;
+    });
+    const totalAyerMismaHora=ventasAyerMismaHora.reduce((s,v)=>s+v.total,0);
+    const diff=totalVentasHoy-totalAyerMismaHora;
+    const pct=totalAyerMismaHora>0?Math.round((diff/totalAyerMismaHora)*100):0;
+    let emoji,bgColor,txtColor,mensaje;
+    if(totalAyerMismaHora===0&&totalVentasHoy>0){
+      emoji='🚀'; bgColor='linear-gradient(135deg,#43a047,#2e7d32)'; txtColor='#fff';
+      mensaje=`Vas <strong>${fmt(totalVentasHoy)}</strong> · Ayer a esta hora: $0`;
+    } else if(totalAyerMismaHora===0){
+      emoji='☀️'; bgColor='linear-gradient(135deg,#ffd54f,#f57c00)'; txtColor='#3e2723';
+      mensaje='Sin datos de ayer · ¡A vender!';
+    } else if(diff>=0){
+      emoji=pct>=20?'🔥':'📈'; bgColor='linear-gradient(135deg,#43a047,#2e7d32)'; txtColor='#fff';
+      mensaje=`Vas <strong>${fmt(diff)} arriba</strong> de ayer (+${pct}%) · Ayer a esta hora: ${fmt(totalAyerMismaHora)}`;
+    } else {
+      emoji='💪'; bgColor='linear-gradient(135deg,#ef5350,#c62828)'; txtColor='#fff';
+      mensaje=`Vas <strong>${fmt(Math.abs(diff))} abajo</strong> (${pct}%) · ¡A vender más! Ayer: ${fmt(totalAyerMismaHora)}`;
+    }
+    const horaTxt=ahora.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
+    $('db-live-widget').innerHTML=`<div style="background:${bgColor};color:${txtColor};border-radius:14px;padding:16px 22px;display:flex;align-items:center;gap:18px;box-shadow:0 4px 18px rgba(0,0,0,.15);">
+      <div style="font-size:48px;line-height:1;">${emoji}</div>
+      <div style="flex:1;">
+        <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;opacity:.85;font-weight:700;margin-bottom:3px;">EN VIVO · ${horaTxt}</div>
+        <div style="font-family:'Playfair Display',serif;font-size:30px;font-weight:900;line-height:1.1;margin-bottom:4px;">${fmt(totalVentasHoy)}</div>
+        <div style="font-size:13px;opacity:.95;">${mensaje}</div>
+      </div>
+    </div>`;
+  }
+
   // ── Mes completo: unir todas las fechas de caja + ventas POS
   const allFechasMes=new Set([...D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha),...D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha)]);
   const ingCajaMes=[...allFechasMes].reduce((s,f)=>s+calcDiaDB(f).total,0);
@@ -7000,6 +7064,102 @@ window.addEventListener('offline',()=>{updateConnStatus();toast('🔴 SIN CONEXI
 updateConnStatus();
 startRelojTick();
 listenAll();
+
+// ══════════════════════════════════════════════════════════════
+// PWA: Service Worker + notificaciones + atajos de URL
+// ══════════════════════════════════════════════════════════════
+
+// Registro del Service Worker
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{
+    navigator.serviceWorker.register('/sw.js').then(reg=>{
+      console.log('SW registrado:',reg.scope);
+      // Detectar nueva versión disponible
+      reg.addEventListener('updatefound',()=>{
+        const sw=reg.installing;
+        sw.addEventListener('statechange',()=>{
+          if(sw.state==='installed' && navigator.serviceWorker.controller){
+            toast('🔄 Nueva versión disponible. Recarga para aplicar.',6000);
+          }
+        });
+      });
+    }).catch(e=>console.warn('SW falló:',e));
+  });
+}
+
+// Atajos de URL (?go=pos, ?go=reloj, etc.) — para shortcuts del manifest
+window.addEventListener('load',()=>{
+  const params=new URLSearchParams(location.search);
+  const goTo=params.get('go');
+  if(goTo){
+    setTimeout(()=>{try{go(goTo);}catch(e){}},1500);
+  }
+});
+
+// ══ NOTIFICACIONES PUSH LOCALES ══
+let notifPermAsked=localStorage.getItem('h5_notif_asked')==='1';
+
+window.solicitarNotifPermiso=async()=>{
+  if(!('Notification' in window)){toast('⚠ Tu navegador no soporta notificaciones',2400,'warn');return false;}
+  if(Notification.permission==='granted') return true;
+  if(Notification.permission==='denied'){toast('⚠ Notificaciones bloqueadas. Actívalas en config del navegador',3500,'warn');return false;}
+  const r=await Notification.requestPermission();
+  localStorage.setItem('h5_notif_asked','1');
+  return r==='granted';
+};
+
+// Función reutilizable para notificar
+function notifPush(titulo, body, opts={}){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  // Si la página está visible, solo toast (no necesita notif intrusiva)
+  if(document.visibilityState==='visible' && !opts.alwaysShow){
+    toast(`${titulo} · ${body}`, opts.duration||3500);
+    return;
+  }
+  // Si está en background, mostrar notificación nativa
+  try{
+    const n=new Notification(titulo,{
+      body,
+      icon:opts.icon||"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%232e7d32'/><text x='96' y='130' font-size='110' text-anchor='middle' fill='white'>🌿</text></svg>",
+      badge:"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' rx='12' fill='%232e7d32'/><text x='48' y='65' font-size='50' text-anchor='middle' fill='white'>🌿</text></svg>",
+      tag:opts.tag||'huerto-'+Date.now(),
+      requireInteraction:opts.requireInteraction||false,
+      vibrate:opts.vibrate||[200,100,200]
+    });
+    n.onclick=()=>{window.focus();if(opts.onClick)opts.onClick();n.close();};
+    setTimeout(()=>n.close(),opts.duration||5000);
+  }catch(e){console.warn('Notif error:',e);}
+}
+window.notifPush=notifPush;
+
+// Pedir permiso después de 30 segundos de uso (no apenas entras)
+setTimeout(()=>{
+  if(!notifPermAsked && SESSION && Notification && Notification.permission==='default'){
+    if(confirm('🔔 ¿Quieres recibir notificaciones?\n\nTe avisamos cuando:\n• Hay stock crítico\n• Se hace un corte de caja\n• Llega un cliente recurrente\n\n(Puedes desactivarlas después)')){
+      solicitarNotifPermiso();
+    } else {
+      localStorage.setItem('h5_notif_asked','1');
+    }
+  }
+},30000);
+
+// ══ ALERTAS AUTOMÁTICAS ══
+// Revisar stock cada 30 min y alertar de productos críticos
+setInterval(()=>{
+  if(!READY||!SESSION||SESSION.tipo!=='admin') return;
+  const criticos=D.inventario.filter(p=>{
+    if(typeof invEstadoStock!=='function') return false;
+    const e=invEstadoStock(p);
+    return e.estado==='agotado' || e.estado==='bajo';
+  });
+  if(criticos.length>0){
+    notifPush(
+      `🚨 ${criticos.length} productos críticos`,
+      criticos.slice(0,3).map(p=>p.nombre).join(', ')+(criticos.length>3?`…y ${criticos.length-3} más`:''),
+      {tag:'stock-critico',requireInteraction:false,duration:8000,onClick:()=>go('inventario')}
+    );
+  }
+},30*60*1000);
 </script>
 </body>
 </html>

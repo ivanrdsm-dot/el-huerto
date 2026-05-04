@@ -1,0 +1,50 @@
+{
+  "name": "El Huerto — Sistema",
+  "short_name": "El Huerto",
+  "description": "Sistema de gestión integral del Huerto: POS, caja, inventario, KPIs",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f5f7f4",
+  "theme_color": "#2e7d32",
+  "lang": "es-MX",
+  "scope": "/",
+  "categories": ["business", "productivity", "food"],
+  "icons": [
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' rx='32' fill='%232e7d32'/><text x='96' y='130' font-size='110' text-anchor='middle' fill='white'>🌿</text></svg>",
+      "sizes": "192x192",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='80' fill='%232e7d32'/><text x='256' y='350' font-size='300' text-anchor='middle' fill='white'>🌿</text></svg>",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Vender",
+      "short_name": "POS",
+      "description": "Ir al POS para vender",
+      "url": "/?go=pos",
+      "icons": [{"src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' rx='16' fill='%232e7d32'/><text x='48' y='65' font-size='50' text-anchor='middle'>🛒</text></svg>", "sizes": "96x96", "type": "image/svg+xml"}]
+    },
+    {
+      "name": "Reloj",
+      "short_name": "Check-in",
+      "description": "Reloj checador",
+      "url": "/?go=reloj",
+      "icons": [{"src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' rx='16' fill='%232e7d32'/><text x='48' y='65' font-size='50' text-anchor='middle'>🕐</text></svg>", "sizes": "96x96", "type": "image/svg+xml"}]
+    },
+    {
+      "name": "Inventario",
+      "short_name": "Inventario",
+      "description": "Captura inventario diario",
+      "url": "/?go=inventario",
+      "icons": [{"src": "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' rx='16' fill='%232e7d32'/><text x='48' y='65' font-size='50' text-anchor='middle'>📦</text></svg>", "sizes": "96x96", "type": "image/svg+xml"}]
+    }
+  ]
+}
