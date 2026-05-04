@@ -1435,6 +1435,33 @@ select option{background:var(--surface2);}
       <strong>Alternativa fácil:</strong> crea un acceso directo de Chrome en el escritorio y añade <code style="background:var(--surface3);padding:1px 4px;border-radius:3px;">--kiosk-printing</code> al final del destino.
     </div>
   </div>
+
+  <!-- 📱 Reporte por WhatsApp -->
+  <div class="card" style="margin-top:10px;">
+    <div class="ct">📱 Reporte Diario por WhatsApp</div>
+    <p style="font-size:11.5px;color:var(--text2);margin:6px 0 12px;">Recibe un resumen del día con ventas, top productos, compras urgentes, mermas y diferencias.</p>
+    <div class="ii">
+      <div class="fg">
+        <label>Tu número de WhatsApp (con lada)</label>
+        <input type="tel" id="cfg-wa-num" placeholder="525646665718" inputmode="tel">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">Sin espacios, sin +. Ej: 525646665718 (México) — los 52 son la lada de país</div>
+      </div>
+      <div class="fg">
+        <label>Hora de envío automático</label>
+        <input type="time" id="cfg-wa-hora" value="21:00">
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">A esta hora se abre WhatsApp con el reporte (necesitas confirmar)</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn bp bsm" onclick="saveConfig()">💾 Guardar</button>
+      <button class="btn bs bsm" onclick="previewReporteWA()">👁 Vista previa</button>
+      <button class="btn" style="background:#25D366;color:#fff;font-size:12.5px;padding:6px 14px;border-radius:8px;font-weight:600;" onclick="enviarReporteWA()">📱 Enviar ahora</button>
+    </div>
+    <div style="margin-top:12px;background:#e8f5e9;border:1px solid var(--accent);border-radius:var(--rsm);padding:10px;font-size:11.5px;color:var(--accentd);line-height:1.5;">
+      💡 <strong>El reporte incluye:</strong> ventas hoy + comparativa vs ayer + top 5 productos +
+      ventas por vendedora + corte de caja + mermas + lista de compras urgentes con cantidades.
+    </div>
+  </div>
 </div>
 
 </main>
@@ -1507,6 +1534,7 @@ const app=initializeApp(FB); const db=getFirestore(app);
 
 let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true,
+  waReporte:'',waHora:'21:00',
   kpiTargets:{
     ticketPromedio:130,
     conversionCombo:30,
@@ -6720,6 +6748,8 @@ function renderConfig(){
   if($('cfg-tel')&&CFG.tel)$('cfg-tel').value=CFG.tel;
   if($('cfg-msg')&&CFG.msg)$('cfg-msg').value=CFG.msg;
   if($('cfg-autoprint'))$('cfg-autoprint').checked=CFG.autoPrint!==false;
+  if($('cfg-wa-num')&&CFG.waReporte)$('cfg-wa-num').value=CFG.waReporte;
+  if($('cfg-wa-hora')&&CFG.waHora)$('cfg-wa-hora').value=CFG.waHora;
   if($('cfg-empleados'))$('cfg-empleados').innerHTML=D.empleados.map(e=>`<div class="sr">
     <div style="display:flex;align-items:center;gap:9px;">
       <div style="width:28px;height:28px;border-radius:50%;background:${e.color||'var(--accent)'};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#1a2e18;">${e.nombre[0]}</div>
@@ -6751,8 +6781,17 @@ window.editProd=id=>{
 window.toggleProd=async id=>{const p=D.productos.find(x=>x.id===id);if(!p)return;await fsSet('productos',{...p,activo:!p.activo});toast(p.activo?'⚫ Ocultado':'✓ Activado');};
 window.saveConfig=()=>{
   const prevTargets=CFG.kpiTargets;
-  CFG={negocio:$('cfg-neg').value.trim()||'El Huerto',tel:$('cfg-tel').value.trim(),msg:$('cfg-msg').value.trim()||'¡Gracias!',autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true,kpiTargets:prevTargets};
-  try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}toast('✓ Config guardada');
+  CFG={
+    negocio:$('cfg-neg').value.trim()||'El Huerto',
+    tel:$('cfg-tel').value.trim(),
+    msg:$('cfg-msg').value.trim()||'¡Gracias!',
+    autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true,
+    waReporte:$('cfg-wa-num')?cleanWANum($('cfg-wa-num').value):'',
+    waHora:$('cfg-wa-hora')?$('cfg-wa-hora').value||'21:00':'21:00',
+    kpiTargets:prevTargets
+  };
+  try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}
+  toast('✓ Config guardada');
 };
 
 window.reprintLastTicket=()=>{
@@ -7131,6 +7170,180 @@ function notifPush(titulo, body, opts={}){
   }catch(e){console.warn('Notif error:',e);}
 }
 window.notifPush=notifPush;
+
+// ══════════════════════════════════════════════════════════════
+// REPORTE DIARIO POR WHATSAPP
+// ══════════════════════════════════════════════════════════════
+
+function generarReporteWA(fecha){
+  fecha=fecha||today();
+  const fechaTxt=new Date(fecha+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
+  // Ventas del día
+  const ventas=D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
+  const cj=D.caja.find(c=>c.fecha===fecha);
+  const ef=cj?cj.ef:ventas.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  const tc=cj?cj.tc:ventas.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const total=ef+tc;
+  // Top productos
+  const prodCount={};
+  ventas.forEach(v=>v.items.forEach(i=>{prodCount[i.nombre]=(prodCount[i.nombre]||0)+i.qty;}));
+  const top5=Object.entries(prodCount).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  // Comparación con ayer
+  const ayer=(()=>{const d=new Date(fecha+'T12:00:00');d.setDate(d.getDate()-1);return localDate(d);})();
+  const ventasAyer=D.ventas.filter(v=>v.fecha===ayer&&!v.anulada).reduce((s,v)=>s+v.total,0);
+  const cjAyer=D.caja.find(c=>c.fecha===ayer);
+  const totalAyer=cjAyer?cjAyer.total:ventasAyer;
+  const diff=total-totalAyer;
+  const pctDiff=totalAyer>0?Math.round(diff/totalAyer*100):0;
+  // Compras urgentes (stock bajo)
+  let urgentes=[];
+  if(typeof invEstadoStock==='function'){
+    urgentes=D.inventario.filter(p=>{
+      const e=invEstadoStock(p);
+      return e.estado==='bajo'||e.estado==='agotado';
+    });
+  } else {
+    urgentes=D.inventario.filter(p=>p.min>0&&(p.qty||0)<=p.min);
+  }
+  // Mermas
+  const mermas=(D.kpiCaptura||[]).filter(c=>c.tipo==='merma'&&c.fecha===fecha).reduce((s,c)=>s+c.valor,0);
+  // Corte de caja
+  const corte=[...(D.cortes||[])].filter(c=>c.fecha===fecha).sort((a,b)=>b.id-a.id)[0];
+  // Vendedoras
+  const vendedoras={};
+  ventas.forEach(v=>{
+    if(v.vendedorNombre&&v.vendedorNombre!=='Sin asignar'){
+      vendedoras[v.vendedorNombre]=(vendedoras[v.vendedorNombre]||0)+v.total;
+    }
+  });
+
+  // Construir mensaje
+  let msg=`🌿 *EL HUERTO* · Reporte ${fechaTxt}\n\n`;
+  msg+=`💰 *Ventas hoy*: ${fmt(total)}\n`;
+  msg+=`📋 ${ventas.length} tickets`;
+  if(ventas.length>0) msg+=` · prom ${fmt(total/ventas.length)}`;
+  msg+=`\n💵 Efectivo: ${fmt(ef)}\n`;
+  msg+=`💳 Tarjeta: ${fmt(tc)}\n\n`;
+
+  if(totalAyer>0){
+    const emoji=diff>=0?(pctDiff>=20?'🔥':'📈'):'📉';
+    msg+=`${emoji} *vs Ayer (${fmt(totalAyer)})*\n`;
+    msg+=`${diff>=0?'+':''}${fmt(diff)} (${diff>=0?'+':''}${pctDiff}%)\n\n`;
+  }
+
+  if(top5.length>0){
+    msg+=`⭐ *Top 5 productos*\n`;
+    top5.forEach(([n,q],i)=>{msg+=`${i+1}. ${n} · ${q}u\n`;});
+    msg+=`\n`;
+  }
+
+  if(Object.keys(vendedoras).length>0){
+    msg+=`👩 *Por vendedora*\n`;
+    Object.entries(vendedoras).sort((a,b)=>b[1]-a[1]).forEach(([n,t])=>{
+      msg+=`• ${n}: ${fmt(t)}\n`;
+    });
+    msg+=`\n`;
+  }
+
+  if(corte){
+    msg+=`🧾 *Corte de caja*: ${corte.hora}\n`;
+    if(corte.diferencia!=null){
+      const dif=corte.diferencia;
+      const lbl=dif>=0?'Sobrante':'Faltante';
+      const ico=Math.abs(dif)<1?'✅':(dif>=0?'⬆':'⬇');
+      msg+=`${ico} ${lbl} efvo: ${fmt(Math.abs(dif))}\n`;
+    }
+    if(corte.tcDiff!=null&&corte.tcDiff!==0){
+      msg+=`💳 Dif. TC: ${corte.tcDiff>=0?'+':''}${fmt(corte.tcDiff)}\n`;
+    }
+    msg+=`\n`;
+  } else if(fecha===today()){
+    msg+=`⚠️ *Aún no se hace corte de caja*\n\n`;
+  }
+
+  if(mermas>0){
+    msg+=`🍂 *Mermas*: ${fmt(mermas)} (${total>0?(mermas/total*100).toFixed(1):0}%)\n\n`;
+  }
+
+  if(urgentes.length>0){
+    msg+=`🚨 *Compras urgentes (${urgentes.length})*\n`;
+    urgentes.slice(0,8).forEach(p=>{
+      const stock=p.qty||0;
+      msg+=`• ${p.nombre}: ${stock} ${p.unidadOf||p.unit||''} (mín ${p.min||0})\n`;
+    });
+    if(urgentes.length>8) msg+=`…y ${urgentes.length-8} más\n`;
+    msg+=`\n`;
+  } else if(D.inventario.length>0){
+    msg+=`✅ *Inventario OK* — sin productos críticos\n\n`;
+  }
+
+  msg+=`🔗 https://el-huerto.vercel.app`;
+  return msg;
+}
+
+// Limpia número de WhatsApp para wa.me (quita espacios, +, etc.)
+function cleanWANum(num){
+  if(!num) return '';
+  return num.replace(/[^\d]/g,'');
+}
+
+// Abre WhatsApp con el reporte (manual)
+window.enviarReporteWA=(numeroOverride)=>{
+  const num=cleanWANum(numeroOverride||CFG.waReporte||CFG.tel||'');
+  if(!num){toast('⚠ Configura tu número de WhatsApp en Config',3500,'warn');return;}
+  const msg=generarReporteWA();
+  const url=`https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
+  window.open(url,'_blank');
+  toast('📱 Abriendo WhatsApp con el reporte',2400);
+};
+
+// Vista previa del reporte (sin abrir WhatsApp)
+window.previewReporteWA=()=>{
+  const msg=generarReporteWA();
+  const html=`<div class="modal-bg" id="wa-preview-modal" style="display:flex;" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:480px;">
+      <div class="modal-head"><span class="modal-title">📱 Vista previa del reporte</span><button class="btn bs bxs" onclick="document.getElementById('wa-preview-modal').remove()">✕</button></div>
+      <div style="background:#dcf8c6;border-radius:10px;padding:14px;font-family:'DM Mono',monospace;font-size:12px;line-height:1.6;white-space:pre-wrap;max-height:60vh;overflow-y:auto;">${msg.replace(/\*([^*]+)\*/g,'<strong>$1</strong>')}</div>
+      <div style="display:flex;gap:8px;margin-top:12px;">
+        <button class="btn bs bfull" onclick="document.getElementById('wa-preview-modal').remove()">Cerrar</button>
+        <button class="btn bp bfull" onclick="enviarReporteWA();document.getElementById('wa-preview-modal').remove()">📱 Enviar por WhatsApp</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+};
+
+// Auto-trigger a la hora configurada
+let waReporteEnviado=null; // fecha del último envío automático
+function checkAutoReporte(){
+  if(!READY||!SESSION||SESSION.tipo!=='admin') return;
+  if(!CFG.waReporte) return; // sin número configurado
+  const now=new Date();
+  const horaActual=now.getHours().toString().padStart(2,'0')+':'+now.getMinutes().toString().padStart(2,'0');
+  const td=today();
+  // Si ya enviamos hoy, salir
+  if(waReporteEnviado===td) return;
+  // Recuperar último envío de localStorage
+  const ultimo=localStorage.getItem('h5wa_ultimo_envio');
+  if(ultimo===td){waReporteEnviado=td;return;}
+  // Si llegó la hora (con tolerancia de 1 minuto)
+  if(horaActual>=CFG.waHora && horaActual<=CFG.waHora.split(':')[0]+':'+(parseInt(CFG.waHora.split(':')[1])+1).toString().padStart(2,'0')){
+    // Disparar reporte
+    if(confirm(`📊 ¿Enviar reporte diario por WhatsApp ahora?\n\nHora configurada: ${CFG.waHora}\nNúmero: ${CFG.waReporte}`)){
+      enviarReporteWA();
+      localStorage.setItem('h5wa_ultimo_envio',td);
+      waReporteEnviado=td;
+    } else {
+      // Usuario canceló — marcar como enviado para no preguntar de nuevo hoy
+      localStorage.setItem('h5wa_ultimo_envio',td);
+      waReporteEnviado=td;
+    }
+  }
+}
+// Verificar cada minuto
+setInterval(checkAutoReporte, 60*1000);
+// También verificar al iniciar (por si la app estaba cerrada a la hora)
+setTimeout(checkAutoReporte, 5000);
 
 // Pedir permiso después de 30 segundos de uso (no apenas entras)
 setTimeout(()=>{
