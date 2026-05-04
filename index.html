@@ -1519,6 +1519,7 @@ async function completeInit(){
   await ajusteFisico20Abr();
   await setMinimosInteligentes();
   await seedInventarioOficial();
+  await migrateUnidadesV3();
   await autoSeedRecetas();
   renderLock();
   if(!SESSION){
@@ -2227,28 +2228,28 @@ const INVENTARIO_OFICIAL = [
   {id:7110,nombre:'Zanahoria',catOf:'frutas_verduras',unidadOf:'kg',cat:'verduras',unit:'kg'},
   {id:7111,nombre:'Jícama',catOf:'frutas_verduras',unidadOf:'kg',cat:'verduras',unit:'kg'},
   {id:7112,nombre:'Pepino',catOf:'frutas_verduras',unidadOf:'kg',cat:'verduras',unit:'kg'},
-  {id:7113,nombre:'Aceitunas negras',catOf:'frutas_verduras',unidadOf:'pieza',cat:'verduras',unit:'pz'},
+  {id:7113,nombre:'Aceitunas negras',catOf:'frutas_verduras',unidadOf:'gramos',cat:'verduras',unit:'g'},
   // LÁCTEOS Y PROTEÍNAS (7201-7215)
   {id:7201,nombre:'Queso Philadelphia',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
   {id:7202,nombre:'Queso mozzarella',catOf:'lacteos_proteinas',unidadOf:'kg',cat:'lacteos',unit:'kg'},
   {id:7203,nombre:'Yogurth natural',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
   {id:7204,nombre:'Crema de almendras',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
   {id:7205,nombre:'Crema de cacahuate',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
-  {id:7206,nombre:'Jamón serrano',catOf:'lacteos_proteinas',unidadOf:'kg',cat:'proteinas',unit:'kg'},
+  {id:7206,nombre:'Jamón serrano',catOf:'lacteos_proteinas',unidadOf:'paquete',cat:'proteinas',unit:'paq'},
   {id:7207,nombre:'Chorizo pamplona',catOf:'lacteos_proteinas',unidadOf:'kg',cat:'proteinas',unit:'kg'},
   {id:7208,nombre:'Pechuga de pavo',catOf:'lacteos_proteinas',unidadOf:'kg',cat:'proteinas',unit:'kg'},
-  {id:7209,nombre:'Proteína',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'proteinas',unit:'pz'},
+  {id:7209,nombre:'Proteína',catOf:'lacteos_proteinas',unidadOf:'gramos',cat:'proteinas',unit:'g'},
   // ABARROTES (7301-7320)
   {id:7301,nombre:'Avena',catOf:'abarrotes',unidadOf:'kg',cat:'granos',unit:'kg'},
   {id:7302,nombre:'Azúcar',catOf:'abarrotes',unidadOf:'kg',cat:'granos',unit:'kg'},
   {id:7303,nombre:'Miel',catOf:'abarrotes',unidadOf:'pieza',cat:'otros',unit:'pz'},
-  {id:7304,nombre:'Chai',catOf:'abarrotes',unidadOf:'pieza',cat:'bebidas',unit:'pz'},
-  {id:7305,nombre:'Matcha',catOf:'abarrotes',unidadOf:'pieza',cat:'bebidas',unit:'pz'},
+  {id:7304,nombre:'Chai',catOf:'abarrotes',unidadOf:'gramos',cat:'bebidas',unit:'g'},
+  {id:7305,nombre:'Matcha',catOf:'abarrotes',unidadOf:'gramos',cat:'bebidas',unit:'g'},
   {id:7306,nombre:'Canela',catOf:'abarrotes',unidadOf:'pieza',cat:'otros',unit:'pz'},
   {id:7307,nombre:'Aceite de oliva',catOf:'abarrotes',unidadOf:'pieza',cat:'otros',unit:'pz'},
-  {id:7308,nombre:'Cacahuate japonés',catOf:'abarrotes',unidadOf:'bolsa',cat:'granos',unit:'bolsa'},
+  {id:7308,nombre:'Cacahuate japonés',catOf:'abarrotes',unidadOf:'gramos',cat:'granos',unit:'g'},
   {id:7309,nombre:'Chilito Tojín',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
-  {id:7310,nombre:'Chamoy',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
+  {id:7310,nombre:'Chamoy',catOf:'abarrotes',unidadOf:'litros',cat:'salsas',unit:'L'},
   {id:7311,nombre:'Valentina',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
   {id:7312,nombre:'Salsa chipotle',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
   {id:7313,nombre:'Aderezos cremosos',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
@@ -2257,12 +2258,12 @@ const INVENTARIO_OFICIAL = [
   {id:7316,nombre:'Palitas de madera',catOf:'abarrotes',unidadOf:'pieza',cat:'empaque',unit:'pz'},
   {id:7317,nombre:'Bolsas de basura',catOf:'abarrotes',unidadOf:'rollo',cat:'limpieza',unit:'rollo'},
   // LISTA INTERNA IVÁN (7401-7415) — chicas también capturan, solo admin ve precios
-  {id:7401,nombre:'Blueberry',catOf:'interna_ivan',unidadOf:'charola',cat:'frutas',unit:'charola',esInterno:true},
-  {id:7402,nombre:'Susalias',catOf:'interna_ivan',unidadOf:'caja',cat:'otros',unit:'caja',esInterno:true},
-  {id:7403,nombre:'Café',catOf:'interna_ivan',unidadOf:'pieza',cat:'bebidas',unit:'pz',esInterno:true},
+  {id:7401,nombre:'Blueberry',catOf:'interna_ivan',unidadOf:'gramos',cat:'frutas',unit:'g',esInterno:true},
+  {id:7402,nombre:'Susalias',catOf:'interna_ivan',unidadOf:'pieza',cat:'otros',unit:'pz',esInterno:true},
+  {id:7403,nombre:'Café',catOf:'interna_ivan',unidadOf:'gramos',cat:'bebidas',unit:'g',esInterno:true},
   {id:7404,nombre:'Pan para panini',catOf:'interna_ivan',unidadOf:'pieza',cat:'granos',unit:'pz',esInterno:true},
   {id:7405,nombre:'Guantes',catOf:'interna_ivan',unidadOf:'caja',cat:'limpieza',unit:'caja',esInterno:true},
-  {id:7406,nombre:'Hielos',catOf:'interna_ivan',unidadOf:'bolsa',cat:'otros',unit:'bolsa',esInterno:true},
+  {id:7406,nombre:'Hielos',catOf:'interna_ivan',unidadOf:'pieza',cat:'otros',unit:'pz',esInterno:true},
   {id:7407,nombre:'Queso americano',catOf:'interna_ivan',unidadOf:'pieza',cat:'lacteos',unit:'pz',esInterno:true},
   {id:7408,nombre:'Leche deslactosada',catOf:'interna_ivan',unidadOf:'litro',cat:'lacteos',unit:'L',esInterno:true},
   {id:7409,nombre:'Leche de almendra',catOf:'interna_ivan',unidadOf:'litro',cat:'lacteos',unit:'L',esInterno:true},
@@ -2466,6 +2467,22 @@ async function seedInventarioOficial(){
   if(added+updated+dedupe.eliminados>0){
     toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados, ${dedupe.eliminados} duplicados eliminados`,4000);
   }
+}
+
+// Migración v3: actualizar unidades de productos oficiales según cambios del dueño
+async function migrateUnidadesV3(){
+  const migKey='h5inv_unidades_v3';
+  if(localStorage.getItem(migKey)) return;
+  let updated=0;
+  for(const oficial of INVENTARIO_OFICIAL){
+    const inv=D.inventario.find(p=>p.id===oficial.id);
+    if(inv && (inv.unit!==oficial.unit || inv.unidadOf!==oficial.unidadOf)){
+      await fsSet('inventario',{...inv,unit:oficial.unit,unidadOf:oficial.unidadOf});
+      updated++;
+    }
+  }
+  localStorage.setItem(migKey,'1');
+  if(updated>0) toast(`✓ Unidades actualizadas: ${updated} productos`,3000);
 }
 
 // Función exportada para limpieza manual desde el botón del admin
