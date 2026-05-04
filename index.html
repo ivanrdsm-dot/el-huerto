@@ -343,6 +343,36 @@ select option{background:var(--surface2);}
 @media(max-width:700px){.reloj-emp-card{padding:14px;}.reloj-av{width:52px;height:52px;font-size:22px;}.reloj-btn{padding:12px 20px;font-size:14px;}}
 @media(max-width:380px){.sale-ok-total{font-size:32px;}.sale-ok-check{width:70px;height:70px;font-size:36px;}.mnbtn{font-size:8.5px;padding:3px 1px;}}
 
+/* ══ MOBILE OPTIMIZATIONS ══ */
+/* Inputs: font-size 16px+ para evitar zoom auto en iOS Safari */
+@media(max-width:768px){
+  input,select,textarea{font-size:16px!important;}
+  /* Tabs scrollables horizontalmente */
+  .kpi-tabs,#inv-modo-tabs{flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;}
+  .kpi-tabs::-webkit-scrollbar,#inv-modo-tabs::-webkit-scrollbar{display:none;}
+  .kpi-tab{flex-shrink:0;}
+  /* Mobile nav: scroll horizontal cuando hay muchos botones */
+  .mnav{overflow-x:auto;scrollbar-width:none;display:flex!important;grid-template-columns:none!important;}
+  .mnav::-webkit-scrollbar{display:none;}
+  .mnbtn{flex:0 0 64px;min-width:64px;}
+  /* Tablas con scroll horizontal */
+  .tw{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  /* Captura de inventario en mobile: input más grande */
+  .inv-cap-row input[type="number"]{font-size:18px!important;width:80px!important;}
+  /* Cards más compactas */
+  .card{padding:12px;}
+  /* Modales con padding reducido */
+  .modal{padding:14px;}
+  /* Botones de pago POS más grandes */
+  .pago-row .btn{min-height:54px;font-size:15px;}
+  /* Lock screen botones grandes */
+  .lock-btn{padding:14px 16px;}
+}
+@media(max-width:480px){
+  .inv-cap-row{grid-template-columns:1fr!important;}
+  .inv-cap-row > div:last-child{justify-content:flex-end;}
+}
+
 /* AJUSTES */
 .ajuste-section{background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:14px;margin-bottom:10px;}
 .ajuste-title{font-size:13px;font-weight:700;margin-bottom:12px;color:var(--text);}
@@ -483,9 +513,10 @@ select option{background:var(--surface2);}
 
 <div class="mnav">
   <button class="mnbtn" onclick="go('dashboard')"><span class="mni">🏠</span>Inicio</button>
-  <button class="mnbtn" onclick="go('miperfil')"><span class="mni">👤</span>Mi Perfil</button>
+  <button class="mnbtn" onclick="go('miperfil')"><span class="mni">👤</span>Perfil</button>
   <button class="mnbtn" onclick="go('reloj')"><span class="mni">🕐</span>Reloj</button>
   <button class="mnbtn active" onclick="go('pos')"><span class="mni">🛒</span>Ventas</button>
+  <button class="mnbtn" onclick="go('inventario')"><span class="mni">📦</span>Inventario</button>
   <button class="mnbtn" onclick="go('caja')"><span class="mni">💰</span>Caja</button>
   <button class="mnbtn" onclick="go('nomina')"><span class="mni">👩</span>Nómina</button>
   <button class="mnbtn" onclick="go('ajustes')"><span class="mni">🔧</span>Ajustes</button>
@@ -2916,9 +2947,10 @@ const ADMIN_PASS = '12345@';
 const EMP_PASSWORDS = {}; // Populated from empleados.pin field
 const EMP_PASS_STATIC = {2001:'123456', 2002:'1234567'}; // Adilene=2001, Claudia=2002
 // Páginas restringidas a admin solamente (nadie más entra)
+// Inventario lo ven TODAS las empleadas (Adilene y Claudia) para captura diaria
 const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','kpis'];
 // Páginas que Clau (gerente) puede ver además de ventas
-const GERENTE_PERMS = ['inventario','kpis']; // Claudia puede ver inventario y KPIs (lectura)
+const GERENTE_PERMS = ['kpis']; // Claudia ve KPIs (lectura). Inventario lo ven todas (no es ADMIN_ONLY ni GERENTE_PERMS).
 // ID de Clau
 const GERENTE_ID = 2002;
 // Lista combinada para compatibilidad
@@ -4555,14 +4587,16 @@ window.setInvCategoria=c=>{
 window.invGuardarCantidad=async(productoId,qty)=>{
   const valor=parseFloat(qty);
   if(isNaN(valor)||valor<0){toast('⚠ Cantidad inválida',2400,'warn');return;}
-  // Buscar si ya hay captura hoy para este producto, actualizar; si no, crear
+  // ÚNICA TOMA POR DÍA: si ya existe captura del día, se ACTUALIZA (no se duplica).
+  // Da igual si la primera la hizo Adilene y la segunda Claudia: solo queda la última.
   const td=today();
   const existe=D.invDiario.find(c=>c.productoId===productoId&&c.fecha===td);
+  const empNombre=SESSION?.nombre||(SESSION?.tipo==='admin'?'Admin':'Sin sesión');
   const captura=existe?
-    {...existe,qty:valor,ts:Date.now(),capturadoPor:SESSION?.id||0}:
-    {id:Date.now()+Math.floor(Math.random()*100),fecha:td,productoId,qty:valor,capturadoPor:SESSION?.id||0,ts:Date.now()};
+    {...existe,qty:valor,ts:Date.now(),capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre}:
+    {id:Date.now()+Math.floor(Math.random()*100),fecha:td,productoId,qty:valor,capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre,ts:Date.now()};
   await fsSet('invDiario',captura);
-  // También actualizar campo qty del inventario para compatibilidad con sistema viejo
+  // Actualizar campo qty del inventario para compatibilidad con sistema viejo
   const inv=D.inventario.find(i=>i.id===productoId);
   if(inv){inv.qty=valor;await fsSet('inventario',{...inv,qty:valor});}
 };
@@ -4796,6 +4830,7 @@ function renderInvDashboard(){
           <th>Categoría</th>
           <th>Stock</th>
           <th>Unidad</th>
+          <th>Capturó</th>
           <th>Mín</th>
           <th>Consumo/día</th>
           <th>Precio</th>
@@ -4811,11 +4846,17 @@ function renderInvDashboard(){
           const sugerido=invMinimoSugerido(p.id);
           const valor=stock*(p.precio||0);
           const catNombre=CAT_OFICIALES.find(c=>c.key===p.catOf)?.nombre||'—';
+          // Quién capturó hoy
+          const td=today();
+          const captHoy=D.invDiario.find(c=>c.productoId===p.id&&c.fecha===td);
+          const horaCapt=captHoy?new Date(captHoy.ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}):null;
+          const quienCapt=captHoy?(captHoy.capturadoPorNombre||D.empleados.find(e=>e.id===captHoy.capturadoPor)?.nombre||'?'):null;
           return `<tr>
             <td style="font-weight:600;font-size:12.5px;">${p.nombre}${p.esInterno?' <span style="font-size:9px;color:#a87ee8;">[interno]</span>':''}</td>
             <td style="font-size:10.5px;color:var(--text2);">${catNombre.replace(/^\S+\s/,'')}</td>
             <td class="mono fw7" style="color:${e.color};">${stock}</td>
             <td style="font-size:11px;color:var(--text3);">${p.unidadOf||p.unit||'—'}</td>
+            <td style="font-size:10.5px;color:var(--text2);">${captHoy?`${quienCapt} <span style="color:var(--text3);font-family:'DM Mono',monospace;">${horaCapt}</span>`:'<span style="color:var(--red);">⏳ Pendiente</span>'}</td>
             <td class="mono">${p.min||'—'}${sugerido!=null&&p.min===0?` <span style="font-size:9px;color:var(--gold);" title="Sugerido por consumo">~${sugerido.toFixed(1)}</span>`:''}</td>
             <td class="mono" style="font-size:11px;color:var(--text2);">${consumo!=null?consumo.toFixed(2):'—'}</td>
             <td class="mono" style="font-size:11px;">${p.precio?fmt(p.precio):'—'}</td>
@@ -5832,7 +5873,7 @@ function renderMiPerfil(){
         <div class="ct">🚀 Accesos Rápidos</div>
         <button class="btn bp bfull" onclick="go('pos')" style="margin:6px 0;padding:14px;font-size:15px;font-weight:700;">🛒 Vender / POS</button>
         <button class="btn bs bfull bsm" onclick="go('reloj')" style="margin-bottom:6px;">🕐 Reloj Checador</button>
-        ${esGerente?`<button class="btn bs bfull bsm" onclick="go('inventario')" style="margin-bottom:6px;">📦 Inventario</button>`:''}
+        <button class="btn bs bfull bsm" onclick="go('inventario')" style="margin-bottom:6px;">📦 Inventario</button>
         ${topProd.length>0?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
           <div style="font-size:10px;color:var(--text3);margin-bottom:6px;">⭐ PRODUCTOS QUE HE VENDIDO HOY</div>
           ${topProd.map(([n,q])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${q}x</span></div>`).join('')}
@@ -6907,6 +6948,9 @@ function renderAll(){
   renderProv(); renderSubs(); renderInv();
   renderRecetas(); renderReportes(); renderConfig();
   renderAjustes(); renderReloj(); renderMiPerfil(); renderKPIs(); loadClaudeKey();
+  // Re-render del lock screen para asegurar que aparezcan Adilene y Claudia
+  // aunque la data de empleados llegue después del init inicial
+  if(typeof renderLock==='function') renderLock();
 }
 
 function initD(){
