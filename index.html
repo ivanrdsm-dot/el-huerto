@@ -4391,14 +4391,76 @@ window.addGasto=async()=>{
   if(!monto||monto<=0){toast('⚠ Monto inválido');return;}
   const tipoEst=$('g-tipoest')?.value||'general';
   const canal=tipoEst==='marketing'?($('g-canal')?.value||'otros'):null;
-  const g={id:Date.now(),fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal};
+  // Detectar si estamos editando un gasto existente
+  const editId=$('gm').dataset.editId;
+  const existe=editId?D.gastos.find(x=>x.id==editId):null;
+  const g=existe?
+    {...existe,fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal}:
+    {id:Date.now(),fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal};
   await fsSet('gastos',g);
+  // Resetear form y modo edición
+  $('gm').value='';$('gprov').value='';$('gtk').value='';$('gnota').value='';
+  delete $('gm').dataset.editId;
+  if($('g-tipoest'))$('g-tipoest').value='general';
+  if($('g-canal-wrap'))$('g-canal-wrap').style.display='none';
+  // Restaurar texto del botón
+  const btn=document.querySelector('button[onclick="addGasto()"]');
+  if(btn) btn.innerHTML='+ Registrar Gasto';
+  // Quitar banner de edición si existe
+  const banner=document.getElementById('g-edit-banner');
+  if(banner) banner.remove();
+  toast(existe?'✓ Gasto actualizado: '+fmt(monto):'✓ Gasto: '+fmt(monto));
+};
+
+window.editGasto=id=>{
+  const g=D.gastos.find(x=>x.id===id); if(!g){toast('⚠ Gasto no encontrado',2400,'warn');return;}
+  // Pre-llenar el form
+  if($('gf'))$('gf').value=g.fecha||today();
+  if($('gm')){$('gm').value=g.monto;$('gm').dataset.editId=id;}
+  if($('gc')&&g.cat)$('gc').value=g.cat;
+  if($('gmet')&&g.metodo)$('gmet').value=g.metodo;
+  if($('gprov'))$('gprov').value=g.prov||'';
+  if($('gtk'))$('gtk').value=g.ticket||'';
+  if($('gnota'))$('gnota').value=g.notas||'';
+  if($('g-tipoest'))$('g-tipoest').value=g.tipoEstrategico||'general';
+  if($('g-canal-wrap'))$('g-canal-wrap').style.display=(g.tipoEstrategico==='marketing')?'':'none';
+  if($('g-canal')&&g.canal)$('g-canal').value=g.canal;
+  // Cambiar botón
+  const btn=document.querySelector('button[onclick="addGasto()"]');
+  if(btn) btn.innerHTML='💾 Actualizar Gasto';
+  // Banner visual de edición
+  let banner=document.getElementById('g-edit-banner');
+  if(!banner){
+    banner=document.createElement('div');
+    banner.id='g-edit-banner';
+    banner.style.cssText='background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:12px;color:var(--goldd);display:flex;justify-content:space-between;align-items:center;';
+    btn.parentElement.insertBefore(banner,btn.parentElement.firstChild);
+  }
+  banner.innerHTML=`✏️ <strong>Editando gasto del ${g.fecha} · ${fmt(g.monto)}</strong> <button class="btn bs bxs" onclick="cancelEditGasto()">Cancelar</button>`;
+  // Scroll al form y focus
+  $('gm').scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>$('gm').focus(),400);
+  toast('Edita los campos y guarda',2400);
+};
+
+window.cancelEditGasto=()=>{
+  delete $('gm').dataset.editId;
   $('gm').value='';$('gprov').value='';$('gtk').value='';$('gnota').value='';
   if($('g-tipoest'))$('g-tipoest').value='general';
   if($('g-canal-wrap'))$('g-canal-wrap').style.display='none';
-  toast('✓ Gasto: '+fmt(monto));
+  const btn=document.querySelector('button[onclick="addGasto()"]');
+  if(btn) btn.innerHTML='+ Registrar Gasto';
+  const banner=document.getElementById('g-edit-banner');
+  if(banner) banner.remove();
+  toast('Edición cancelada',1500);
 };
-window.delGasto=async id=>{await fsDel('gastos',id);toast('✓ Eliminado');};
+
+window.delGasto=async id=>{
+  const g=D.gastos.find(x=>x.id===id);
+  if(g && !confirm(`¿Eliminar este gasto?\n${g.fecha} · ${fmt(g.monto)} · ${g.prov||g.cat||''}`)) return;
+  await fsDel('gastos',id);
+  toast('✓ Eliminado');
+};
 function renderGastos(){
   const td=today();
   const periodo=$('g-periodo')?.value||'semana';
@@ -4461,7 +4523,10 @@ function renderGastos(){
       <td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td>
       <td>${mi[r.metodo]||''}</td>
       <td class="mono ar fw7">${fmt(r.monto)}</td>
-      <td><button class="btn bd bxs" onclick="delGasto(${r.id})">✕</button></td>
+      <td style="display:flex;gap:3px;">
+        <button class="btn bs bxs" onclick="editGasto(${r.id})" title="Editar">✏️</button>
+        <button class="btn bd bxs" onclick="delGasto(${r.id})" title="Eliminar">✕</button>
+      </td>
     </tr>`).join('');
 
   // Distribución por categoría
