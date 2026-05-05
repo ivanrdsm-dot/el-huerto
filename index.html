@@ -3993,6 +3993,20 @@ window.addRetiro=async()=>{
   if(!monto||monto<=0){toast('⚠ Ingresa un monto');return;}
   const tipo=$('ret-tipo').value;
   const concepto=$('ret-concepto').value.trim()||'Sin concepto';
+  // Modo edición
+  const editId=$('ret-monto').dataset.editId;
+  const existe=editId?D.retiros.find(x=>x.id==editId):null;
+  if(existe){
+    await fsSet('retiros',{...existe,fecha,monto,tipo,concepto});
+    $('ret-monto').value='';$('ret-concepto').value='';
+    delete $('ret-monto').dataset.editId;
+    const btn=document.querySelector('button[onclick="addRetiro()"]');
+    if(btn) btn.innerHTML='+ Registrar Movimiento';
+    const banner=document.getElementById('ret-edit-banner');
+    if(banner) banner.remove();
+    toast('✓ Movimiento actualizado: '+fmt(monto));
+    return;
+  }
   // Si es fondo, verificar que no haya otro fondo del mismo día (no duplicar)
   if(tipo==='fondo'){
     const fondoExistente=D.retiros.find(r=>r.fecha===fecha && r.tipo==='fondo');
@@ -4011,7 +4025,40 @@ window.addRetiro=async()=>{
   $('ret-monto').value='';$('ret-concepto').value='';
   toast(`✓ ${tipo==='retiro'?'💸 Retiro':tipo==='fondo'?'💰 Fondo inicial':'📥 Depósito'}: ${fmt(monto)}`);
 };
-window.delRetiro=async id=>{await fsDel('retiros',id);toast('✓ Eliminado');};
+
+window.editRetiro=id=>{
+  const r=D.retiros.find(x=>x.id===id); if(!r){toast('⚠ No encontrado',2400,'warn');return;}
+  if($('ret-fecha'))$('ret-fecha').value=r.fecha||today();
+  if($('ret-monto')){$('ret-monto').value=r.monto;$('ret-monto').dataset.editId=id;}
+  if($('ret-tipo')&&r.tipo)$('ret-tipo').value=r.tipo;
+  if($('ret-concepto'))$('ret-concepto').value=r.concepto||'';
+  const btn=document.querySelector('button[onclick="addRetiro()"]');
+  if(btn) btn.innerHTML='💾 Actualizar Movimiento';
+  let banner=document.getElementById('ret-edit-banner');
+  if(!banner&&btn){
+    banner=document.createElement('div');
+    banner.id='ret-edit-banner';
+    banner.style.cssText='background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:8px 10px;margin-bottom:8px;font-size:11.5px;color:var(--goldd);display:flex;justify-content:space-between;align-items:center;';
+    btn.parentElement.insertBefore(banner,btn.parentElement.firstChild);
+  }
+  if(banner) banner.innerHTML=`✏️ <strong>Editando: ${r.concepto||'sin concepto'} · ${fmt(r.monto)}</strong> <button class="btn bs bxs" onclick="cancelEditRetiro()">Cancelar</button>`;
+  $('ret-monto').scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>$('ret-monto').focus(),400);
+};
+window.cancelEditRetiro=()=>{
+  delete $('ret-monto').dataset.editId;
+  $('ret-monto').value='';$('ret-concepto').value='';
+  const btn=document.querySelector('button[onclick="addRetiro()"]');
+  if(btn) btn.innerHTML='+ Registrar Movimiento';
+  const banner=document.getElementById('ret-edit-banner');
+  if(banner) banner.remove();
+};
+
+window.delRetiro=async id=>{
+  const r=D.retiros.find(x=>x.id===id);
+  if(r && !confirm(`¿Eliminar movimiento?\n${r.concepto||''} · ${fmt(r.monto)} · ${r.fecha}`)) return;
+  await fsDel('retiros',id);toast('✓ Eliminado');
+};
 
 function getEnCaja(fecha){
   // Fuente de verdad: colección caja (registro diario), fallback a ventas POS
@@ -4109,7 +4156,8 @@ function renderCaja(){
         <div style="font-size:10px;color:var(--text3);">${r.tipo==='retiro'?'💸 Retiro':r.tipo==='fondo'?'💰 Fondo':'📥 Depósito'} · ${r.fecha}</div></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span class="mono fw7 ${r.tipo==='retiro'?'ar':'at'}" style="font-size:14px;">${r.tipo==='retiro'?'−':'+'}${fmt(r.monto)}</span>
-        <button class="btn bd bxs" onclick="delRetiro(${r.id})">✕</button>
+        <button class="btn bs bxs" onclick="editRetiro(${r.id})" title="Editar">✏️</button>
+        <button class="btn bd bxs" onclick="delRetiro(${r.id})" title="Eliminar">✕</button>
       </div>
     </div>`).join('');
 
@@ -4636,7 +4684,8 @@ function renderNomina(){
         <span style="font-size:11px;color:var(--text3);margin-left:6px;">${x.concepto||''}</span></div>
       <div style="display:flex;align-items:center;gap:8px;">
         <span class="mono fw7 ${x.tipo==='extra'?'at':'ar'}" style="font-size:14px;">${x.tipo==='extra'?'+':'-'}${fmt(x.monto)}</span>
-        <button class="btn bd bxs" onclick="delExtra(${x.id})">✕</button>
+        <button class="btn bs bxs" onclick="editExtra(${x.id})" title="Editar">✏️</button>
+        <button class="btn bd bxs" onclick="delExtra(${x.id})" title="Eliminar">✕</button>
       </div></div>`;}).join('');
 
   if($('nom-desglose'))$('nom-desglose').innerHTML=
@@ -4671,13 +4720,60 @@ window.addExtra=async()=>{
   const empId=parseInt($('ext-emp')?.value); if(!empId){toast('⚠ Selecciona empleado');return;}
   const monto=parseFloat($('ext-monto')?.value); if(!monto||monto<=0){toast('⚠ Ingresa monto');return;}
   const mon=$('nom-sem')?.value||getMonday(today());
-  const x={id:Date.now(),semana:mon,empId,tipo:$('ext-tipo').value,monto,concepto:$('ext-concepto').value.trim()||''};
+  // Modo edición
+  const editId=$('ext-monto').dataset.editId;
+  const existe=editId?D.extras.find(x=>x.id==editId):null;
+  const x=existe?
+    {...existe,empId,tipo:$('ext-tipo').value,monto,concepto:$('ext-concepto').value.trim()||''}:
+    {id:Date.now(),semana:mon,empId,tipo:$('ext-tipo').value,monto,concepto:$('ext-concepto').value.trim()||''};
   await fsSet('extras',x);
   $('ext-monto').value='';$('ext-concepto').value='';
+  delete $('ext-monto').dataset.editId;
   $('extra-form').style.display='none';
-  toast(`✓ ${x.tipo==='extra'?'Extra':'Deducción'}: ${fmt(monto)}`);
+  // Restaurar texto del botón
+  const btn=document.querySelector('button[onclick="addExtra()"]');
+  if(btn) btn.innerHTML=existe?'+ Agregar':'+ Agregar';
+  const banner=document.getElementById('ext-edit-banner');
+  if(banner) banner.remove();
+  toast(existe?'✓ Actualizado: '+fmt(monto):`✓ ${x.tipo==='extra'?'Extra':'Deducción'}: ${fmt(monto)}`);
 };
-window.delExtra=async id=>{await fsDel('extras',id);toast('✓ Eliminado');};
+
+window.editExtra=id=>{
+  const x=D.extras.find(e=>e.id===id); if(!x){toast('⚠ No encontrado',2400,'warn');return;}
+  // Abrir el form si está cerrado
+  if($('extra-form'))$('extra-form').style.display='block';
+  if($('ext-emp'))$('ext-emp').value=x.empId;
+  if($('ext-tipo')&&x.tipo)$('ext-tipo').value=x.tipo;
+  if($('ext-monto')){$('ext-monto').value=x.monto;$('ext-monto').dataset.editId=id;}
+  if($('ext-concepto'))$('ext-concepto').value=x.concepto||'';
+  let banner=document.getElementById('ext-edit-banner');
+  const formCard=$('extra-form');
+  if(!banner&&formCard){
+    banner=document.createElement('div');
+    banner.id='ext-edit-banner';
+    banner.style.cssText='background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:8px 10px;margin-bottom:8px;font-size:11.5px;color:var(--goldd);display:flex;justify-content:space-between;align-items:center;';
+    formCard.insertBefore(banner,formCard.firstChild);
+  }
+  const emp=D.empleados.find(e=>e.id===x.empId);
+  if(banner) banner.innerHTML=`✏️ <strong>Editando: ${x.tipo} de ${emp?.nombre||'?'} · ${fmt(x.monto)}</strong> <button class="btn bs bxs" onclick="cancelEditExtra()">Cancelar</button>`;
+  $('ext-monto').scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>$('ext-monto').focus(),400);
+};
+window.cancelEditExtra=()=>{
+  delete $('ext-monto').dataset.editId;
+  $('ext-monto').value='';$('ext-concepto').value='';
+  const banner=document.getElementById('ext-edit-banner');
+  if(banner) banner.remove();
+};
+
+window.delExtra=async id=>{
+  const x=D.extras.find(e=>e.id===id);
+  if(x){
+    const emp=D.empleados.find(e=>e.id===x.empId);
+    if(!confirm(`¿Eliminar?\n${x.tipo} de ${emp?.nombre||'?'} · ${fmt(x.monto)}`)) return;
+  }
+  await fsDel('extras',id);toast('✓ Eliminado');
+};
 
 window.pagarSemana=async()=>{
   const mon=$('nom-sem')?.value||getMonday(today());
@@ -4833,19 +4929,67 @@ window.addPedido=async()=>{
   const fecha=$('pvf').value||today(); const nombre=$('pvn').value.trim(); const total=parseFloat($('pvt').value);
   if(!nombre){toast('⚠ Ingresa proveedor');return;} if(!total||total<=0){toast('⚠ Ingresa total');return;}
   const tipo=$('pvtipo').value; const ticket=$('pvtk').value.trim(); const detalle=$('pvdet').value.trim();
-  const p={id:Date.now(),fecha,nombre,tipo,total,ticket,detalle};
-  const gc={semanal:'proveedor',costco:'costco',emergencia:'varios',otro:'proveedor'};
-  const g={id:Date.now()+1,fecha,cat:gc[tipo]||'proveedor',prov:nombre,monto:total,ticket,metodo:'transferencia',notas:detalle};
-  await Promise.all([fsSet('pedidos',p),fsSet('gastos',g)]);
+  const editId=$('pvn').dataset.editId;
+  const existe=editId?D.pedidos.find(x=>x.id==editId):null;
+  const p=existe?
+    {...existe,fecha,nombre,tipo,total,ticket,detalle}:
+    {id:Date.now(),fecha,nombre,tipo,total,ticket,detalle};
+  await fsSet('pedidos',p);
+  // Si NO es edición, también crea el gasto correspondiente
+  if(!existe){
+    const gc={semanal:'proveedor',costco:'costco',emergencia:'varios',otro:'proveedor'};
+    const g={id:Date.now()+1,fecha,cat:gc[tipo]||'proveedor',prov:nombre,monto:total,ticket,metodo:'transferencia',notas:detalle};
+    await fsSet('gastos',g);
+  }
   $('pvn').value='';$('pvt').value='';$('pvtk').value='';$('pvdet').value='';
-  toast('✓ Pedido: '+fmt(total));
+  delete $('pvn').dataset.editId;
+  const btn=document.querySelector('button[onclick="addPedido()"]');
+  if(btn) btn.innerHTML='+ Registrar Pedido';
+  const banner=document.getElementById('pv-edit-banner');
+  if(banner) banner.remove();
+  toast(existe?'✓ Pedido actualizado: '+fmt(total):'✓ Pedido: '+fmt(total));
 };
-window.delPed=async id=>{await fsDel('pedidos',id);toast('✓ Eliminado');};
+
+window.editPedido=id=>{
+  const p=D.pedidos.find(x=>x.id===id); if(!p){toast('⚠ No encontrado',2400,'warn');return;}
+  if($('pvf'))$('pvf').value=p.fecha||today();
+  if($('pvn')){$('pvn').value=p.nombre;$('pvn').dataset.editId=id;}
+  if($('pvt'))$('pvt').value=p.total;
+  if($('pvtipo')&&p.tipo)$('pvtipo').value=p.tipo;
+  if($('pvtk'))$('pvtk').value=p.ticket||'';
+  if($('pvdet'))$('pvdet').value=p.detalle||'';
+  const btn=document.querySelector('button[onclick="addPedido()"]');
+  if(btn) btn.innerHTML='💾 Actualizar Pedido';
+  let banner=document.getElementById('pv-edit-banner');
+  if(!banner&&btn){
+    banner=document.createElement('div');
+    banner.id='pv-edit-banner';
+    banner.style.cssText='background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:12px;color:var(--goldd);display:flex;justify-content:space-between;align-items:center;';
+    btn.parentElement.insertBefore(banner,btn.parentElement.firstChild);
+  }
+  if(banner) banner.innerHTML=`✏️ <strong>Editando pedido a ${p.nombre} · ${fmt(p.total)}</strong> <button class="btn bs bxs" onclick="cancelEditPedido()">Cancelar</button>`;
+  $('pvn').scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>$('pvt').focus(),400);
+};
+window.cancelEditPedido=()=>{
+  delete $('pvn').dataset.editId;
+  $('pvn').value='';$('pvt').value='';$('pvtk').value='';$('pvdet').value='';
+  const btn=document.querySelector('button[onclick="addPedido()"]');
+  if(btn) btn.innerHTML='+ Registrar Pedido';
+  const banner=document.getElementById('pv-edit-banner');
+  if(banner) banner.remove();
+};
+
+window.delPed=async id=>{
+  const p=D.pedidos.find(x=>x.id===id);
+  if(p && !confirm(`¿Eliminar pedido?\n${p.nombre} · ${fmt(p.total)}\n${p.fecha}`)) return;
+  await fsDel('pedidos',id);toast('✓ Eliminado');
+};
 function renderProv(){
   const pvL={semanal:'📅 Semanal',costco:'🛒 Costco',emergencia:'⚡ Emergencia',otro:'Otro'};
   const rows=[...D.pedidos].sort((a,b)=>b.fecha.localeCompare(a.fecha));
   if($('pvtable'))$('pvtable').innerHTML=rows.length===0?`<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:14px;">Sin pedidos</td></tr>`:
-    rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${r.nombre}</td><td><span class="badge xb">${pvL[r.tipo]||r.tipo}</span></td><td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td><td class="mono ar fw7">${fmt(r.total)}</td><td><button class="btn bd bxs" onclick="delPed(${r.id})">✕</button></td></tr>`).join('');
+    rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${r.nombre}</td><td><span class="badge xb">${pvL[r.tipo]||r.tipo}</span></td><td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td><td class="mono ar fw7">${fmt(r.total)}</td><td style="display:flex;gap:3px;"><button class="btn bs bxs" onclick="editPedido(${r.id})" title="Editar">✏️</button><button class="btn bd bxs" onclick="delPed(${r.id})" title="Eliminar">✕</button></td></tr>`).join('');
   const freq={}; D.pedidos.forEach(p=>{freq[p.nombre]=(freq[p.nombre]||0)+p.total;});
   if($('pvfreq'))$('pvfreq').innerHTML=Object.entries(freq).length===0?`<p style="color:var(--text3);font-size:12px;">Sin historial</p>`:
     Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([n,v])=>`<div class="sr"><span>${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
@@ -4859,13 +5003,57 @@ function renderProv(){
 window.addSub=async()=>{
   const nombre=$('sbn').value.trim(); const monto=parseFloat($('sbm').value);
   if(!nombre){toast('⚠ Ingresa nombre');return;} if(!monto){toast('⚠ Ingresa monto');return;}
-  const s={id:Date.now(),nombre,tel:$('sbtel').value.trim(),plan:$('sbplan').value.trim(),monto,dia:parseInt($('sbd').value)||1,inicio:$('sbi').value||today(),activo:true,pagos:[]};
+  const editId=$('sbn').dataset.editId;
+  const existe=editId?D.subs.find(x=>x.id==editId):null;
+  const s=existe?
+    {...existe,nombre,tel:$('sbtel').value.trim(),plan:$('sbplan').value.trim(),monto,dia:parseInt($('sbd').value)||1,inicio:$('sbi').value||existe.inicio||today()}:
+    {id:Date.now(),nombre,tel:$('sbtel').value.trim(),plan:$('sbplan').value.trim(),monto,dia:parseInt($('sbd').value)||1,inicio:$('sbi').value||today(),activo:true,pagos:[]};
   await fsSet('subs',s);
   $('sbn').value='';$('sbtel').value='';$('sbplan').value='';$('sbm').value='';$('sbd').value='';
-  toast('✓ Suscriptor: '+nombre);
+  delete $('sbn').dataset.editId;
+  const btn=document.querySelector('button[onclick="addSub()"]');
+  if(btn) btn.innerHTML='+ Registrar Suscriptor';
+  const banner=document.getElementById('sb-edit-banner');
+  if(banner) banner.remove();
+  toast(existe?'✓ Actualizado: '+nombre:'✓ Suscriptor: '+nombre);
 };
+
+window.editSub=id=>{
+  const s=D.subs.find(x=>x.id===id); if(!s){toast('⚠ No encontrado',2400,'warn');return;}
+  if($('sbn')){$('sbn').value=s.nombre;$('sbn').dataset.editId=id;}
+  if($('sbtel'))$('sbtel').value=s.tel||'';
+  if($('sbplan'))$('sbplan').value=s.plan||'';
+  if($('sbm'))$('sbm').value=s.monto;
+  if($('sbd'))$('sbd').value=s.dia||1;
+  if($('sbi'))$('sbi').value=s.inicio||today();
+  const btn=document.querySelector('button[onclick="addSub()"]');
+  if(btn) btn.innerHTML='💾 Actualizar Suscriptor';
+  let banner=document.getElementById('sb-edit-banner');
+  if(!banner&&btn){
+    banner=document.createElement('div');
+    banner.id='sb-edit-banner';
+    banner.style.cssText='background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:12px;color:var(--goldd);display:flex;justify-content:space-between;align-items:center;';
+    btn.parentElement.insertBefore(banner,btn.parentElement.firstChild);
+  }
+  if(banner) banner.innerHTML=`✏️ <strong>Editando ${s.nombre}</strong> <button class="btn bs bxs" onclick="cancelEditSub()">Cancelar</button>`;
+  $('sbn').scrollIntoView({behavior:'smooth',block:'center'});
+  setTimeout(()=>$('sbn').focus(),400);
+};
+window.cancelEditSub=()=>{
+  delete $('sbn').dataset.editId;
+  $('sbn').value='';$('sbtel').value='';$('sbplan').value='';$('sbm').value='';$('sbd').value='';
+  const btn=document.querySelector('button[onclick="addSub()"]');
+  if(btn) btn.innerHTML='+ Registrar Suscriptor';
+  const banner=document.getElementById('sb-edit-banner');
+  if(banner) banner.remove();
+};
+
 window.tPago=async id=>{const s=D.subs.find(x=>x.id==id);if(!s)return;const mes=curM();if(s.pagos.includes(mes))s.pagos=s.pagos.filter(m=>m!==mes);else{s.pagos.push(mes);toast('✓ Cobro: '+fmt(s.monto));}await fsSet('subs',s);};
-window.delSub=async id=>{await fsDel('subs',id);toast('✓ Eliminado');};
+window.delSub=async id=>{
+  const s=D.subs.find(x=>x.id===id);
+  if(s && !confirm(`¿Eliminar suscriptor?\n${s.nombre} · ${fmt(s.monto)}/mes`)) return;
+  await fsDel('subs',id);toast('✓ Eliminado');
+};
 function renderSubs(){
   const mes=curM(); const act=D.subs.filter(s=>s.activo);
   const pag=act.filter(s=>s.pagos.includes(mes)); const pend=act.filter(s=>!s.pagos.includes(mes));
@@ -4882,7 +5070,10 @@ function renderSubs(){
       <div style="font-size:11px;color:var(--text2);margin-top:2px;">${s.tel||''} · 📦 ${s.plan||'—'} · día ${s.dia}</div></div>
       <div style="text-align:right;min-width:80px;"><div class="mono ag fw7" style="font-size:17px;">${fmt(s.monto)}</div>
       <button class="btn ${pg?'bs':'bp'} bxs" style="margin-top:5px;" onclick="tPago(${s.id})">${pg?'✓':'Cobrar'}</button>
-      <button class="btn bd bxs" style="margin-top:4px;" onclick="delSub(${s.id})">✕</button></div></div>`;}).join('');
+      <div style="display:flex;gap:3px;margin-top:4px;justify-content:flex-end;">
+        <button class="btn bs bxs" onclick="editSub(${s.id})" title="Editar">✏️</button>
+        <button class="btn bd bxs" onclick="delSub(${s.id})" title="Eliminar">✕</button>
+      </div></div></div>`;}).join('');
 }
 
 // ══════════════════════════════════════════════════════════════
