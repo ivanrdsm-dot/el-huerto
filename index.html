@@ -2820,6 +2820,147 @@ window.invLimpiarDuplicados=async()=>{
 };
 
 // ─── LIMPIEZA AGRESIVA: solo dejar productos oficiales del Excel ───
+// ══════════════════════════════════════════════════════════════
+// DEDUPE POR NOMBRE: detecta duplicados exactos y deja solo 1
+// Prioridad: el que tenga inventario inscrito (qty > 0)
+// ══════════════════════════════════════════════════════════════
+window.invDedupePorNombre=()=>{
+  // Agrupar por nombre normalizado
+  const grupos={};
+  D.inventario.forEach(p=>{
+    const key=normInvNombre(p.nombre);
+    if(!grupos[key]) grupos[key]=[];
+    grupos[key].push(p);
+  });
+  // Solo grupos con duplicados
+  const conDuplicados=Object.entries(grupos).filter(([,arr])=>arr.length>1);
+  if(conDuplicados.length===0){
+    toast('✓ No hay duplicados por nombre',2400);
+    return;
+  }
+  // Mostrar preview con qué se va a hacer
+  let totalEliminar=0;
+  const decisiones=conDuplicados.map(([key,arr])=>{
+    // Score cada uno por: tener qty, ser oficial, qty alto
+    const conQty=arr.filter(p=>(p.qty||0)>0);
+    const oficiales=arr.filter(p=>p.id>=7100&&p.id<7600);
+    // Lógica de ganador:
+    // 1. Si solo uno tiene qty > 0: ese gana
+    // 2. Si varios tienen qty: el oficial (si lo hay) o el de mayor qty
+    // 3. Si ninguno tiene qty: el oficial o el más reciente (id mayor)
+    let ganador;
+    if(conQty.length===1) ganador=conQty[0];
+    else if(conQty.length>1){
+      // El oficial con qty, si no el de mayor qty
+      ganador=conQty.find(p=>p.id>=7100&&p.id<7600)||conQty.sort((a,b)=>(b.qty||0)-(a.qty||0))[0];
+    } else {
+      // Ninguno tiene qty
+      ganador=oficiales[0]||arr.sort((a,b)=>b.id-a.id)[0];
+    }
+    const perdedores=arr.filter(p=>p.id!==ganador.id);
+    totalEliminar+=perdedores.length;
+    return {key,ganador,perdedores,arr};
+  });
+
+  // Modal preview
+  const html=`<div class="modal-bg" id="dedupe-name-modal" style="display:flex;" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:700px;max-height:85vh;overflow-y:auto;">
+      <div class="modal-head">
+        <span class="modal-title">🧹 Eliminar duplicados por nombre</span>
+        <button class="btn bs bxs" onclick="document.getElementById('dedupe-name-modal').remove()">✕</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--text2);margin-bottom:14px;">
+        Detectados <strong>${conDuplicados.length}</strong> nombres con duplicados.
+        Se eliminarán <strong style="color:var(--red);">${totalEliminar}</strong> productos repetidos
+        (manteniendo el que tiene inventario inscrito o el oficial).
+      </p>
+      <div style="max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;">
+        ${decisiones.map(({ganador,perdedores})=>{
+          return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:10px;">
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+              <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;">MANTENER</span>
+              <strong style="font-size:13px;">${ganador.nombre}</strong>
+              <span style="margin-left:auto;font-size:11px;color:var(--text2);">qty: <strong style="color:${(ganador.qty||0)>0?'var(--accent)':'var(--text3)'};">${ganador.qty||0}</strong> ${ganador.unidadOf||ganador.unit||''} · ${ganador.id>=7100?'oficial':'id '+ganador.id}</span>
+            </div>
+            ${perdedores.map(p=>`<div style="display:flex;align-items:center;gap:6px;padding:4px 0 0 16px;font-size:11.5px;border-top:1px dashed var(--border);margin-top:4px;padding-top:6px;">
+              <span style="background:#ffebee;color:#c62828;padding:1px 6px;border-radius:8px;font-size:9.5px;font-weight:700;">ELIMINAR</span>
+              <span style="color:var(--text2);">${p.nombre}</span>
+              <span style="margin-left:auto;color:var(--text3);font-size:10.5px;">qty: ${p.qty||0} · id ${p.id}</span>
+            </div>`).join('')}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn bs bfull" onclick="document.getElementById('dedupe-name-modal').remove()">Cancelar</button>
+        <button class="btn bd bfull" onclick="invEjecutarDedupePorNombre()">🗑 Confirmar y eliminar ${totalEliminar} duplicados</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  // Guardar decisiones globales para ejecución
+  window._dedupePending=decisiones;
+};
+
+window.invEjecutarDedupePorNombre=async()=>{
+  const decisiones=window._dedupePending;
+  if(!decisiones){toast('⚠ Sin datos de dedupe',2400,'warn');return;}
+  const modal=document.getElementById('dedupe-name-modal');
+  if(modal) modal.remove();
+  toast('🧹 Limpiando duplicados, espera...',5000);
+  let eliminados=0;
+
+  for(const {ganador,perdedores} of decisiones){
+    // Sumar qty del perdedor al ganador SOLO si el ganador tiene qty 0
+    // (evita doble-conteo cuando ambos tienen el mismo stock)
+    let qtyTotal=ganador.qty||0;
+    if(qtyTotal===0){
+      // Si ganador no tiene qty, tomar el max de los perdedores
+      qtyTotal=Math.max(...perdedores.map(p=>p.qty||0));
+    }
+    const ganadorUpdated={...ganador,qty:qtyTotal};
+    // Preservar precio si el ganador no tiene
+    if(!ganadorUpdated.precio){
+      const conPrecio=perdedores.find(p=>p.precio>0);
+      if(conPrecio) ganadorUpdated.precio=conPrecio.precio;
+    }
+    // Preservar mínimo si el ganador no tiene
+    if(!ganadorUpdated.min){
+      const conMin=perdedores.find(p=>p.min>0);
+      if(conMin) ganadorUpdated.min=conMin.min;
+    }
+    await fsSet('inventario',ganadorUpdated);
+
+    // Migrar datos de cada perdedor al ganador
+    for(const perdedor of perdedores){
+      // Capturas invDiario
+      const caps=D.invDiario.filter(c=>c.productoId===perdedor.id);
+      for(const c of caps){
+        await fsSet('invDiario',{...c,productoId:ganador.id});
+      }
+      // Recetas que apuntan al perdedor
+      for(const rec of D.recetas){
+        if(rec.ings){
+          let mod=false;
+          rec.ings.forEach(ing=>{
+            if(ing.invId==perdedor.id){
+              ing.invId=ganador.id;
+              ing.nombre=ganador.nombre;
+              mod=true;
+            }
+          });
+          if(mod) await fsSet('recetas',rec);
+        }
+      }
+      // Eliminar perdedor
+      await fsDel('inventario',perdedor.id);
+      eliminados++;
+    }
+  }
+  window._dedupePending=null;
+  toast(`✅ Limpieza completa: ${eliminados} duplicados eliminados`,5000);
+  setTimeout(()=>renderInv(),500);
+};
+
 window.invMostrarSoloOficiales=()=>{
   // Listar productos NO oficiales
   const noOficiales=D.inventario.filter(p=>p.id<7100||p.id>=7600);
@@ -5507,7 +5648,8 @@ function renderInvAdmin(){
     <div class="sh">
       <span class="ct" style="margin-bottom:0;">⚙️ Configuración de Productos</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn bor bsm" onclick="invLimpiarDuplicados()" title="Buscar nombres similares y mergearlos">🧹 Mergear duplicados</button>
+        <button class="btn bp bsm" onclick="invDedupePorNombre()" title="Detecta nombres duplicados y deja solo 1 (el que tiene inventario)" style="font-weight:700;">🧹 Eliminar duplicados</button>
+        <button class="btn bor bsm" onclick="invLimpiarDuplicados()" title="Buscar nombres similares (con aliases) y mergearlos">🔍 Mergear similares</button>
         <button class="btn bd bsm" onclick="invMostrarSoloOficiales()" title="Eliminar todo lo que no esté en el Excel oficial">🗑 Solo oficiales</button>
       </div>
     </div>
