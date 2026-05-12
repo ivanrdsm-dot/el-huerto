@@ -1846,6 +1846,7 @@ async function completeInit(){
   await setMinimosInteligentes();
   await seedInventarioOficial();
   await migrateUnidadesV3();
+  await migrarRecategorizacionV1();
   await autoSeedRecetas();
   renderLock();
   if(!SESSION){
@@ -2581,8 +2582,8 @@ const INVENTARIO_OFICIAL = [
   {id:7313,nombre:'Aderezos cremosos',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
   {id:7314,nombre:'Salsa Maggi',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
   {id:7315,nombre:'Pinol',catOf:'abarrotes',unidadOf:'pieza',cat:'limpieza',unit:'pz'},
-  {id:7316,nombre:'Palitas de madera',catOf:'abarrotes',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7317,nombre:'Bolsas de basura',catOf:'abarrotes',unidadOf:'rollo',cat:'limpieza',unit:'rollo'},
+  {id:7316,nombre:'Palitas de madera',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
+  {id:7317,nombre:'Bolsas de basura',catOf:'desechables',unidadOf:'rollo',cat:'limpieza',unit:'rollo'},
   // LISTA INTERNA IVÁN (7401-7415) — chicas también capturan, solo admin ve precios
   {id:7401,nombre:'Blueberry',catOf:'interna_ivan',unidadOf:'gramos',cat:'frutas',unit:'g',esInterno:true},
   {id:7402,nombre:'Susalias',catOf:'interna_ivan',unidadOf:'pieza',cat:'otros',unit:'pz',esInterno:true},
@@ -2820,6 +2821,147 @@ window.invLimpiarDuplicados=async()=>{
 };
 
 // ─── LIMPIEZA AGRESIVA: solo dejar productos oficiales del Excel ───
+// ══════════════════════════════════════════════════════════════
+// RECATEGORIZAR: mover productos a su categoría correcta
+// ══════════════════════════════════════════════════════════════
+// Reglas: palabras clave en el nombre → categoría oficial
+const REGLAS_CATEGORIA = [
+  // DESECHABLES (todo lo descartable)
+  {catOf:'desechables', keywords:[
+    'vaso','tapa','popote','manga','cuchara','tenedor','plato','bowl',
+    'servilleta','servitoalla','palita','fajilla','tazon','tazón','reyma',
+    'cubierto','removedor','agitador','revolvedor',
+    'bolsabasura','bolsasdebasura','bolsasbasura',
+    'unicel','desechable','desechables','contenedor','envase'
+  ]},
+  // FRUTAS Y VERDURAS
+  {catOf:'frutas_verduras', keywords:[
+    'platano','pina','sandia','fresa','mango','manzana','aguacate','limon',
+    'jitomate','zanahoria','jicama','pepino','aceituna','moras','blueberry',
+    'naranja','toronja','melon','papaya','guayaba','lechuga','cebolla','ajo','chile'
+  ]},
+  // LÁCTEOS Y PROTEÍNAS
+  {catOf:'lacteos_proteinas', keywords:[
+    'queso','yogurt','yogurth','crema','leche','jamon','pepperoni',
+    'chorizo','pechuga','pavo','proteina','salami','huevo','mantequilla'
+  ]},
+  // ABARROTES (insumos no perecederos)
+  {catOf:'abarrotes', keywords:[
+    'avena','azucar','miel','chai','matcha','canela','aceite','cacahuate',
+    'tajin','tojin','chamoy','valentina','chipotle','aderezo','maggi','pinol',
+    'salsa','michelada','tamamax','frutimich','overnight','granola','choclate',
+    'chocolate','cafe molido','espresso','jugo','salami seco','jabontrastes',
+    'jabondetrastes','fibrascotchbrite','fibra','trapo','toallaenrollo',
+    'lavatraste','lavatrastes','detergente','cloro','desinfectante'
+  ]},
+];
+
+function detectarCategoria(nombre){
+  const norm=normInvNombre(nombre);
+  for(const regla of REGLAS_CATEGORIA){
+    if(regla.keywords.some(k=>norm.includes(k))){
+      return regla.catOf;
+    }
+  }
+  return null; // no detectó
+}
+
+window.invRecategorizar=()=>{
+  // Detectar todos los productos que cambian de categoría
+  const cambios=[];
+  D.inventario.forEach(p=>{
+    const detectada=detectarCategoria(p.nombre);
+    if(detectada && p.catOf!==detectada){
+      cambios.push({producto:p,catActual:p.catOf||'(sin)',catNueva:detectada});
+    }
+  });
+  if(cambios.length===0){
+    toast('✓ Todos los productos están bien categorizados',2400);
+    return;
+  }
+
+  // Agrupar por categoría destino para preview
+  const porDestino={};
+  cambios.forEach(c=>{
+    if(!porDestino[c.catNueva]) porDestino[c.catNueva]=[];
+    porDestino[c.catNueva].push(c);
+  });
+  const labelCat={
+    frutas_verduras:'🍎 Frutas y Verduras',
+    lacteos_proteinas:'🧀 Lácteos y Proteínas',
+    abarrotes:'🛒 Abarrotes',
+    interna_ivan:'🏠 Lista Interna',
+    desechables:'🧴 Desechables',
+  };
+
+  const html=`<div class="modal-bg" id="recat-modal" style="display:flex;" onclick="if(event.target===this)this.remove()">
+    <div class="modal" style="max-width:680px;max-height:85vh;overflow-y:auto;">
+      <div class="modal-head">
+        <span class="modal-title">🏷 Recategorizar productos</span>
+        <button class="btn bs bxs" onclick="document.getElementById('recat-modal').remove()">✕</button>
+      </div>
+      <p style="font-size:12.5px;color:var(--text2);margin-bottom:14px;">
+        <strong>${cambios.length}</strong> productos están en la categoría incorrecta.
+        Se moverán automáticamente según su nombre.
+      </p>
+      <div style="max-height:55vh;overflow-y:auto;display:flex;flex-direction:column;gap:10px;">
+        ${Object.entries(porDestino).map(([destino,items])=>{
+          return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:10px;">
+            <div style="font-weight:700;font-size:13px;color:var(--accent);margin-bottom:6px;">
+              → ${labelCat[destino]||destino} <span style="font-size:10px;color:var(--text3);font-weight:400;">(${items.length})</span>
+            </div>
+            ${items.map(c=>{
+              const labelActual=labelCat[c.catActual]||c.catActual;
+              return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;font-size:11.5px;border-top:1px dashed var(--border);padding-top:5px;margin-top:3px;">
+                <span><strong>${c.producto.nombre}</strong></span>
+                <span style="color:var(--text3);font-size:10.5px;">de ${labelActual}</span>
+              </div>`;
+            }).join('')}
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:14px;">
+        <button class="btn bs bfull" onclick="document.getElementById('recat-modal').remove()">Cancelar</button>
+        <button class="btn bp bfull" onclick="invEjecutarRecategorizar()">✓ Aplicar recategorización</button>
+      </div>
+    </div>
+  </div>`;
+  document.body.insertAdjacentHTML('beforeend',html);
+  window._recatPending=cambios;
+};
+
+window.invEjecutarRecategorizar=async()=>{
+  const cambios=window._recatPending;
+  if(!cambios){toast('⚠ Sin cambios pendientes',2400,'warn');return;}
+  const modal=document.getElementById('recat-modal');
+  if(modal) modal.remove();
+  toast('🏷 Recategorizando...',3000);
+  let n=0;
+  for(const c of cambios){
+    await fsSet('inventario',{...c.producto,catOf:c.catNueva});
+    n++;
+  }
+  window._recatPending=null;
+  toast(`✅ ${n} productos recategorizados`,4000);
+  setTimeout(()=>renderInv(),500);
+};
+
+// Migración automática: corre 1 vez para aplicar recategorización
+async function migrarRecategorizacionV1(){
+  const migKey='h5inv_recat_v1';
+  if(localStorage.getItem(migKey)) return;
+  let cambios=0;
+  for(const p of D.inventario){
+    const detectada=detectarCategoria(p.nombre);
+    if(detectada && p.catOf!==detectada){
+      await fsSet('inventario',{...p,catOf:detectada});
+      cambios++;
+    }
+  }
+  localStorage.setItem(migKey,'1');
+  if(cambios>0) toast(`✓ Categorías corregidas: ${cambios} productos`,3000);
+}
+
 // ══════════════════════════════════════════════════════════════
 // DEDUPE POR NOMBRE: detecta duplicados exactos y deja solo 1
 // Prioridad: el que tenga inventario inscrito (qty > 0)
@@ -5649,6 +5791,7 @@ function renderInvAdmin(){
       <span class="ct" style="margin-bottom:0;">⚙️ Configuración de Productos</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <button class="btn bp bsm" onclick="invDedupePorNombre()" title="Detecta nombres duplicados y deja solo 1 (el que tiene inventario)" style="font-weight:700;">🧹 Eliminar duplicados</button>
+        <button class="btn bbl bsm" onclick="invRecategorizar()" title="Mueve productos a su categoría correcta (vasos→desechables, etc.)" style="font-weight:700;">🏷 Recategorizar</button>
         <button class="btn bor bsm" onclick="invLimpiarDuplicados()" title="Buscar nombres similares (con aliases) y mergearlos">🔍 Mergear similares</button>
         <button class="btn bd bsm" onclick="invMostrarSoloOficiales()" title="Eliminar todo lo que no esté en el Excel oficial">🗑 Solo oficiales</button>
       </div>
