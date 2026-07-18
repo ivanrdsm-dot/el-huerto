@@ -1915,7 +1915,8 @@ function listenAll(){
           await completeInit();
         }
       } else {
-        renderAll();
+        // A1: render granular con debounce (antes: renderAll de 17 módulos)
+        scheduleRender();
       }
     }, async err=>{
       console.warn('Firestore error en', col, err.message);
@@ -3612,6 +3613,7 @@ function lockApp(){
   $('lock-screen').style.display = 'flex';
   document.querySelectorAll('.page').forEach(e=>e.classList.remove('active'));
   const pg=$('page-pos'); if(pg) pg.classList.add('active');
+  currentPage='pos'; // A1: mantener sincronizado el render granular
   updateNavForSession();
 }
 window.lockApp = lockApp;
@@ -3814,7 +3816,12 @@ function go(p){
   const pg=$('page-'+p); if(pg) pg.classList.add('active');
   document.querySelectorAll('.ntab').forEach(e=>{if(e.onclick?.toString().includes("'"+p+"'"))e.classList.add('active');});
   document.querySelectorAll('.mnbtn').forEach(e=>{if(e.onclick?.toString().includes("'"+p+"'"))e.classList.add('active');});
-  renderAll(); window.scrollTo(0,0);
+  // A1: renderizar SOLO la página destino (antes: renderAll = 17 módulos)
+  currentPage=p;
+  const fn=PAGE_RENDERERS[p];
+  if(fn) fn();
+  updateGlobalBadges();
+  window.scrollTo(0,0);
 }
 window.go=go;
 
@@ -7933,6 +7940,75 @@ window.saveAjConfig=()=>{
   toast('✓ Config guardada');
 };
 
+// ══════════════════════════════════════════════════════════════
+// A1 — RENDER GRANULAR
+// Antes: cada snapshot de Firestore re-dibujaba los 17 módulos
+// (110 innerHTML), causando lentitud y pérdida de foco en inputs.
+// Ahora: solo se re-dibuja el módulo VISIBLE, con debounce y
+// protección de foco. renderAll() completo solo en la carga inicial.
+// ══════════════════════════════════════════════════════════════
+let currentPage='pos'; // page-pos es la activa por default en el HTML
+
+const PAGE_RENDERERS={
+  dashboard: ()=>renderDashboard(),
+  pos: ()=>{renderPOS();renderOrder();},
+  historial: ()=>renderHistorial(),
+  caja: ()=>renderCaja(),
+  gastos: ()=>renderGastos(),
+  nomina: ()=>renderNomina(),
+  vendedores: ()=>renderVendedores(),
+  proveedores: ()=>renderProv(),
+  suscriptores: ()=>renderSubs(),
+  inventario: ()=>renderInv(),
+  recetas: ()=>renderRecetas(),
+  reportes: ()=>renderReportes(),
+  config: ()=>renderConfig(),
+  ajustes: ()=>renderAjustes(),
+  reloj: ()=>renderReloj(),
+  miperfil: ()=>renderMiPerfil(),
+  kpis: ()=>renderKPIs(),
+};
+
+// Badges globales ligeros (sin re-dibujar módulos completos)
+function updateGlobalBadges(){
+  try{
+    const nb=$('nav-alerta');
+    if(nb && typeof invEstadoStock==='function'){
+      const bajos=D.inventario.filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
+      if(bajos.length>0){nb.style.display='';nb.textContent=bajos.length+' ⚠';}
+      else nb.style.display='none';
+    }
+    if(typeof renderLock==='function') renderLock();
+  }catch(e){/* no-op */}
+}
+
+// Debounce: agrupa ráfagas de snapshots (16 colecciones) en 1 solo render
+let _renderPending=false;
+function scheduleRender(){
+  if(_renderPending) return;
+  _renderPending=true;
+  setTimeout(()=>{
+    _renderPending=false;
+    renderCurrentPage();
+  },120);
+}
+
+function renderCurrentPage(){
+  if(!READY) return;
+  // Protección de foco: si la cajera está escribiendo, diferir el render
+  const ae=document.activeElement;
+  if(ae && (ae.tagName==='INPUT'||ae.tagName==='TEXTAREA') && ae.type!=='date' && ae.type!=='time'){
+    clearTimeout(window._renderRetry);
+    window._renderRetry=setTimeout(scheduleRender,1500);
+    return;
+  }
+  const fn=PAGE_RENDERERS[currentPage];
+  if(fn) fn();
+  updateGlobalBadges();
+}
+window.scheduleRender=scheduleRender;
+
+// Render COMPLETO — solo para la carga inicial (initD)
 function renderAll(){
   if(!READY) return;
   renderDashboard();
@@ -7943,8 +8019,6 @@ function renderAll(){
   renderProv(); renderSubs(); renderInv();
   renderRecetas(); renderReportes(); renderConfig();
   renderAjustes(); renderReloj(); renderMiPerfil(); renderKPIs(); loadClaudeKey();
-  // Re-render del lock screen para asegurar que aparezcan Adilene y Claudia
-  // aunque la data de empleados llegue después del init inicial
   if(typeof renderLock==='function') renderLock();
 }
 
