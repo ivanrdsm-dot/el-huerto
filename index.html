@@ -1801,7 +1801,7 @@ nav{padding-top:env(safe-area-inset-top);}
 
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
@@ -1844,12 +1844,50 @@ let activeVend=null; // {id, nombre, color}
 const colRef=c=>collection(db,c);
 const docRef=(c,id)=>doc(db,c,String(id));
 const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);return true;}catch(e){toast('⚠ '+e.message,4000,'error');console.error('fsSet error:',c,e);return false;}};
+
+// ══════════════════════════════════════════════════════════════
+// A2 — MIGRACIONES VERSIONADAS EN FIRESTORE (no localStorage)
+// Problema raíz de los duplicados: cada dispositivo nuevo tenía
+// localStorage vacío → re-corría los 12 seeds/migraciones → sumaba
+// cantidades otra vez y re-creaba productos borrados.
+// Ahora el registro de migraciones vive en Firestore (compartido
+// entre TODOS los dispositivos). localStorage queda como caché y
+// como fuente para sincronizar migraciones ya corridas.
+// ══════════════════════════════════════════════════════════════
+let MIG={};
+async function loadMigrations(){
+  try{
+    const snap=await getDoc(doc(db,'sistema','migrations'));
+    MIG=snap.exists()?snap.data():{};
+  }catch(e){
+    console.warn('No se pudo leer sistema/migrations:',e.code||e.message);
+    MIG={};
+  }
+}
+async function migDone(key){
+  // Legacy: si este dispositivo ya la corrió (localStorage), enséñaselo a Firestore
+  if(localStorage.getItem(key)){
+    if(!MIG[key]){
+      MIG[key]=true;
+      setDoc(doc(db,'sistema','migrations'),MIG).catch(()=>{});
+    }
+    return true;
+  }
+  return !!MIG[key];
+}
+async function markMig(key){
+  MIG[key]=true;
+  try{localStorage.setItem(key,'1');}catch(e){}
+  try{await setDoc(doc(db,'sistema','migrations'),MIG);}catch(e){console.warn('markMig:',key,e.code||e.message);}
+}
 // Versión que SÍ tira error — para flujos críticos como ventas que NO pueden silenciarse
 const fsSetCritical=async(c,item)=>{await setDoc(docRef(c,item.id),item);return true;};
 const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
 
 async function completeInit(){
   READY=true;
+  // A2: cargar registro de migraciones compartido ANTES de correr seeds
+  await loadMigrations();
   try{
     const c=localStorage.getItem('h5cfg');
     if(c){
@@ -2021,7 +2059,7 @@ async function seedEmps(){
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
   const migKey='h5menu_abr26';
-  if(localStorage.getItem(migKey)) return; // ya migrado
+  if(await migDone(migKey)) return; // ya migrado (registro compartido en Firestore)
   const updates=[
     {id:1012,nombre:"Pal'Mamado",precio:99,desc:'Plátano, crema de almendra, avena y leche (incluye proteína)'},
     {id:1015,nombre:'Papas Locas',precio:75},
@@ -2063,14 +2101,14 @@ async function migrateMenuAbril2026(){
       await fsSet('productos',np);changed++;
     }
   }
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(changed>0) toast(`✓ Menú actualizado: ${changed} productos`,3000);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
 async function loadInventarioAbril2026(){
   const migKey='h5inv_abr26';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
 
   const items=[
     // TICKET 1 — 11/abr/2026 Naranjarillo $2,704.50
@@ -2142,14 +2180,14 @@ async function loadInventarioAbril2026(){
   if(!D.gastos.find(g=>g.nota==='Ticket A-2369024')) await fsSet('gastos',g1);
   if(!D.gastos.find(g=>g.nota==='Ticket A-2369089')) await fsSet('gastos',g2);
 
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(added+updated>0) toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados`,4000);
 }
 
 // Carga inventario 15/abr/2026 — Naranjarillo + Costco
 async function loadInventario15Abr(){
   const migKey='h5inv_15abr26';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
   const items=[
     // Naranjarillo A-2369858 — $1,103.30
     {nombre:'Jamón serrano',cat:'proteinas',qty:0.5,unit:'kg',precio:770},
@@ -2196,14 +2234,14 @@ async function loadInventario15Abr(){
     await fsSet('pedidos',{id:Date.now()+604,fecha:'2026-04-15',proveedor:'Naranjarillo',tipo:'Verduras',ticket:'A-2369859',total:45});
   if(!D.pedidos.find(p=>p.ticket==='ARG-5683195'))
     await fsSet('pedidos',{id:Date.now()+605,fecha:'2026-04-15',proveedor:'Costco Interlomas',tipo:'Insumos',ticket:'ARG-5683195',total:1203.95});
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(added+updated>0) toast(`✓ Compras 15/abr: ${added} nuevos, ${updated} actualizados`,4000);
 }
 
 // Carga inventario 19-20/abr — Zorro, Costco, La Comer, Chilapita + compras sin nota
 async function loadInventario19Abr(){
   const migKey='h5inv_19abr26';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
 
   const items=[
     // Zorro Las Armas 19/abr — $1,024.47
@@ -2304,14 +2342,14 @@ async function loadInventario19Abr(){
     }
   }
 
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(added+updated>0) toast(`✓ Compras 19-20/abr: ${added} nuevos, ${updated} actualizados`,4000);
 }
 
 // Ajuste de inventario físico 15/abr/2026 — reemplaza cantidades por conteo real
 async function ajusteInventarioFisico15Abr(){
   const migKey='h5invfisico_15abr26';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
   // {nombre, qty} — qty es la cantidad REAL contada, reemplaza lo que haya
   const conteo=[
     {nombre:'Vaso 16 oz',qty:225},
@@ -2358,14 +2396,14 @@ async function ajusteInventarioFisico15Abr(){
       added++;
     }
   }
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(updated+added>0) toast(`✓ Inventario físico: ${updated} ajustados, ${added} nuevos`,4000);
 }
 
 // Ajuste inventario físico 20/abr — conteo real de las chicas después de compras
 async function ajusteFisico20Abr(){
   const migKey='h5invfisico_20abr26';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
 
   const conteo=[
     // Reemplaza cantidad por el conteo físico real
@@ -2454,14 +2492,14 @@ async function ajusteFisico20Abr(){
   const vasoReyma=D.inventario.find(x=>x.nombre.toLowerCase()==='vaso reyma 16oz');
   if(vasoReyma) await fsDel('inventario',vasoReyma.id);
 
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(updated>0) toast(`✓ Inventario físico 20/abr: ${updated} ajustados`,4000);
 }
 
 // Ajuste manual inventario 15/abr — datos del dueño
 async function ajusteManual15Abr(){
   const migKey='h5invmanual_15abr26';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
 
   // Actualizar cantidades exactas
   const updates=[
@@ -2519,14 +2557,14 @@ async function ajusteManual15Abr(){
   // Actualizar recetas de cafés que usaban Vaso 12 oz (ya existe con ese nombre)
   // Las recetas referencian por invId, así que si vaso14 fue renombrado, el ID sigue siendo el mismo
 
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(updated+added>0) toast(`✓ Inventario manual: ${updated} ajustados, ${added} nuevos`,3000);
 }
 
 // Carga inventario Costco 12/abr + Tía Renee 10/abr/2026
 async function loadInventarioCostcoRenee(){
   const migKey='h5inv_costco_renee_abr26';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
 
   const items=[
     // COSTCO 12/abr/2026 — Factura ARG-5680570 — $2,766.00
@@ -2568,7 +2606,7 @@ async function loadInventarioCostcoRenee(){
   if(!D.gastos.find(g=>g.nota==='Factura ARG-5680570')) await fsSet('gastos',g1);
   if(!D.gastos.find(g=>g.nota==='Factura aro-1000')) await fsSet('gastos',g2);
 
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(added+updated>0) toast(`✓ Costco+Renee: ${added} nuevos, ${updated} actualizados`,4000);
 }
 
@@ -2800,7 +2838,7 @@ async function dedupeInventario(silent=true){
 
 async function seedInventarioOficial(){
   const migKey='h5inv_oficial_v2'; // v2 incluye dedupe
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
   let added=0,updated=0;
   // Primero crear/actualizar todos los oficiales
   for(const item of INVENTARIO_OFICIAL){
@@ -2825,7 +2863,7 @@ async function seedInventarioOficial(){
   await new Promise(r=>setTimeout(r,300));
   // Limpiar duplicados
   const dedupe=await dedupeInventario(true);
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(added+updated+dedupe.eliminados>0){
     toast(`✓ Inventario: ${added} nuevos, ${updated} actualizados, ${dedupe.eliminados} duplicados eliminados`,4000);
   }
@@ -2834,7 +2872,7 @@ async function seedInventarioOficial(){
 // Migración v3: actualizar unidades de productos oficiales según cambios del dueño
 async function migrateUnidadesV3(){
   const migKey='h5inv_unidades_v3';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
   let updated=0;
   for(const oficial of INVENTARIO_OFICIAL){
     const inv=D.inventario.find(p=>p.id===oficial.id);
@@ -2843,7 +2881,7 @@ async function migrateUnidadesV3(){
       updated++;
     }
   }
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(updated>0) toast(`✓ Unidades actualizadas: ${updated} productos`,3000);
 }
 
@@ -2984,7 +3022,7 @@ window.invEjecutarRecategorizar=async()=>{
 // Migración automática: corre 1 vez para aplicar recategorización
 async function migrarRecategorizacionV1(){
   const migKey='h5inv_recat_v1';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
   let cambios=0;
   for(const p of D.inventario){
     const detectada=detectarCategoria(p.nombre);
@@ -2993,7 +3031,7 @@ async function migrarRecategorizacionV1(){
       cambios++;
     }
   }
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
   if(cambios>0) toast(`✓ Categorías corregidas: ${cambios} productos`,3000);
 }
 
@@ -3259,7 +3297,7 @@ window.invEjecutarLimpiezaTotal=async()=>{
 
 async function setMinimosInteligentes(){
   const migKey='h5minimos_v2';
-  if(localStorage.getItem(migKey)) return;
+  if(await migDone(migKey)) return;
   const mins={
     // Frutas (kg) — mínimo cuando queda poco para ~1 día
     'plátano':2,'fresa':1,'mango':1,'piña':1,'sandía':1,'limón':0.5,'manzana':0.5,'aguacate':0.3,'blueberry':0.25,
@@ -3294,7 +3332,7 @@ async function setMinimosInteligentes(){
       updated++;
     }
   }
-  localStorage.setItem(migKey,'1');
+  await markMig(migKey);
 }
 
 // Auto-cargar recetas si no existen (para que el descuento automático funcione)
