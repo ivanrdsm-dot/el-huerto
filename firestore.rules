@@ -1,0 +1,27 @@
+rules_version = '2';
+// ══════════════════════════════════════════════════════════════
+// EL HUERTO — Reglas de seguridad Firestore (Fase A0)
+// Antes: base de datos ABIERTA a cualquiera con la URL.
+// Ahora: solo usuarios autenticados (la app usa Anonymous Auth).
+//
+// IMPORTANTE: publicar estas reglas SOLO DESPUÉS de habilitar
+// Anonymous Auth en Firebase Console (ver FIREBASE_SETUP.md).
+// Si publicas las reglas sin habilitar Auth, la app deja de cargar.
+// ══════════════════════════════════════════════════════════════
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Colecciones operativas: lectura/escritura solo autenticado
+    match /{collection}/{docId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // La bitácora de auditoría (Fase A4) será solo-agregar:
+    // nadie puede modificar ni borrar un registro de auditoría.
+    match /auditLog/{logId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+  }
+}
