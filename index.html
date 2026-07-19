@@ -1309,6 +1309,8 @@ nav{padding-top:env(safe-area-inset-top);}
     <button class="kpi-tab" onclick="setInvMode('dashboard')" data-mode="dashboard" id="inv-tab-dashboard">📊 Dashboard</button>
     <button class="kpi-tab" onclick="setInvMode('historial')" data-mode="historial" id="inv-tab-hist">📈 Histórico</button>
     <button class="kpi-tab" onclick="setInvMode('admin')" data-mode="admin" id="inv-tab-admin">⚙️ Productos</button>
+    <div style="flex:1;"></div>
+    <button class="btn bor bsm" onclick="abrirMermaModal()" style="font-weight:700;">🍂 Registrar merma</button>
   </div>
 
   <!-- Contenido dinámico según modo -->
@@ -1360,6 +1362,15 @@ nav{padding-top:env(safe-area-inset-top);}
       <span style="font-size:12px;color:var(--text3);">Vincula ingredientes del inventario</span>
       <button class="btn bg bsm" onclick="seedRecetasPredefinidas()">📖 Cargar Recetas Predefinidas</button>
     </div>
+  </div>
+  <!-- A3: FOOD COST REAL POR PRODUCTO -->
+  <div class="card" style="margin-bottom:10px;border:2px solid var(--accent);" id="foodcost-card">
+    <div class="sh">
+      <span class="ct" style="margin-bottom:0;">🧮 Food Cost por Producto</span>
+      <span id="fc-resumen" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;"></span>
+    </div>
+    <p style="font-size:11px;color:var(--text2);margin:4px 0 8px;">Costo real de insumos por producto según su receta y los precios de tus facturas. Verde ≥60% margen · Amarillo 40-59% · Rojo &lt;40%.</p>
+    <div class="tw" id="fc-tabla"></div>
   </div>
   <div class="card" style="margin-bottom:10px;"><input id="rec-q" placeholder="🔍 Buscar producto del menú…" oninput="renderRecetas()"></div>
   <div id="recetas-list"></div>
@@ -1740,6 +1751,42 @@ nav{padding-top:env(safe-area-inset-top);}
 
 </main>
 
+<!-- A3: MODAL REGISTRAR MERMA (descuenta inventario + registra costo) -->
+<div class="modal-bg" id="merma-modal" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head">
+      <span class="modal-title">🍂 Registrar Merma</span>
+      <button class="btn bs bxs" onclick="$('merma-modal').style.display='none'">✕</button>
+    </div>
+    <p style="font-size:11.5px;color:var(--text2);margin-bottom:12px;">Producto tirado, dañado, caducado o usado internamente. <strong>Descuenta del inventario</strong> y queda registrado.</p>
+    <div class="fg">
+      <label>Insumo</label>
+      <select id="merma-insumo"></select>
+    </div>
+    <div class="ii">
+      <div class="fg">
+        <label>Cantidad</label>
+        <input type="number" id="merma-qty" placeholder="0" step="0.001" min="0" inputmode="decimal">
+        <div id="merma-unidad" style="font-size:10px;color:var(--text3);margin-top:3px;"></div>
+      </div>
+      <div class="fg">
+        <label>Motivo</label>
+        <select id="merma-motivo">
+          <option value="caducado">🗓 Caducado / echado a perder</option>
+          <option value="danado">💔 Dañado / se cayó</option>
+          <option value="error_prep">🥤 Error de preparación</option>
+          <option value="consumo_interno">👩 Consumo interno</option>
+          <option value="degustacion">🎁 Degustación / cortesía</option>
+          <option value="otro">Otro</option>
+        </select>
+      </div>
+    </div>
+    <div class="fg"><label>Notas (opcional)</label><input type="text" id="merma-notas" placeholder="Ej: se quedó fuera del refri"></div>
+    <div id="merma-stock-info" style="font-size:11px;color:var(--text2);background:var(--surface2);border-radius:var(--rsm);padding:8px 10px;margin-bottom:10px;display:none;"></div>
+    <button class="btn bp bfull" onclick="guardarMerma()" style="padding:12px;font-weight:700;">🍂 Registrar y descontar</button>
+  </div>
+</div>
+
 <!-- MODAL COBRO EFECTIVO -->
 <!-- MODAL COBRO EFECTIVO -->
 <div class="modal-bg" id="cobro-modal" style="display:none;" onclick="closeModal('cobro-modal',event)">
@@ -1920,6 +1967,7 @@ async function completeInit(){
   await migrateUnidadesV3();
   await migrarRecategorizacionV1();
   await autoSeedRecetas();
+  await migRecetasExtras_v1();
   renderLock();
   if(!SESSION){
     $('lock-screen').style.display='flex';
@@ -4055,7 +4103,10 @@ async function descontarInventario(ventaItems){
         inv=D.inventario.find(i=>i.nombre.toLowerCase()===ing.nombre.toLowerCase());
       }
       if(!inv) continue;
-      const qtyDescontar=parseFloat(ing.qty||1)*item.qty;
+      // A3: convertir unidad de receta → unidad de inventario (g→kg, ml→L)
+      // Antes restaba 15 (g de avena) a 3.02 (kg) y aniquilaba el stock.
+      const qtyReceta=parseFloat(ing.qty||1)*item.qty;
+      const qtyDescontar=qtyToInvUnit(qtyReceta, ing.unit, inv.unit);
       const newQty=Math.max(0,(inv.qty||0)-qtyDescontar);
       inv.qty=Math.round(newQty*1000)/1000;
       await fsSet('inventario',inv);
@@ -4110,6 +4161,18 @@ async function cobrar(metodo,recibido=0){
     venta.tsCreacion=orderStartedAt||tid; // cuándo empezó la orden (primer producto)
     venta.tsCobro=Date.now(); // cuándo se cobró
     venta.cliente=$('op-cliente')?.value?.trim()||null;
+    // A3: snapshot del costo de insumos AL MOMENTO de la venta.
+    // Así el margen histórico no cambia si después suben los precios.
+    try{
+      let fc=0, fcOk=true;
+      venta.items.forEach(i=>{
+        const r=foodCostProducto(i.id);
+        if(r.costo!=null) fc+=r.costo*i.qty;
+        if(!r.completo) fcOk=false;
+      });
+      venta.foodCost=Math.round(fc*100)/100;
+      venta.foodCostCompleto=fcOk;
+    }catch(e){/* costeo no bloquea el cobro */}
     await fsSetCritical('ventas',venta);
     // Caja también es crítica — si falla, la venta queda guardada pero hay que reintentar caja
     if(!esRetroactiva){
@@ -4305,7 +4368,9 @@ async function reponerInventario(ventaItems){
       let inv=D.inventario.find(i=>i.id==ing.invId);
       if(!inv&&ing.nombre) inv=D.inventario.find(i=>i.nombre.toLowerCase()===ing.nombre.toLowerCase());
       if(!inv) continue;
-      const qtyReponer=parseFloat(ing.qty||1)*item.qty;
+      // A3: misma conversión de unidades que el descuento (simetría exacta)
+      const qtyRecetaRep=parseFloat(ing.qty||1)*item.qty;
+      const qtyReponer=qtyToInvUnit(qtyRecetaRep, ing.unit, inv.unit);
       inv.qty=Math.round(((inv.qty||0)+qtyReponer)*1000)/1000;
       await fsSet('inventario',inv);
     }
@@ -6902,7 +6967,167 @@ window.pdfReporteHoras=()=>{
 };
 
 // ─── RECETAS ───
+// ══════════════════════════════════════════════════════════════
+// A3 — MOTOR DE FOOD COST + CONVERSIÓN DE UNIDADES + MERMAS
+// ══════════════════════════════════════════════════════════════
+
+// Conversión entre unidades de receta (g/ml/pz) e inventario (kg/L/pz)
+function normUnit(u){
+  const n=(u||'').toLowerCase().trim();
+  return ({'gramos':'g','gr':'g','grs':'g','kilo':'kg','kilos':'kg','litro':'l','litros':'l','lt':'l','mililitros':'ml','pieza':'pz','piezas':'pz','pzas':'pz','pza':'pz'})[n]||n;
+}
+// Cantidad de receta → cantidad en unidad del inventario (para descontar bien)
+function qtyToInvUnit(qty, ingUnit, invUnit){
+  const a=normUnit(ingUnit), b=normUnit(invUnit);
+  if(a===b) return qty;
+  if(a==='g'&&b==='kg') return qty/1000;
+  if(a==='kg'&&b==='g') return qty*1000;
+  if(a==='ml'&&b==='l') return qty/1000;
+  if(a==='l'&&b==='ml') return qty*1000;
+  return qty; // sin conversión conocida: usar tal cual (comportamiento previo)
+}
+// Costo del insumo POR unidad de la receta (inv.precio es por inv.unit)
+function costoPorUnidadReceta(inv, unitReceta){
+  if(!inv || !(inv.precio>0)) return null;
+  const a=normUnit(inv.unit), b=normUnit(unitReceta||inv.unit);
+  if(a===b) return inv.precio;
+  if(a==='kg'&&b==='g') return inv.precio/1000;
+  if(a==='g'&&b==='kg') return inv.precio*1000;
+  if(a==='l'&&b==='ml') return inv.precio/1000;
+  if(a==='ml'&&b==='l') return inv.precio*1000;
+  return null; // no convertible (ej. paq vs pz sin piezas/paquete)
+}
+
+// Food cost de un producto según su receta y precios de inventario
+function foodCostProducto(prodId){
+  const rec=D.recetas.find(r=>r.prodId===prodId);
+  if(!rec||!rec.ings||rec.ings.length===0) return {costo:null,completo:false,faltantes:['sin receta']};
+  let costo=0; const faltantes=[];
+  rec.ings.forEach(ing=>{
+    let inv=D.inventario.find(i=>i.id==ing.invId);
+    if(!inv&&ing.nombre&&typeof normInvNombre==='function')
+      inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre));
+    if(!inv){faltantes.push((ing.nombre||'?')+' · no está en inventario');return;}
+    const cu=costoPorUnidadReceta(inv,ing.unit);
+    if(cu==null){faltantes.push(inv.nombre+(inv.precio>0?` · unidad ${inv.unit||'?'}→${ing.unit||'?'}`:' · sin costo'));return;}
+    costo+=cu*(parseFloat(ing.qty)||0);
+  });
+  return {costo:Math.round(costo*100)/100,completo:faltantes.length===0,faltantes};
+}
+window.foodCostProducto=foodCostProducto;
+
+// Tabla de Food Cost en la página Recetas (admin)
+function renderFoodCost(){
+  const cont=$('fc-tabla'); if(!cont) return;
+  const T=CFG.kpiTargets||{};
+  const prods=D.productos.filter(p=>p.activo).map(p=>{
+    const fc=foodCostProducto(p.id);
+    const margen=(fc.costo!=null&&p.precio>0)?((p.precio-fc.costo)/p.precio*100):null;
+    return {p,fc,margen};
+  }).sort((a,b)=>{
+    // primero los completos con peor margen; al final los sin datos
+    if(a.margen==null&&b.margen==null) return 0;
+    if(a.margen==null) return 1;
+    if(b.margen==null) return -1;
+    return a.margen-b.margen;
+  });
+  const completos=prods.filter(x=>x.fc.completo).length;
+  if($('fc-resumen'))$('fc-resumen').textContent=`${completos}/${prods.length} con costeo completo`;
+  cont.innerHTML=`<table class="tbl"><thead><tr><th>Producto</th><th>Precio</th><th>Costo insumos</th><th>Utilidad</th><th>Margen</th><th>Estado</th></tr></thead><tbody>`+
+    prods.map(({p,fc,margen})=>{
+      let mHtml='—', estado='';
+      if(margen!=null){
+        const color=margen>=60?'#2e7d32':margen>=40?'#f57c00':'#c62828';
+        const bg=margen>=60?'#e8f5e9':margen>=40?'#fff8e1':'#ffebee';
+        mHtml=`<span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;">${margen.toFixed(1)}%</span>`;
+      }
+      if(fc.completo){estado='<span class="badge xg">✓ Completo</span>';}
+      else{
+        const tip=(fc.faltantes||[]).join(' · ').replace(/"/g,'&quot;');
+        estado=`<span class="badge xy" title="${tip}">⚠ ${fc.faltantes.length} pend.</span>`;
+      }
+      return `<tr>
+        <td style="font-size:12px;font-weight:600;">${p.nombre}</td>
+        <td class="mono">${fmt(p.precio)}</td>
+        <td class="mono ${fc.costo!=null?'ar':''}">${fc.costo!=null?fmt(fc.costo):'—'}</td>
+        <td class="mono ag">${fc.costo!=null?fmt(p.precio-fc.costo):'—'}</td>
+        <td>${mHtml}</td>
+        <td style="font-size:10.5px;">${estado}</td>
+      </tr>`;
+    }).join('')+'</tbody></table>';
+}
+
+// ══ MERMAS con descuento de inventario ══
+window.abrirMermaModal=()=>{
+  const sel=$('merma-insumo'); if(!sel) return;
+  sel.innerHTML='<option value="">— Elige insumo —</option>'+
+    [...D.inventario].sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .map(i=>`<option value="${i.id}">${i.nombre}</option>`).join('');
+  sel.onchange=()=>{
+    const inv=D.inventario.find(x=>x.id==sel.value);
+    const info=$('merma-stock-info'), un=$('merma-unidad');
+    if(inv){
+      if(un)un.textContent='Unidad: '+(inv.unidadOf||inv.unit||'pz');
+      if(info){info.style.display='';info.textContent=`Stock actual: ${inv.qty||0} ${inv.unidadOf||inv.unit||''}`;}
+    } else {if(info)info.style.display='none';if(un)un.textContent='';}
+  };
+  $('merma-qty').value='';$('merma-notas').value='';
+  if($('merma-stock-info'))$('merma-stock-info').style.display='none';
+  $('merma-modal').style.display='flex';
+};
+
+window.guardarMerma=async()=>{
+  const sel=$('merma-insumo');
+  const inv=D.inventario.find(x=>x.id==sel?.value);
+  if(!inv){toast('⚠ Elige un insumo',2400,'warn');return;}
+  const qty=parseFloat($('merma-qty')?.value);
+  if(!qty||qty<=0){toast('⚠ Ingresa la cantidad',2400,'warn');return;}
+  const motivo=$('merma-motivo')?.value||'otro';
+  const notas=$('merma-notas')?.value?.trim()||'';
+  // Costo de lo perdido (precio del inventario es por su propia unidad)
+  const costo=(inv.precio>0)?Math.round(inv.precio*qty*100)/100:0;
+  // 1) Descontar del inventario
+  const nuevoQty=Math.max(0,Math.round(((inv.qty||0)-qty)*1000)/1000);
+  await fsSet('inventario',{...inv,qty:nuevoQty});
+  // 2) Sincronizar la captura del día si existe (stock visible coincide)
+  const td=today();
+  const capHoy=D.invDiario.find(c=>c.productoId===inv.id&&c.fecha===td);
+  if(capHoy) await fsSet('invDiario',{...capHoy,qty:nuevoQty,ts:Date.now()});
+  // 3) Registrar merma con costo (alimenta el KPI de mermas)
+  await fsSet('kpiCaptura',{
+    id:Date.now(),fecha:td,tipo:'merma',
+    valor:costo, cantidad:qty, unidad:inv.unidadOf||inv.unit||'',
+    insumoId:inv.id, insumoNombre:inv.nombre, motivo, notas,
+    capturadoPor:SESSION?.id||0, capturadoPorNombre:SESSION?.nombre||'—', ts:Date.now()
+  });
+  $('merma-modal').style.display='none';
+  toast(`🍂 Merma registrada: ${qty} ${inv.unidadOf||inv.unit||''} de ${inv.nombre}${costo>0?' · '+fmt(costo):''}`,3500);
+  renderInv();
+};
+
+// ══ Recetas para EXTRAS del POS (antes cobraban sin descontar) ══
+async function migRecetasExtras_v1(){
+  const migKey='h5rec_extras_v1';
+  if(await migDone(migKey)) return;
+  const find=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  const mk=async(prodId,pairs)=>{
+    if(D.recetas.find(r=>r.prodId===prodId)) return; // no pisar recetas existentes
+    const ings=[];
+    for(const [nombre,qty,unit] of pairs){
+      const inv=find(nombre); if(!inv) continue;
+      ings.push({invId:inv.id,nombre:inv.nombre,qty:String(qty),unit});
+    }
+    if(ings.length) await fsSet('recetas',{id:Date.now()+prodId,prodId,ings});
+  };
+  await mk(1052,[['Proteína',30,'g']]);           // Proteína Extra
+  await mk(1054,[['Aguacate',60,'g']]);            // Aguacate (Pan Renee)
+  await mk(1055,[['Cacahuate japonés',30,'g']]);   // Topping Cacahuates
+  await mk(1056,[['Café',14,'g']]);                // Shot Espresso Extra
+  await markMig(migKey);
+}
+
 function renderRecetas(){
+  renderFoodCost();
   const q=($('rec-q')?.value||'').toLowerCase();
   let prods=D.productos.filter(p=>p.activo);
   if(q) prods=prods.filter(p=>p.nombre.toLowerCase().includes(q));
