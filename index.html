@@ -1571,6 +1571,15 @@ nav{padding-top:env(safe-area-inset-top);}
 <div id="page-ajustes" class="page">
   <div class="sh"><span class="st">Ajustes del Sistema</span></div>
 
+  <!-- A4: Bitácora de auditoría (inmutable) -->
+  <div class="card" style="margin-bottom:10px;border:2px solid var(--purple);">
+    <div class="sh">
+      <span class="ct" style="margin-bottom:0;">📜 Bitácora de Auditoría</span>
+      <span style="font-size:10.5px;color:var(--text3);">Inmutable — nadie puede borrar ni editar entradas</span>
+    </div>
+    <div id="audit-log-list" style="max-height:340px;overflow-y:auto;margin-top:8px;"></div>
+  </div>
+
   <!-- Check-in del día -->
   <div class="card" style="margin-bottom:10px;">
     <div class="sh"><span class="ct" style="margin-bottom:0;">📍 Check-in Hoy</span>
@@ -1870,7 +1879,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true,
   waReporte:'525646665718',waHora:'21:00',
   kpiTargets:{
@@ -1927,6 +1936,32 @@ async function markMig(key){
   try{localStorage.setItem(key,'1');}catch(e){}
   try{await setDoc(doc(db,'sistema','migrations'),MIG);}catch(e){console.warn('markMig:',key,e.code||e.message);}
 }
+
+// ══════════════════════════════════════════════════════════════
+// A4 — BITÁCORA INMUTABLE DE AUDITORÍA
+// Registro append-only de acciones críticas de dinero e inventario.
+// Quién, qué, cuándo — con reglas de Firestore que prohíben
+// modificar o borrar entradas (ver firestore.rules).
+// ══════════════════════════════════════════════════════════════
+function logAudit(accion, detalle){
+  try{
+    const now=new Date();
+    const entry={
+      id:Date.now()+Math.floor(Math.random()*1000),
+      ts:Date.now(),
+      fecha:today(),
+      hora:now.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}),
+      accion,
+      detalle:detalle||{},
+      uid:SESSION?.id||0,
+      unombre:SESSION?.nombre||activeVend?.nombre||'—',
+      utipo:SESSION?.tipo||'—'
+    };
+    // Fire-and-forget: la bitácora nunca bloquea la operación
+    setDoc(doc(db,'auditLog',String(entry.id)),entry).catch(e=>console.warn('auditLog:',e.code));
+  }catch(e){/* no-op */}
+}
+window.logAudit=logAudit;
 // Versión que SÍ tira error — para flujos críticos como ventas que NO pueden silenciarse
 const fsSetCritical=async(c,item)=>{await setDoc(docRef(c,item.id),item);return true;};
 const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
@@ -1983,7 +2018,7 @@ async function completeInit(){
 }
 
 function listenAll(){
-  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario'];
+  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog'];
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
   const loaded=new Set();
 
@@ -3752,6 +3787,7 @@ function loginEmp(id){
   renderVendedorBar();
   // Check-in flow
   registrarCheckin(e);
+  logAudit('sesion_iniciada',{perfil:e.nombre,tipo:'empleada'});
   go('miperfil');
   toast(`✓ Hola ${e.nombre}! Turno iniciado 🛒`);
   // Verificar apertura de caja
@@ -3854,6 +3890,7 @@ async function checkPIN(){
     const dest=pinTarget&&pinTarget!=='admin'?pinTarget:'dashboard';
     pinTarget=null;
     go(dest);
+    logAudit('sesion_iniciada',{perfil:'Admin',tipo:'admin'});
     toast('✓ Acceso admin desbloqueado 🔓');
     setTimeout(()=>checkApertura(),600);
   } else {
@@ -4352,13 +4389,20 @@ function renderHistorial(){
 
 window.anularVenta=async id=>{
   const v=D.ventas.find(x=>x.id===id); if(!v) return;
-  if(!confirm(`¿Anular venta ${v.ticket} de ${fmt(v.total)}?\nSe revertirá de la caja y se repondrá el inventario.`)) return;
-  await fsSet('ventas',{...v,anulada:true});
+  // A4: motivo OBLIGATORIO — sin motivo no hay anulación
+  const motivo=prompt(`Anular venta ${v.ticket} de ${fmt(v.total)}\n\n¿Cuál es el MOTIVO? (obligatorio)\nEj: cliente se arrepintió, error de captura, producto mal preparado…`);
+  if(motivo===null) return; // canceló
+  if(!motivo.trim()){toast('⚠ Escribe el motivo para poder anular',3000,'warn');return;}
+  if(!confirm(`¿Confirmar anulación?\n${v.ticket} · ${fmt(v.total)}\nMotivo: ${motivo.trim()}\n\nSe revertirá de la caja y se repondrá el inventario.`)) return;
+  const anuladaPorNombre=SESSION?.nombre||activeVend?.nombre||'—';
+  await fsSet('ventas',{...v,anulada:true,anuladaMotivo:motivo.trim(),anuladaPor:SESSION?.id||0,anuladaPorNombre:anuladaPorNombre,anuladaTs:Date.now()});
   const cj=D.caja.find(c=>c.fecha===v.fecha);
   if(cj){if(v.metodo==='efectivo')cj.ef=Math.max(0,(cj.ef||0)-v.total);else cj.tc=Math.max(0,(cj.tc||0)-v.total);cj.total=(cj.ef||0)+(cj.tc||0);await fsSet('caja',cj);}
   // Reponer inventario descontado
   await reponerInventario(v.items);
-  toast('✓ Venta anulada — inventario repuesto');
+  // A4: bitácora inmutable
+  logAudit('venta_anulada',{ticket:v.ticket,total:v.total,metodo:v.metodo,fecha:v.fecha,motivo:motivo.trim(),vendedora:v.vendedorNombre||'—'});
+  toast('✓ Venta anulada — inventario repuesto y registrado en bitácora');
 };
 async function reponerInventario(ventaItems){
   for(const item of ventaItems){
@@ -4459,8 +4503,10 @@ window.addRetiro=async()=>{
       return;
     }
   }
-  const r={id:Date.now(),fecha,monto,tipo,concepto};
+  // A4: firma del movimiento + bitácora
+  const r={id:Date.now(),fecha,monto,tipo,concepto,registradoPor:SESSION?.id||0,registradoPorNombre:SESSION?.nombre||activeVend?.nombre||'—'};
   await fsSet('retiros',r);
+  logAudit('movimiento_efectivo',{tipo,monto,concepto,fecha});
   $('ret-monto').value='';$('ret-concepto').value='';
   toast(`✓ ${tipo==='retiro'?'💸 Retiro':tipo==='fondo'?'💰 Fondo inicial':'📥 Depósito'}: ${fmt(monto)}`);
 };
@@ -4496,7 +4542,9 @@ window.cancelEditRetiro=()=>{
 window.delRetiro=async id=>{
   const r=D.retiros.find(x=>x.id===id);
   if(r && !confirm(`¿Eliminar movimiento?\n${r.concepto||''} · ${fmt(r.monto)} · ${r.fecha}`)) return;
-  await fsDel('retiros',id);toast('✓ Eliminado');
+  await fsDel('retiros',id);
+  if(r) logAudit('movimiento_eliminado',{tipo:r.tipo,monto:r.monto,concepto:r.concepto,fecha:r.fecha});
+  toast('✓ Eliminado');
 };
 
 function getEnCaja(fecha){
@@ -4788,6 +4836,8 @@ window.realizarCorte=async()=>{
     realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'
   };
   await fsSet('cortes',corte);
+  // A4: bitácora inmutable del corte
+  logAudit('corte_realizado',{esperado:corte.esperado,contado:corte.contado,diferencia:corte.diferencia,tcReal:corte.tcReal||0,tcDiff:corte.tcDiff||0,ventasTotalReal:corte.ventasTotalReal||corte.ventasTotal});
 
   // Mermas → kpiCaptura
   const mermas=parseFloat($('corte-mermas')?.value)||0;
@@ -4842,7 +4892,16 @@ window.printUltimoCorte=()=>{
   const c=[...D.cortes].filter(x=>x.fecha===td).sort((a,b)=>b.id-a.id)[0];
   if(c) printCorteTicket(c); else toast('⚠ No hay corte de hoy');
 };
-window.delCorte=async id=>{if(!confirm('¿Eliminar este corte?'))return;await fsDel('cortes',id);toast('✓ Corte eliminado');};
+window.delCorte=async id=>{
+  const c=D.cortes.find(x=>x.id===id);
+  // A4: motivo obligatorio + bitácora
+  const motivo=prompt('¿Por qué eliminas este corte? (obligatorio)');
+  if(motivo===null) return;
+  if(!motivo.trim()){toast('⚠ Escribe el motivo',2400,'warn');return;}
+  await fsDel('cortes',id);
+  logAudit('corte_eliminado',{fecha:c?.fecha,hora:c?.hora,contado:c?.contado,esperado:c?.esperado,diferencia:c?.diferencia,motivo:motivo.trim()});
+  toast('✓ Corte eliminado y registrado en bitácora');
+};
 
 // Apertura de caja
 window.confirmarApertura=async()=>{
@@ -4946,6 +5005,7 @@ window.delGasto=async id=>{
   const g=D.gastos.find(x=>x.id===id);
   if(g && !confirm(`¿Eliminar este gasto?\n${g.fecha} · ${fmt(g.monto)} · ${g.prov||g.cat||''}`)) return;
   await fsDel('gastos',id);
+  if(g) logAudit('gasto_eliminado',{fecha:g.fecha,monto:g.monto,cat:g.cat,prov:g.prov||''});
   toast('✓ Eliminado');
 };
 function renderGastos(){
@@ -5221,13 +5281,24 @@ window.pagarSemana=async()=>{
   const extTotal=nom.reduce((s,e)=>s+e.extrasEmp-e.deducs,0);
   const p={id:Date.now(),semana:mon,e1:nom[0]?.totalSem||0,e2:nom[1]?.totalSem||0,extras:extTotal,total:nom.reduce((s,e)=>s+e.totalSem,0),fecha:today()};
   await fsSet('nomPagos',p);
-  toast('✓ Nómina pagada: '+fmt(p.total));
+  // A4 (Fuga #6): la nómina ahora SÍ entra al flujo — genera gasto vinculado
+  const g={id:p.id+1,fecha:today(),cat:'nomina',prov:'Nómina interna',monto:p.total,ticket:'NOM-'+mon,metodo:'transferencia',notas:`Pago nómina semana ${mon} (${nom.map(e=>e.nombre+' '+fmt(e.totalSem)).join(' · ')})`,tipoEstrategico:'general',nominaId:p.id};
+  await fsSet('gastos',g);
+  logAudit('nomina_pagada',{semana:mon,total:p.total,desglose:nom.map(e=>({nombre:e.nombre,total:e.totalSem}))});
+  toast('✓ Nómina pagada: '+fmt(p.total)+' — registrada también en Gastos');
 };
 
 window.delNomPago=async id=>{
   const p=D.nomPagos.find(x=>x.id===id); if(!p) return;
-  if(!confirm(`¿Eliminar pago de nómina?\nSemana: ${p.semana}\nTotal: ${fmt(p.total)}\nEsto desbloquea esa semana para volver a registrarla.`)) return;
-  await fsDel('nomPagos',id); toast('✓ Pago eliminado — semana desbloqueada');
+  const motivo=prompt(`¿Por qué eliminas el pago de nómina de la semana ${p.semana} (${fmt(p.total)})? (obligatorio)\nEsto desbloquea esa semana para volver a registrarla.`);
+  if(motivo===null) return;
+  if(!motivo.trim()){toast('⚠ Escribe el motivo',2400,'warn');return;}
+  await fsDel('nomPagos',id);
+  // Eliminar el gasto vinculado (si existe)
+  const gLinked=D.gastos.find(g=>g.nominaId===p.id);
+  if(gLinked) await fsDel('gastos',gLinked.id);
+  logAudit('nomina_pago_eliminado',{semana:p.semana,total:p.total,motivo:motivo.trim()});
+  toast('✓ Pago eliminado — semana desbloqueada y gasto revertido');
 };
 window.editNomPago=async id=>{
   const p=D.nomPagos.find(x=>x.id===id); if(!p) return;
@@ -7101,6 +7172,7 @@ window.guardarMerma=async()=>{
     capturadoPor:SESSION?.id||0, capturadoPorNombre:SESSION?.nombre||'—', ts:Date.now()
   });
   $('merma-modal').style.display='none';
+  logAudit('merma_registrada',{insumo:inv.nombre,cantidad:qty,unidad:inv.unidadOf||inv.unit||'',costo,motivo,notas});
   toast(`🍂 Merma registrada: ${qty} ${inv.unidadOf||inv.unit||''} de ${inv.nombre}${costo>0?' · '+fmt(costo):''}`,3500);
   renderInv();
 };
@@ -7932,6 +8004,7 @@ window.exportBackup=()=>{
     localStorage.setItem('h5_last_backup',today());
     updateBackupLabel();
     const totalRegs=Object.values(D).reduce((s,arr)=>s+(Array.isArray(arr)?arr.length:0),0);
+    logAudit('respaldo_descargado',{registros:totalRegs});
     toast(`💾 Respaldo descargado: ${totalRegs} registros`,4000);
   }catch(e){
     console.error('Backup error:',e);
@@ -8011,6 +8084,50 @@ window.editInvInline=id=>{
 function renderAjustes(){
   const td=today();
   if($('ajuste-fecha-checkin'))$('ajuste-fecha-checkin').textContent=td;
+
+  // A4: visor de bitácora (últimas 60 entradas, más recientes primero)
+  const auditEl=$('audit-log-list');
+  if(auditEl){
+    const AUDIT_ICONS={
+      venta_anulada:'🚫',corte_realizado:'🧾',corte_eliminado:'🗑',
+      movimiento_efectivo:'💸',movimiento_eliminado:'🗑',
+      gasto_eliminado:'🗑',nomina_pagada:'👩',nomina_pago_eliminado:'🗑',
+      merma_registrada:'🍂',respaldo_descargado:'💾',sesion_iniciada:'🔑'
+    };
+    const AUDIT_LABELS={
+      venta_anulada:'Venta anulada',corte_realizado:'Corte de caja',
+      corte_eliminado:'Corte ELIMINADO',movimiento_efectivo:'Movimiento de efectivo',
+      movimiento_eliminado:'Movimiento ELIMINADO',gasto_eliminado:'Gasto ELIMINADO',
+      nomina_pagada:'Nómina pagada',nomina_pago_eliminado:'Pago nómina ELIMINADO',
+      merma_registrada:'Merma',respaldo_descargado:'Respaldo',sesion_iniciada:'Sesión iniciada'
+    };
+    const logs=[...(D.auditLog||[])].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,60);
+    auditEl.innerHTML=logs.length===0?
+      '<p style="color:var(--text3);font-size:12px;padding:8px 0;">Sin registros aún. Aquí aparecerá cada anulación, corte, retiro, merma y pago con quién lo hizo y cuándo.</p>':
+      logs.map(l=>{
+        const d=l.detalle||{};
+        let resumen='';
+        if(l.accion==='venta_anulada') resumen=`${d.ticket||''} · ${fmt(d.total||0)} · motivo: ${d.motivo||'—'}`;
+        else if(l.accion==='corte_realizado') resumen=`Esperado ${fmt(d.esperado||0)} · Contado ${fmt(d.contado||0)} · Dif ${d.diferencia>=0?'+':''}${fmt(d.diferencia||0)}`;
+        else if(l.accion==='corte_eliminado') resumen=`${d.fecha||''} · Contado ${fmt(d.contado||0)} · motivo: ${d.motivo||'—'}`;
+        else if(l.accion==='movimiento_efectivo') resumen=`${d.tipo||''} · ${fmt(d.monto||0)} · ${d.concepto||''}`;
+        else if(l.accion==='movimiento_eliminado') resumen=`${d.tipo||''} · ${fmt(d.monto||0)} · ${d.concepto||''}`;
+        else if(l.accion==='gasto_eliminado') resumen=`${d.fecha||''} · ${fmt(d.monto||0)} · ${d.prov||d.cat||''}`;
+        else if(l.accion==='nomina_pagada') resumen=`Semana ${d.semana||''} · ${fmt(d.total||0)}`;
+        else if(l.accion==='nomina_pago_eliminado') resumen=`Semana ${d.semana||''} · ${fmt(d.total||0)} · motivo: ${d.motivo||'—'}`;
+        else if(l.accion==='merma_registrada') resumen=`${d.cantidad||''} ${d.unidad||''} de ${d.insumo||''} · ${fmt(d.costo||0)} · ${d.motivo||''}`;
+        else if(l.accion==='respaldo_descargado') resumen=`${d.registros||0} registros`;
+        else if(l.accion==='sesion_iniciada') resumen=d.perfil||'';
+        return `<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border);font-size:11.5px;">
+          <span style="font-size:15px;flex-shrink:0;">${AUDIT_ICONS[l.accion]||'📌'}</span>
+          <div style="flex:1;min-width:0;">
+            <div><strong>${AUDIT_LABELS[l.accion]||l.accion}</strong> <span style="color:var(--text3);">· ${l.unombre||'—'}</span></div>
+            <div style="color:var(--text2);word-break:break-word;">${resumen}</div>
+          </div>
+          <span class="mono" style="font-size:10px;color:var(--text3);flex-shrink:0;">${l.fecha||''}<br>${l.hora||''}</span>
+        </div>`;
+      }).join('');
+  }
 
   // Check-ins de hoy
   const chkHoy=D.checkins.filter(c=>c.fecha===td).sort((a,b)=>a.hora?.localeCompare(b.hora||''));
