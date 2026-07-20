@@ -197,11 +197,17 @@ select option{background:var(--surface2);}
 .modal-title{font-family:'Playfair Display',serif;font-size:18px;font-weight:700;}
 
 /* POS */
-.pos-wrap{display:grid;grid-template-columns:1fr 360px;gap:10px;min-height:calc(100vh - 100px);}
+/* minmax(0,1fr): sin esto, el min-content de la columna izquierda (chips de
+   categorías en una línea) empuja el panel de orden fuera del viewport */
+.pos-wrap{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:10px;min-height:calc(100vh - 100px);}
+.pos-left{min-width:0;}
+.order-panel{min-width:0;}
 @media(max-width:960px){.pos-wrap{grid-template-columns:1fr;min-height:auto;}}
 .pos-left{display:flex;flex-direction:column;gap:10px;}
 .pos-cats{display:flex;gap:5px;overflow-x:auto;scrollbar-width:none;padding-bottom:3px;}
 .pos-cats::-webkit-scrollbar{display:none;}
+/* Desktop: los chips envuelven — todas las categorías visibles sin scroll oculto */
+@media(min-width:961px){.pos-cats{flex-wrap:wrap;overflow-x:visible;}}
 .pcat{
   padding:5px 14px;border-radius:20px;
   border:1.5px solid var(--border);
@@ -278,8 +284,8 @@ select option{background:var(--surface2);}
 .ototal-bar{background:var(--surface2);border-radius:var(--rsm);padding:9px 11px;}
 .ototal{display:flex;justify-content:space-between;font-size:18px;font-weight:800;align-items:center;}
 .ototal span:last-child{font-family:'DM Mono',monospace;color:var(--accent);}
-.op-extra{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
-.op-extra input{padding:7px 9px;font-size:11.5px;border-radius:8px;}
+.op-extra{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;}
+.op-extra input{padding:7px 9px;font-size:11.5px;border-radius:8px;min-width:0;width:100%;}
 .op-actions{position:sticky;bottom:-12px;background:var(--surface);margin:0 -12px -12px;padding:8px 12px 12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;z-index:2;border-radius:0 0 var(--r) var(--r);}
 .pago-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .vconf-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14.5px;font-weight:700;cursor:pointer;min-height:54px;}
@@ -622,7 +628,7 @@ nav{padding-top:env(safe-area-inset-top);}
 
 /* LANDSCAPE en mobile: aprovechar ancho */
 @media(max-width:900px) and (orientation:landscape){
-  .pos-wrap{grid-template-columns:1fr 320px;}
+  .pos-wrap{grid-template-columns:minmax(0,1fr) 320px;}
   .order-panel{max-height:calc(100vh - 100px);}
 }
 

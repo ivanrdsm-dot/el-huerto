@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.4'; // Equipo jul26 + confirmación de vendedor por venta
+const CACHE_NAME = 'el-huerto-v14.5'; // Fix overflow POS: panel de orden completo en pantalla
 const ASSETS = [
   '/',
   '/index.html',
