@@ -255,25 +255,32 @@ select option{background:var(--surface2);}
   padding:2px 6px;
   display:inline-block;
 }
-.order-panel{background:var(--surface);box-shadow:0 -4px 20px rgba(0,0,0,.1);border:1px solid var(--border);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:8px;position:sticky;top:62px;max-height:calc(100vh - 80px);overflow-y:auto;}
+.order-panel{background:var(--surface);box-shadow:0 -4px 20px rgba(0,0,0,.1);border:1px solid var(--border);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:7px;position:sticky;top:62px;max-height:calc(100vh - 76px);overflow-y:auto;}
 @media(max-width:960px){.order-panel{position:fixed;bottom:56px;left:0;right:0;border-radius:var(--r) var(--r) 0 0;z-index:200;max-height:72vh;transition:transform .25s;}
 .order-panel.hidden{transform:translateY(calc(100% - 52px));}}
 .op-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
 .op-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;}
 .op-cnt{background:var(--accent);color:#ffffff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;}
-.oi{display:flex;align-items:center;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);}
-.oi-name{flex:1;font-size:12.5px;line-height:1.2;}
-.oi-qty{display:flex;align-items:center;gap:4px;}
-.qbtn{width:30px;height:30px;border-radius:6px;border:1px solid var(--border);background:var(--surface3);color:var(--text);font-size:17px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:700;flex-shrink:0;}
-.qbtn:active{transform:scale(.9);background:var(--accent);color:#fff;}
-@media(max-width:768px){.qbtn{width:34px;height:34px;font-size:19px;}}
-.qval{font-family:'DM Mono',monospace;font-size:12.5px;font-weight:700;min-width:16px;text-align:center;}
-.oi-price{font-family:'DM Mono',monospace;font-size:12px;color:var(--text2);min-width:52px;text-align:right;}
-.oi-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px;padding:0 2px;}
+#op-items{overflow-y:auto;max-height:36vh;overscroll-behavior:contain;}
+.oi{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);}
+.oi:last-child{border-bottom:none;}
+.oi-name{font-size:12px;font-weight:700;line-height:1.25;}
+.oi-nota{width:100%;margin-top:2px;font-size:10.5px;padding:1px 0;border:none!important;border-bottom:1px dashed var(--border)!important;border-radius:0!important;background:transparent!important;color:var(--text2);}
+.oi-nota:focus{outline:none;border-bottom-color:var(--accent)!important;}
+.oi-qty{display:flex;align-items:center;background:var(--surface3);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
+.qbtn{width:26px;height:28px;border:none;background:transparent;color:var(--text);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:700;flex-shrink:0;}
+.qbtn:active{background:var(--accent);color:#fff;}
+@media(max-width:768px){.qbtn{width:33px;height:34px;font-size:18px;}}
+.qval{font-family:'DM Mono',monospace;font-size:12.5px;font-weight:800;min-width:20px;text-align:center;}
+.oi-price{font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--text);min-width:52px;text-align:right;}
+.oi-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px;}
 .oi-del:hover{color:var(--red);}
-.ototal-bar{background:var(--surface2);border-radius:var(--rsm);padding:10px 12px;}
-.ototal{display:flex;justify-content:space-between;font-size:17px;font-weight:700;}
+.ototal-bar{background:var(--surface2);border-radius:var(--rsm);padding:9px 11px;}
+.ototal{display:flex;justify-content:space-between;font-size:18px;font-weight:800;align-items:center;}
 .ototal span:last-child{font-family:'DM Mono',monospace;color:var(--accent);}
+.op-extra{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+.op-extra input{padding:7px 9px;font-size:11.5px;border-radius:8px;}
+.op-actions{position:sticky;bottom:-12px;background:var(--surface);margin:0 -12px -12px;padding:8px 12px 12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;z-index:2;border-radius:0 0 var(--r) var(--r);}
 .pago-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .fab{display:none;position:fixed;bottom:68px;right:14px;background:var(--accent);color:#fff;border:none;border-radius:50%;width:52px;height:52px;font-size:20px;cursor:pointer;z-index:190;box-shadow:0 3px 16px rgba(0,0,0,.4);font-weight:900;align-items:center;justify-content:center;}
 @media(max-width:960px){.fab{display:flex;}}
@@ -972,7 +979,7 @@ nav{padding-top:env(safe-area-inset-top);}
         <div class="op-title">Orden <span class="op-cnt" id="op-cnt">0</span></div>
         <span id="op-arr" style="color:var(--text3);font-size:12px;">▲</span>
       </div>
-      <div id="op-items" style="flex:1;overflow-y:auto;max-height:200px;"></div>
+      <div id="op-items"></div>
       <div class="ototal-bar">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:4px;"><span>Subtotal</span><span id="op-sub" class="mono">$0.00</span></div>
         <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;padding-bottom:5px;border-bottom:1px dashed var(--border);">
@@ -983,24 +990,26 @@ nav{padding-top:env(safe-area-inset-top);}
         </div>
         <div class="ototal"><span>Total</span><span id="op-tot">$0.00</span></div>
       </div>
-      <div class="ii" style="margin-top:6px;">
-        <div class="fg"><label>Mesa / Nota</label><input id="op-nota" placeholder="Ej: Mesa 4"></div>
-        <div class="fg"><label>Cliente (opcional)</label><input id="op-cliente" placeholder="Tel/nombre" autocomplete="off"></div>
+      <div class="op-extra">
+        <input id="op-nota" placeholder="📝 Mesa / nota">
+        <input id="op-cliente" placeholder="👤 Cliente (opc.)" autocomplete="off">
       </div>
-      <div id="op-fecha-wrap" style="display:none;margin-bottom:6px;">
-        <div style="display:flex;align-items:center;gap:7px;background:#fff8e1;border:1px solid #4a2a05;border-radius:var(--rsm);padding:7px 10px;">
-          <span style="font-size:11px;color:var(--gold);">📅 Fecha de venta:</span>
-          <input type="date" id="op-fecha-venta" style="flex:1;padding:3px 6px;font-size:12px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);">
+      <div id="op-fecha-wrap" style="display:none;">
+        <div style="display:flex;align-items:center;gap:6px;background:color-mix(in srgb, var(--gold) 10%, var(--surface));border:1px solid var(--border);border-radius:var(--rsm);padding:4px 8px;">
+          <span style="font-size:10.5px;color:var(--gold);white-space:nowrap;">📅 Fecha:</span>
+          <input type="date" id="op-fecha-venta" style="flex:1;padding:2px 6px;font-size:11.5px;background:var(--surface2);border:1px solid var(--border);border-radius:4px;color:var(--text);">
           <button class="btn bs bxs" onclick="resetFechaVenta()" title="Usar hoy">↺</button>
         </div>
       </div>
-      <div class="pago-row" style="gap:8px;">
-        <button class="btn bp bfull" onclick="abrirCobro()" style="gap:6px;">💵 Efectivo</button>
-        <button class="btn bbl bfull" onclick="cobrar('tarjeta',0)" style="gap:6px;">💳 Tarjeta</button>
-      </div>
-      <div style="display:flex;gap:6px;margin-top:4px;">
-        <button class="btn bs bfull bsm" onclick="clearOrder()">✕ Limpiar</button>
-        <button class="btn bs bfull bsm" onclick="reprintLastTicket()" title="Reimprimir último ticket">🖨 Reimprimir</button>
+      <div class="op-actions">
+        <div class="pago-row">
+          <button class="btn bp bfull" onclick="abrirCobro()" style="gap:6px;">💵 Efectivo</button>
+          <button class="btn bbl bfull" onclick="cobrar('tarjeta',0)" style="gap:6px;">💳 Tarjeta</button>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button class="btn bs bfull bsm" onclick="clearOrder()">✕ Limpiar</button>
+          <button class="btn bs bfull bsm" onclick="reprintLastTicket()" title="Reimprimir último ticket">🖨 Reimprimir</button>
+        </div>
       </div>
     </div>
   </div>
@@ -4264,11 +4273,11 @@ function renderOrder(){
   $('op-desc-show').textContent=desc>0?'−'+fmt(desc):'−$0.00';
   $('op-tot').textContent=fmt(total);
   const fab=$('fab-order'); if(fab) fab.textContent=cnt>0?cnt:'🛒';
-  $('op-items').innerHTML=order.length===0?`<p style="color:var(--text3);font-size:12px;padding:10px 0;text-align:center;">Toca un producto para agregar</p>`:
+  $('op-items').innerHTML=order.length===0?`<p style="color:var(--text3);font-size:12px;padding:14px 0;text-align:center;">🛒 Toca un producto para agregar</p>`:
     order.map(o=>`<div class="oi">
-      <div style="flex:1;">
+      <div style="flex:1;min-width:0;">
         <div class="oi-name">${o.nombre}</div>
-        <input value="${o.nota||''}" placeholder="nota…" style="margin-top:3px;font-size:10px;padding:2px 6px;border-radius:4px;width:100%;" oninput="setNota(${o.id},this.value)">
+        <input class="oi-nota" value="${o.nota||''}" placeholder="nota…" oninput="setNota(${o.id},this.value)">
       </div>
       <div class="oi-qty">
         <button class="qbtn" onclick="chgQty(${o.id},-1)">−</button>
