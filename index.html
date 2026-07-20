@@ -13,6 +13,8 @@
 <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%232e7d32'/><text x='16' y='23' font-size='20' text-anchor='middle'>🌿</text></svg>">
 <title>El Huerto — Sistema de Gestión</title>
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400&family=DM+Mono:wght@300;400;500&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<script>/* A6: aplicar tema guardado ANTES del primer paint (sin flash) */
+try{if(localStorage.getItem('h5theme')==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}</script>
 <style>
 :root{
   --bg:#f5f7f4;--surface:#ffffff;--surface2:#f0f4ee;--surface3:#e8efe5;--surface4:#dde8d8;
@@ -24,6 +26,41 @@
   --text:#1a2e18;--text2:#4a6e44;--text3:#7a9e76;
   --r:12px;--rsm:8px;--rxs:6px;
 }
+/* ══ A6: MODO OSCURO — paleta premium verde-noche ══ */
+[data-theme="dark"]{
+  --bg:#0f1512;--surface:#161d18;--surface2:#1c241e;--surface3:#232c25;--surface4:#2a352c;
+  --border:#2c372e;--border2:#3a473b;
+  --accent:#4caf50;--accent2:#66bb6a;--accentd:#81c784;
+  --gold:#ffb74d;--goldd:#ffa726;
+  --red:#ef5350;--redd:#e57373;
+  --blue:#64b5f6;--purple:#ba68c8;--teal:#4db6ac;--orange:#ff8a65;
+  --text:#e8f0e9;--text2:#a8c0aa;--text3:#6f8a72;
+}
+[data-theme="dark"] body{background:var(--bg);}
+/* Componentes con colores literales → versión oscura */
+[data-theme="dark"] .pitem{background:var(--surface)!important;border-color:var(--border)!important;}
+[data-theme="dark"] .pitem:hover{border-color:var(--accent)!important;}
+[data-theme="dark"] .piprice{background:#1b3a1e;color:var(--accent2);}
+[data-theme="dark"] .pcat{background:var(--surface);color:var(--text2);border-color:var(--border);}
+[data-theme="dark"] .pcat.on{background:var(--accent);color:#0f1512;}
+[data-theme="dark"] .kpi-card,[data-theme="dark"] .kpi-tab{background:var(--surface);}
+[data-theme="dark"] .kpi-tab{color:var(--text2);border-color:var(--border);}
+[data-theme="dark"] .kpi-tab.on{background:var(--accent);color:#0f1512;}
+[data-theme="dark"] .xg{background:#1b3a1e;color:#81c784;}
+[data-theme="dark"] .xr{background:#3a1c1c;color:#ef9a9a;}
+[data-theme="dark"] .xy{background:#3a2f14;color:#ffcc80;}
+[data-theme="dark"] .xb{background:#142a3a;color:#90caf9;}
+[data-theme="dark"] .xt{background:#143a35;color:#80cbc4;}
+[data-theme="dark"] .xo{background:#3a2414;color:#ffab91;}
+[data-theme="dark"] .astrip{background:#3a2f14;border-color:#5c4a1e;color:#ffcc80;}
+[data-theme="dark"] .kpi-delta.up{background:#1b3a1e;color:#81c784;}
+[data-theme="dark"] .kpi-delta.down{background:#3a1c1c;color:#ef9a9a;}
+[data-theme="dark"] .kpi-delta.neutral{background:var(--surface3);color:var(--text2);}
+[data-theme="dark"] .reloj-status.on{background:#1b3a1e;color:#81c784;}
+[data-theme="dark"] .reloj-status.off{background:var(--surface3);color:var(--text3);}
+[data-theme="dark"] .qbtn:active{color:#0f1512;}
+/* Transición suave al cambiar tema */
+body,nav,.card,.modal,.pitem,.kpi-card{transition:background-color .25s ease,border-color .25s ease,color .25s ease;}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
 html{font-size:14px;scroll-behavior:smooth;}
 body{font-family:'DM Sans',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
@@ -637,6 +674,7 @@ nav{padding-top:env(safe-area-inset-top);}
   <div class="nright">
     <span id="navDate"></span>
     <span class="nbadge" id="nav-alerta" onclick="go('inventario')"></span>
+    <button id="theme-toggle" onclick="toggleTheme()" title="Cambiar tema claro/oscuro" style="background:none;border:none;font-size:14px;cursor:pointer;padding:2px;">🌙</button>
     <span id="conn-status" title="Estado de conexión" style="font-size:13px;cursor:default;">🟢</span>
     <div class="sess-badge" id="sess-badge" onclick="lockApp()" title="Cerrar sesión">
       <div class="sess-av" id="sess-av" style="background:var(--accent);">?</div>
@@ -8684,6 +8722,35 @@ window.renderReportes=renderReportes;
 window.renderInv=renderInv;
 function clock(){const el=$('navDate');if(el)el.textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',year:'numeric',month:'long',day:'numeric'});}
 clock(); setInterval(clock,60000);
+
+// ══ A6: MODO OSCURO ══
+window.toggleTheme=()=>{
+  const html=document.documentElement;
+  const dark=html.getAttribute('data-theme')==='dark';
+  if(dark){html.removeAttribute('data-theme');localStorage.setItem('h5theme','light');}
+  else{html.setAttribute('data-theme','dark');localStorage.setItem('h5theme','dark');}
+  const btn=$('theme-toggle'); if(btn) btn.textContent=dark?'🌙':'☀️';
+  // theme-color de la PWA acompaña al tema
+  const meta=document.querySelector('meta[name="theme-color"]');
+  if(meta) meta.content=dark?'#2e7d32':'#0f1512';
+};
+// Icono inicial según tema guardado
+(()=>{const btn=$('theme-toggle');if(btn&&document.documentElement.getAttribute('data-theme')==='dark')btn.textContent='☀️';})();
+
+// ══ A6: ATAJOS DE TECLADO (velocidad de cobro en desktop/tablet con teclado) ══
+// F2 = cobrar efectivo · F3 = cobrar tarjeta · F4 = buscar producto · Esc = cerrar modal
+document.addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    document.querySelectorAll('.modal-bg').forEach(m=>{
+      if(m.style.display==='flex'&&m.id!=='pin-modal') m.style.display='none';
+    });
+    return;
+  }
+  if(!SESSION||currentPage!=='pos') return;
+  if(e.key==='F2'){e.preventDefault();abrirCobro();}
+  else if(e.key==='F3'){e.preventDefault();cobrar('tarjeta',0);}
+  else if(e.key==='F4'){e.preventDefault();const q=$('pos-q');if(q){q.focus();q.select();}}
+});
 
 // Indicador de conexión a internet (crítico para no perder ventas)
 function updateConnStatus(){
