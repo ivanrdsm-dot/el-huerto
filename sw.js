@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.1'; // POS v2: rediseño premium
+const CACHE_NAME = 'el-huerto-v14.2'; // POS v2 compacto + panel dinámico
 const ASSETS = [
   '/',
   '/index.html',

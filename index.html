@@ -214,9 +214,9 @@ select option{background:var(--surface2);}
 }
 .pcat:hover{border-color:var(--accent);color:var(--accent);}
 .pcat.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700;box-shadow:0 2px 8px rgba(46,125,50,.25);}
-.pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(135px,1fr));gap:10px;}
-@media(max-width:768px){.pos-grid{grid-template-columns:repeat(3,1fr);gap:8px;}}
-@media(max-width:480px){.pos-grid{grid-template-columns:repeat(2,1fr);gap:8px;}.pitem{min-height:110px;padding:14px 8px;}}
+.pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:7px;}
+@media(max-width:768px){.pos-grid{grid-template-columns:repeat(4,1fr);gap:6px;}}
+@media(max-width:480px){.pos-grid{grid-template-columns:repeat(3,1fr);gap:6px;}}
 .pitem{
   background:#fff;
   border:1.5px solid var(--border);
@@ -412,10 +412,10 @@ body{
 .pitem{
   --cc:#607d8b;
   border:1px solid var(--border)!important;
-  border-top:4px solid var(--cc)!important;
+  border-top:3px solid var(--cc)!important;
   background:linear-gradient(180deg,var(--surface) 0%,var(--surface2) 100%)!important;
-  border-radius:14px;
-  padding:10px 8px 12px;
+  border-radius:10px;
+  padding:7px 5px 8px;
   box-shadow:0 1px 2px rgba(26,46,24,.06), 0 4px 12px rgba(26,46,24,.05);
 }
 .pitem:hover{
@@ -425,27 +425,33 @@ body{
 }
 /* Chip del emoji teñido con el color de la categoría */
 .pi-emoji{
-  width:38px;height:38px;border-radius:11px;
+  width:24px;height:24px;border-radius:7px;
   display:flex;align-items:center;justify-content:center;
-  font-size:21px;margin:0 auto 7px;
+  font-size:14px;margin:0 auto 4px;
   background:color-mix(in srgb, var(--cc) 12%, var(--surface));
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cc) 25%, transparent);
 }
-.piname{font-size:12.5px;font-weight:800;letter-spacing:-.1px;}
-.pidesc{font-size:9px;color:var(--text3);line-height:1.3;margin:2px 0 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.piname{font-size:11px;font-weight:800;letter-spacing:-.1px;line-height:1.2;margin-bottom:4px;}
+.pidesc{display:none;} /* la descripción sale del tile: la cajera reconoce, no lee */
 .piprice{
   background:color-mix(in srgb, var(--cc) 10%, var(--surface))!important;
   color:var(--cc)!important;
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cc) 22%, transparent);
+  font-size:12px;padding:1px 6px;
 }
 /* Favoritos: anillo dorado + estrella */
 .pitem-fav{box-shadow:0 0 0 2px rgba(249,168,37,.45), 0 4px 14px rgba(26,46,24,.10);position:relative;}
-.pitem-fav::after{content:'⭐';position:absolute;top:5px;right:7px;font-size:11px;}
+.pitem-fav::after{content:'⭐';position:absolute;top:3px;right:5px;font-size:9px;}
 /* Encabezado de sección dentro de la grilla */
 .pos-sec{
-  grid-column:1/-1;display:flex;align-items:center;gap:8px;
-  margin:8px 0 2px;font-size:10.5px;font-weight:800;
-  letter-spacing:1.8px;text-transform:uppercase;color:var(--text3);
+  grid-column:1/-1;display:flex;align-items:center;gap:7px;
+  margin:3px 0 0;font-size:9.5px;font-weight:800;
+  letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);
+}
+/* Panel de orden: oculto hasta que agregan el primer producto (desktop) */
+@media(min-width:961px){
+  .pos-wrap.no-order{grid-template-columns:1fr;}
+  .pos-wrap.no-order .order-panel{display:none;}
 }
 .pos-sec::after{content:'';flex:1;height:1px;background:var(--border);}
 .pos-sec .dot{width:9px;height:9px;border-radius:3px;background:var(--sc,var(--accent));flex-shrink:0;}
@@ -568,11 +574,11 @@ nav{padding-top:env(safe-area-inset-top);}
   .inv-cap-row{grid-template-columns:1fr!important;gap:8px!important;}
   .inv-cap-row > div:last-child{justify-content:flex-end;}
 
-  /* POS grid más grandes para tap */
+  /* POS grid compacto pero con tap cómodo */
   .pos-grid{gap:6px;}
-  .pitem{padding:14px 6px;min-height:115px;}
-  .piname{font-size:11.5px;}
-  .piprice{font-size:13px;}
+  .pitem{padding:8px 5px 9px;min-height:0;}
+  .piname{font-size:10.5px;}
+  .piprice{font-size:11px;}
 
   /* KPIs tarjeta única */
   .kpi-grid{grid-template-columns:1fr!important;}
@@ -4249,6 +4255,10 @@ window.calcDesc=()=>{
 function renderOrder(){
   const {sub,desc,total}=getDescuento();
   const cnt=order.reduce((s,o)=>s+o.qty,0);
+  // POS v2: en desktop el panel de orden aparece hasta el primer producto
+  // (mientras tanto el menú usa TODO el ancho de la pantalla)
+  const pw=document.querySelector('.pos-wrap');
+  if(pw) pw.classList.toggle('no-order', order.length===0);
   $('op-cnt').textContent=cnt;
   $('op-sub').textContent=fmt(sub);
   $('op-desc-show').textContent=desc>0?'−'+fmt(desc):'−$0.00';
