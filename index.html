@@ -624,6 +624,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <button class="ntab" onclick="go('gastos')">📉 Gastos</button>
     <button class="ntab" onclick="go('nomina')">👩 Nómina</button>
     <button class="ntab" onclick="go('vendedores')">🏆 Vendedores</button>
+    <button class="ntab" onclick="go('clientes')">👥 Clientes</button>
     <button class="ntab" onclick="go('proveedores')">🚚 Proveedores</button>
     <button class="ntab" onclick="go('suscriptores')">🌱 Suscriptores</button>
     <button class="ntab" onclick="go('inventario')">📦 Inventario</button>
@@ -1247,8 +1248,48 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- ══ PROVEEDORES ══ -->
+<!-- ══ A5: CLIENTES (CRM ligero calculado desde ventas) ══ -->
+<div id="page-clientes" class="page">
+  <div class="sh"><span class="st">👥 Clientes</span>
+    <span style="font-size:11px;color:var(--text3);">Detectados por tel/nombre capturado en el POS</span>
+  </div>
+  <div class="g4" style="margin-bottom:12px;" id="cl-kpis"></div>
+  <div class="card">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Directorio de Clientes</span>
+      <input id="cl-q" placeholder="🔍 Buscar cliente…" oninput="renderClientes()" style="width:auto;min-width:180px;padding:6px 10px;font-size:12px;">
+    </div>
+    <div class="tw" id="cl-tabla" style="margin-top:10px;"></div>
+  </div>
+</div>
+
 <div id="page-proveedores" class="page">
   <div class="sh"><span class="st">Proveedores</span></div>
+
+  <!-- A5: Directorio de proveedores -->
+  <div class="g2" style="gap:10px;margin-bottom:10px;">
+    <div class="card">
+      <div class="ct">📇 Directorio de Proveedores</div>
+      <div class="ii">
+        <div class="fg"><label>Nombre</label><input type="text" id="pd-nombre" placeholder="Ej: Naranjarillo"></div>
+        <div class="fg"><label>Contacto</label><input type="text" id="pd-contacto" placeholder="Persona"></div>
+      </div>
+      <div class="ii">
+        <div class="fg"><label>Teléfono</label><input type="tel" id="pd-tel" placeholder="55…"></div>
+        <div class="fg"><label>Días de entrega</label><input type="text" id="pd-entrega" placeholder="Ej: Lun y Jue"></div>
+      </div>
+      <div class="fg"><label>Notas (RFC, correo, condiciones…)</label><input type="text" id="pd-notas" placeholder="Opcional"></div>
+      <button class="btn bp bfull bsm" onclick="saveProvDir()">+ Guardar proveedor</button>
+    </div>
+    <div class="card"><div class="ct">Proveedores registrados</div><div id="pd-lista"></div></div>
+  </div>
+
+  <!-- A5: Órdenes de compra -->
+  <div class="card" style="margin-bottom:10px;border:2px solid var(--gold);">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">📝 Órdenes de Compra</span>
+      <span style="font-size:10.5px;color:var(--text3);">Se crean desde Inventario → Dashboard → Compras urgentes</span>
+    </div>
+    <div id="oc-lista" style="margin-top:8px;"></div>
+  </div>
   <div class="g2" style="gap:10px;">
     <div class="card">
       <div class="ct">Registrar Pedido</div>
@@ -1879,7 +1920,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true,
   waReporte:'525646665718',waHora:'21:00',
   kpiTargets:{
@@ -2018,7 +2059,7 @@ async function completeInit(){
 }
 
 function listenAll(){
-  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog'];
+  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra'];
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
   const loaded=new Set();
 
@@ -3692,7 +3733,7 @@ const EMP_PASSWORDS = {}; // Populated from empleados.pin field
 // (PINs de empleadas ahora en EMP_PASS_HASH arriba — mismo PIN, distinto almacenamiento)
 // Páginas restringidas a admin solamente (nadie más entra)
 // Inventario lo ven TODAS las empleadas (Adilene y Claudia) para captura diaria
-const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','kpis'];
+const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','kpis','clientes'];
 // Páginas que Clau (gerente) puede ver además de ventas
 const GERENTE_PERMS = ['kpis']; // Claudia ve KPIs (lectura). Inventario lo ven todas (no es ADMIN_ONLY ni GERENTE_PERMS).
 // ID de Clau
@@ -5495,8 +5536,178 @@ window.delPed=async id=>{
   if(p && !confirm(`¿Eliminar pedido?\n${p.nombre} · ${fmt(p.total)}\n${p.fecha}`)) return;
   await fsDel('pedidos',id);toast('✓ Eliminado');
 };
+// ══════════════════════════════════════════════════════════════
+// A5 — CLIENTES (CRM calculado desde ventas, sin colección extra)
+// ══════════════════════════════════════════════════════════════
+function renderClientes(){
+  if(!$('cl-tabla')) return;
+  const q=($('cl-q')?.value||'').toLowerCase();
+  const cm=curM();
+  // Agregar ventas por cliente
+  const map={};
+  D.ventas.filter(v=>!v.anulada&&v.cliente).forEach(v=>{
+    const k=v.cliente.trim().toLowerCase(); if(!k) return;
+    if(!map[k]) map[k]={cliente:v.cliente.trim(),visitas:0,total:0,ultima:'',prods:{},primeraVenta:v.fecha};
+    const c=map[k];
+    c.visitas++; c.total+=v.total;
+    if(v.fecha>c.ultima) c.ultima=v.fecha;
+    if(v.fecha<c.primeraVenta) c.primeraVenta=v.fecha;
+    (v.items||[]).forEach(i=>{c.prods[i.nombre]=(c.prods[i.nombre]||0)+i.qty;});
+  });
+  let lista=Object.values(map);
+  const totalClientes=lista.length;
+  const recurrentes=lista.filter(c=>c.visitas>=3).length;
+  const nuevosMes=lista.filter(c=>mOf(c.primeraVenta)===cm).length;
+  const ventasIdent=D.ventas.filter(v=>!v.anulada&&v.cliente).length;
+  const ventasTot=D.ventas.filter(v=>!v.anulada).length;
+  if($('cl-kpis'))$('cl-kpis').innerHTML=`
+    <div class="card" style="text-align:center;"><div class="ct">Clientes</div><div class="kv">${totalClientes}</div></div>
+    <div class="card" style="text-align:center;"><div class="ct">🥇 Recurrentes (3+)</div><div class="kv gold">${recurrentes}</div></div>
+    <div class="card" style="text-align:center;"><div class="ct">🆕 Nuevos este mes</div><div class="kv teal">${nuevosMes}</div></div>
+    <div class="card" style="text-align:center;"><div class="ct">% ventas identificadas</div><div class="kv blue">${ventasTot>0?Math.round(ventasIdent/ventasTot*100):0}%</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">Captura el cliente al cobrar para subirlo</div></div>`;
+  if(q) lista=lista.filter(c=>c.cliente.toLowerCase().includes(q));
+  lista.sort((a,b)=>b.total-a.total);
+  $('cl-tabla').innerHTML=lista.length===0?
+    '<p style="color:var(--text3);font-size:12px;text-align:center;padding:16px;">Sin clientes aún. Captura tel/nombre en el campo "Cliente" del POS al cobrar.</p>':
+    `<table class="tbl"><thead><tr><th>Cliente</th><th>Nivel</th><th>Visitas</th><th>Total</th><th>Ticket prom.</th><th>Favorito</th><th>Última visita</th></tr></thead><tbody>`+
+    lista.slice(0,100).map(c=>{
+      const fav=Object.entries(c.prods).sort((a,b)=>b[1]-a[1])[0];
+      const nivel=c.visitas>=10?'🥇 Oro':c.visitas>=3?'🥈 Plata':'🥉 Nuevo';
+      return `<tr>
+        <td style="font-weight:600;font-size:12.5px;">${c.cliente}</td>
+        <td style="font-size:11px;">${nivel}</td>
+        <td class="mono">${c.visitas}</td>
+        <td class="mono ag fw7">${fmt(c.total)}</td>
+        <td class="mono">${fmt(c.total/c.visitas)}</td>
+        <td style="font-size:11px;color:var(--text2);">${fav?fav[0]+' ×'+fav[1]:'—'}</td>
+        <td class="mono" style="font-size:11px;">${c.ultima}</td>
+      </tr>`;
+    }).join('')+'</tbody></table>';
+}
+window.renderClientes=renderClientes;
+
+// ══ A5 — DIRECTORIO DE PROVEEDORES ══
+window.saveProvDir=async()=>{
+  const nombre=$('pd-nombre')?.value?.trim();
+  if(!nombre){toast('⚠ Ingresa el nombre',2400,'warn');return;}
+  const editId=$('pd-nombre').dataset.editId;
+  const existe=editId?D.provDir.find(x=>x.id==editId):null;
+  const p={
+    id:existe?existe.id:Date.now(),
+    nombre,
+    contacto:$('pd-contacto')?.value?.trim()||'',
+    tel:$('pd-tel')?.value?.trim()||'',
+    entrega:$('pd-entrega')?.value?.trim()||'',
+    notas:$('pd-notas')?.value?.trim()||''
+  };
+  await fsSet('provDir',p);
+  ['pd-nombre','pd-contacto','pd-tel','pd-entrega','pd-notas'].forEach(i=>{if($(i))$(i).value='';});
+  delete $('pd-nombre').dataset.editId;
+  toast(existe?'✓ Proveedor actualizado':'✓ Proveedor guardado: '+nombre);
+  renderProv();
+};
+window.editProvDir=id=>{
+  const p=D.provDir.find(x=>x.id===id); if(!p) return;
+  $('pd-nombre').value=p.nombre; $('pd-nombre').dataset.editId=id;
+  $('pd-contacto').value=p.contacto||''; $('pd-tel').value=p.tel||'';
+  $('pd-entrega').value=p.entrega||''; $('pd-notas').value=p.notas||'';
+  $('pd-nombre').scrollIntoView({behavior:'smooth',block:'center'});
+};
+window.delProvDir=async id=>{
+  const p=D.provDir.find(x=>x.id===id);
+  if(p&&!confirm(`¿Eliminar proveedor ${p.nombre}?`)) return;
+  await fsDel('provDir',id); toast('✓ Eliminado'); renderProv();
+};
+
+// ══ A5 — ÓRDENES DE COMPRA (crear desde compras urgentes → recibir → stock) ══
+window.crearOrdenCompra=async()=>{
+  const bajos=D.inventario.filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
+  if(bajos.length===0){toast('✓ No hay productos urgentes para ordenar',2400);return;}
+  const items=bajos.map(p=>{
+    const stock=invStockHoy(p.id)??p.qty??0;
+    const min=p.min||0;
+    const sugerido=invMinimoSugerido(p.id);
+    const cantidad=Math.max(min*2-stock, sugerido?sugerido*7:5);
+    return {insumoId:p.id,nombre:p.nombre,cantidad:Math.round(cantidad*100)/100,unidad:p.unidadOf||p.unit||'pz',recibido:false};
+  });
+  const oc={
+    id:Date.now(),fecha:today(),estado:'pendiente',
+    proveedor:'',items,
+    creadaPor:SESSION?.nombre||'Admin'
+  };
+  await fsSet('ordenesCompra',oc);
+  logAudit('orden_compra_creada',{items:items.length,detalle:items.map(i=>i.nombre).join(', ').slice(0,200)});
+  toast(`📝 Orden de compra creada con ${items.length} insumos — ve a Proveedores`,4000);
+};
+
+window.recibirOrdenCompra=async id=>{
+  const oc=D.ordenesCompra.find(x=>x.id===id); if(!oc) return;
+  if(!confirm(`¿Recibir orden completa del ${oc.fecha}?\n${oc.items.length} insumos se SUMARÁN al inventario.`)) return;
+  for(const item of oc.items){
+    const inv=D.inventario.find(i=>i.id===item.insumoId);
+    if(inv){
+      inv.qty=Math.round(((inv.qty||0)+item.cantidad)*1000)/1000;
+      await fsSet('inventario',inv);
+      // Sincronizar captura del día
+      const capHoy=D.invDiario.find(c=>c.productoId===inv.id&&c.fecha===today());
+      if(capHoy) await fsSet('invDiario',{...capHoy,qty:inv.qty,ts:Date.now()});
+    }
+  }
+  await fsSet('ordenesCompra',{...oc,estado:'recibida',recibidaTs:Date.now(),recibidaPor:SESSION?.nombre||'—'});
+  logAudit('orden_compra_recibida',{fecha:oc.fecha,items:oc.items.length});
+  toast(`✅ Orden recibida — ${oc.items.length} insumos sumados al inventario`,4000);
+  renderProv(); renderInv();
+};
+
+window.cancelarOrdenCompra=async id=>{
+  const oc=D.ordenesCompra.find(x=>x.id===id); if(!oc) return;
+  if(!confirm('¿Cancelar esta orden de compra?')) return;
+  await fsSet('ordenesCompra',{...oc,estado:'cancelada'});
+  renderProv();
+};
+
 function renderProv(){
   const pvL={semanal:'📅 Semanal',costco:'🛒 Costco',emergencia:'⚡ Emergencia',otro:'Otro'};
+
+  // A5: Directorio de proveedores
+  if($('pd-lista')){
+    $('pd-lista').innerHTML=D.provDir.length===0?
+      '<p style="color:var(--text3);font-size:12px;">Sin proveedores en el directorio</p>':
+      [...D.provDir].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(p=>`
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;padding:8px 0;border-bottom:1px solid var(--border);">
+          <div style="min-width:0;">
+            <div style="font-weight:700;font-size:13px;">${p.nombre}</div>
+            <div style="font-size:11px;color:var(--text2);">${[p.contacto,p.tel,p.entrega?('Entrega: '+p.entrega):''].filter(Boolean).join(' · ')||'—'}</div>
+            ${p.notas?`<div style="font-size:10.5px;color:var(--text3);">${p.notas}</div>`:''}
+          </div>
+          <div style="display:flex;gap:3px;flex-shrink:0;">
+            ${p.tel?`<a class="btn bsm" style="background:#25D366;color:#fff;text-decoration:none;font-size:11px;padding:4px 8px;border-radius:6px;" href="https://wa.me/52${p.tel.replace(/\D/g,'')}" target="_blank">📱</a>`:''}
+            <button class="btn bs bxs" onclick="editProvDir(${p.id})">✏️</button>
+            <button class="btn bd bxs" onclick="delProvDir(${p.id})">✕</button>
+          </div>
+        </div>`).join('');
+  }
+
+  // A5: Órdenes de compra
+  if($('oc-lista')){
+    const ocs=[...D.ordenesCompra].sort((a,b)=>b.id-a.id).slice(0,15);
+    $('oc-lista').innerHTML=ocs.length===0?
+      '<p style="color:var(--text3);font-size:12px;">Sin órdenes. Créalas desde Inventario → Dashboard → 📝 Crear orden de compra.</p>':
+      ocs.map(oc=>{
+        const badge=oc.estado==='pendiente'?'<span class="badge xy">⏳ Pendiente</span>':
+          oc.estado==='recibida'?'<span class="badge xg">✅ Recibida</span>':'<span class="badge xr">✕ Cancelada</span>';
+        return `<div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:10px;margin-bottom:7px;">
+          <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px;">
+            <div><span class="mono" style="font-size:11px;">${oc.fecha}</span> ${badge} <span style="font-size:11px;color:var(--text3);">· ${oc.items.length} insumos · ${oc.creadaPor||''}</span></div>
+            ${oc.estado==='pendiente'?`<div style="display:flex;gap:4px;">
+              <button class="btn bp bsm" onclick="recibirOrdenCompra(${oc.id})">✅ Recibir todo</button>
+              <button class="btn bd bxs" onclick="cancelarOrdenCompra(${oc.id})">✕</button>
+            </div>`:''}
+          </div>
+          <div style="font-size:11px;color:var(--text2);margin-top:5px;">${oc.items.map(i=>`${i.nombre} (${i.cantidad} ${i.unidad})`).join(' · ')}</div>
+        </div>`;
+      }).join('');
+  }
   const rows=[...D.pedidos].sort((a,b)=>b.fecha.localeCompare(a.fecha));
   if($('pvtable'))$('pvtable').innerHTML=rows.length===0?`<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:14px;">Sin pedidos</td></tr>`:
     rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${r.nombre}</td><td><span class="badge xb">${pvL[r.tipo]||r.tipo}</span></td><td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td><td class="mono ar fw7">${fmt(r.total)}</td><td style="display:flex;gap:3px;"><button class="btn bs bxs" onclick="editPedido(${r.id})" title="Editar">✏️</button><button class="btn bd bxs" onclick="delPed(${r.id})" title="Eliminar">✕</button></td></tr>`).join('');
@@ -5873,7 +6084,10 @@ function renderInvDashboard(){
     html+=`<div class="card" style="margin-bottom:12px;border:2px solid var(--red);background:#fff5f5;">
       <div class="sh">
         <span class="ct" style="margin-bottom:0;color:var(--red);">🚨 COMPRAS URGENTES (${bajos.length})</span>
-        <button class="btn bd bsm" onclick="invExportarCompras()">📋 Copiar lista</button>
+        <div style="display:flex;gap:5px;">
+          <button class="btn bp bsm" onclick="crearOrdenCompra()">📝 Crear orden de compra</button>
+          <button class="btn bd bsm" onclick="invExportarCompras()">📋 Copiar lista</button>
+        </div>
       </div>
       <div style="display:flex;flex-direction:column;gap:6px;margin-top:10px;">
         ${bajos.map(p=>{
@@ -8081,8 +8295,46 @@ window.editInvInline=id=>{
 };
 
 // ─── AJUSTES ───
+// A4: visor de la bitácora inmutable (solo lectura — las reglas
+// de Firestore impiden editar/borrar entradas incluso desde consola)
+const AUD_META={
+  venta_anulada:['🚫','#c62828'], corte_realizado:['🧾','#2e7d32'], corte_eliminado:['🗑','#c62828'],
+  movimiento_efectivo:['💸','#e65100'], movimiento_eliminado:['🗑','#c62828'],
+  gasto_eliminado:['🗑','#c62828'], nomina_pagada:['👩','#6a1b9a'], nomina_pago_eliminado:['🗑','#c62828'],
+  merma_registrada:['🍂','#e65100'], respaldo_descargado:['💾','#00695c'], sesion_iniciada:['🔑','#1565c0'],
+  orden_compra_creada:['📝','#f57f17'], orden_compra_recibida:['📦','#2e7d32']
+};
+function renderBitacora(){
+  const cont=$('audit-log-list'); if(!cont) return;
+  const logs=[...D.auditLog].sort((a,b)=>b.ts-a.ts).slice(0,60);
+  cont.innerHTML=logs.length===0?
+    '<p style="color:var(--text3);font-size:12px;padding:8px;">Sin eventos aún. Aquí quedará todo: anulaciones, cortes, retiros, nómina, mermas…</p>':
+    logs.map(l=>{
+      const [ico,color]=AUD_META[l.accion]||['📌','#616161'];
+      const det=l.detalle||{};
+      const resumen=[
+        det.ticket, det.motivo?('«'+det.motivo+'»'):null,
+        det.total!=null?fmt(det.total):null, det.monto!=null?fmt(det.monto):null,
+        det.contado!=null?('contado '+fmt(det.contado)):null,
+        det.diferencia!=null?('dif '+fmt(det.diferencia)):null,
+        det.insumo?(det.insumo+' '+(det.cantidad||'')+(det.unidad||'')):null,
+        det.semana?('sem '+det.semana):null, det.perfil, det.concepto,
+        det.items!=null?(det.items+' insumos'):null
+      ].filter(Boolean).join(' · ');
+      return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
+        <span style="font-size:15px;flex-shrink:0;">${ico}</span>
+        <div style="min-width:0;flex:1;">
+          <span style="font-weight:700;color:${color};">${(l.accion||'').replace(/_/g,' ')}</span>
+          ${resumen?`<span style="color:var(--text2);"> — ${resumen}</span>`:''}
+          <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;">${l.fecha} ${l.hora} · ${l.unombre||'—'}</div>
+        </div>
+      </div>`;
+    }).join('');
+}
+
 function renderAjustes(){
   const td=today();
+  renderBitacora();
   if($('ajuste-fecha-checkin'))$('ajuste-fecha-checkin').textContent=td;
 
   // A4: visor de bitácora (últimas 60 entradas, más recientes primero)
@@ -8347,6 +8599,7 @@ const PAGE_RENDERERS={
   reloj: ()=>renderReloj(),
   miperfil: ()=>renderMiPerfil(),
   kpis: ()=>renderKPIs(),
+  clientes: ()=>renderClientes(),
 };
 
 // Badges globales ligeros (sin re-dibujar módulos completos)
