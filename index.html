@@ -1768,7 +1768,7 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div id="ajprod-form" style="display:none;background:var(--surface2);border-radius:var(--rsm);padding:12px;margin-bottom:10px;">
       <div class="ii"><div class="fg"><label>Nombre</label><input type="text" id="aj-pr-n" placeholder="Nombre del producto"></div>
-        <div class="fg"><label>Categoría</label><select id="aj-pr-cat"><option value="acai">🫐 Açaí Bowl</option><option value="oats">🥣 Overnight Oats</option><option value="smoothie">🥤 Smoothies</option><option value="coctel">🍓 Cocteles</option><option value="combo">⭐ Combos</option><option value="panini">🥖 Paninis</option><option value="cafe">☕ Café</option><option value="te">🍵 Té</option><option value="pan">🍞 Panes Renee</option><option value="papas">🌶 Papas Locas</option><option value="otro">➕ Extras</option></select></div></div>
+        <div class="fg"><label>Categoría</label><select id="aj-pr-cat"><option value="acai">🫐 Açaí Bowl</option><option value="oats">🥣 Overnight Oats</option><option value="smoothie">🥤 Smoothies</option><option value="ensalada">🥗 Ensaladas</option><option value="coctel">🍓 Cocteles</option><option value="combo">⭐ Combos</option><option value="panini">🥖 Paninis</option><option value="cafe">☕ Café</option><option value="te">🍵 Té</option><option value="pan">🍞 Panes Renee</option><option value="papas">🌶 Papas Locas</option><option value="otro">➕ Extras</option></select></div></div>
       <div class="ii3">
         <div class="fg"><label>Precio venta</label><input type="number" id="aj-pr-p" placeholder="$0" step="0.01"></div>
         <div class="fg"><label>Costo (MXN)</label><input type="number" id="aj-pr-costo" placeholder="$0" step="0.01"></div>
@@ -1844,7 +1844,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="sh"><span class="ct" style="margin-bottom:0;">Catálogo de Productos</span><button class="btn bp bsm" onclick="showAddProd()">+ Agregar</button></div>
     <div id="addprod-form" style="display:none;background:var(--surface2);border-radius:var(--rsm);padding:12px;margin-bottom:10px;">
       <div class="ii"><div class="fg"><label>Nombre</label><input type="text" id="pr-n" placeholder="Nombre del producto"></div>
-        <div class="fg"><label>Categoría</label><select id="pr-cat"><option value="acai">🫐 Açaí Bowl</option><option value="oats">🥣 Overnight Oats</option><option value="smoothie">🥤 Smoothies</option><option value="coctel">🍓 Cocteles</option><option value="combo">⭐ Combos</option><option value="panini">🥖 Paninis</option><option value="cafe">☕ Café</option><option value="te">🍵 Té</option><option value="pan">🍞 Panes Renee</option><option value="papas">🌶 Papas Locas</option><option value="otro">➕ Extras</option></select></div></div>
+        <div class="fg"><label>Categoría</label><select id="pr-cat"><option value="acai">🫐 Açaí Bowl</option><option value="oats">🥣 Overnight Oats</option><option value="smoothie">🥤 Smoothies</option><option value="ensalada">🥗 Ensaladas</option><option value="coctel">🍓 Cocteles</option><option value="combo">⭐ Combos</option><option value="panini">🥖 Paninis</option><option value="cafe">☕ Café</option><option value="te">🍵 Té</option><option value="pan">🍞 Panes Renee</option><option value="papas">🌶 Papas Locas</option><option value="otro">➕ Extras</option></select></div></div>
       <div class="ii"><div class="fg"><label>Precio</label><input type="number" id="pr-p" placeholder="$0"></div><div class="fg"><label>Descripción</label><input type="text" id="pr-d" placeholder="Ej: Con granola"></div></div>
       <div style="display:flex;gap:8px;"><button class="btn bp" onclick="saveProd()">Guardar</button><button class="btn bs" onclick="$('addprod-form').style.display='none'">Cancelar</button></div>
     </div>
@@ -2169,6 +2169,7 @@ async function completeInit(){
   await fixEmpleadosTipo();
   await migEmpleadosJul2026();
   await migrateMenuAbril2026();
+  await migrateMenuJul2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -2381,6 +2382,57 @@ async function migrateMenuAbril2026(){
   }
   await markMig(migKey);
   if(changed>0) toast(`✓ Menú actualizado: ${changed} productos`,3000);
+}
+
+// Menú oficial julio 2026 (PDF "Natural - Fresco - Saludable"):
+// cafés todos a $40, sale la línea de tés calientes (entra Boba Tea e
+// Infusiones), solo queda Cóctel de Fruta, Papas Locas a $79, y nace
+// la categoría Ensaladas. Bajas con activo:false — reversibles.
+async function migrateMenuJul2026(){
+  const migKey='h5menu_jul26';
+  if(await migDone(migKey)) return;
+  const updates=[
+    {id:1009,desc:'Manzana, leche y zanahoria'},
+    {id:1012,desc:'Plátano, crema de almendra, avena y leche'},
+    {id:1063,desc:'Matcha, plátano, avena, crema de almendra, miel de abeja y leche'},
+    {id:1064,desc:'Chai, plátano, avena, crema de almendra, miel de abeja y leche'},
+    {id:1015,nombre:'Papas Locas (Susalias)',precio:79},
+    {id:1025,precio:40},{id:1026,precio:40},{id:1027,precio:40},{id:1028,precio:40},
+    {id:1029,precio:40},{id:1030,precio:40},{id:1031,precio:40},
+    {id:1032,nombre:'Espresso',precio:30},
+    {id:1033,nombre:'Espresso Doble',precio:50},
+  ];
+  let changed=0;
+  for(const u of updates){
+    const p=D.productos.find(x=>x.id===u.id);
+    if(!p) continue;
+    let dirty=false;
+    if(u.precio!==undefined&&p.precio!==u.precio){p.precio=u.precio;dirty=true;}
+    if(u.nombre&&p.nombre!==u.nombre){p.nombre=u.nombre;dirty=true;}
+    if(u.desc!==undefined&&p.desc!==u.desc){p.desc=u.desc;dirty=true;}
+    if(dirty){await fsSet('productos',p);changed++;}
+  }
+  // Bajas: Pal'Playero, cocteles (excepto Fruta), Papas Susalias sueltas,
+  // chocolates, toda la línea de tés calientes, topping cacahuates
+  const bajas=[1007,1014,1057,1058,1059,1060,1061,1062,1034,1035,
+    1036,1037,1038,1039,1040,1041,1042,1043,1066,1067,1068,1069,1055];
+  for(const id of bajas){
+    const p=D.productos.find(x=>x.id===id);
+    if(p&&p.activo){p.activo=false;await fsSet('productos',p);changed++;}
+  }
+  const altas=[
+    {id:1070,nombre:'Cortado',cat:'cafe',precio:60,desc:'',activo:true},
+    {id:1071,nombre:'Boba Tea',cat:'te',precio:49,desc:'Té con perlas de tapioca',activo:true},
+    {id:1072,nombre:'Infusión de Sabores',cat:'te',precio:49,desc:'',activo:true},
+    {id:1073,nombre:'Ensalada 3 Toppings',cat:'ensalada',precio:99,desc:'Elige 3 toppings · extra +$10',activo:true},
+    {id:1074,nombre:'Topping Extra (Ensalada)',cat:'otro',precio:10,desc:'',activo:true},
+  ];
+  for(const np of altas){
+    if(!D.productos.find(x=>x.id===np.id)){await fsSet('productos',np);changed++;}
+  }
+  await markMig(migKey);
+  logAudit('menu_actualizado',{version:'jul26',cambios:changed,fuente:'PDF menú oficial'});
+  if(changed>0) toast(`✓ Menú oficial jul-26 aplicado: ${changed} cambios`,3500);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -3817,8 +3869,8 @@ const $=id=>document.getElementById(id);
 const dayN=['Lun','Mar','Mié','Jue','Vie'];
 const catL={proveedor:'🚚 Proveedor',costco:'🛒 Costco',servicios:'💡 Servicios',renta:'🏠 Renta',mantenimiento:'🔧 Mant.',marketing:'📣 Marketing',sub_neg:'📱 Suscripción',varios:'📦 Varios'};
 const ivL={frutas:'🍓',verduras:'🥬',lacteos:'🧀',granos:'🌾',proteinas:'🥩',bebidas:'🥤',salsas:'🌶',limpieza:'🧴',empaque:'📦',otros:'•'};
-const catPOS={acai:'🫐 Açaí',oats:'🥣 Oats',smoothie:'🥤 Smoothies',coctel:'🍓 Cocteles',combo:'⭐ Combos',panini:'🥖 Paninis',cafe:'☕ Café',te:'🍵 Té',pan:'🍞 Panes',papas:'🌶 Papas',otro:'➕ Extras'};
-const catEmoji={acai:'🫐',oats:'🥣',smoothie:'🥤',coctel:'🍓',combo:'⭐',panini:'🥖',cafe:'☕',te:'🍵',pan:'🍞',papas:'🌶️',otro:'✨'};
+const catPOS={acai:'🫐 Açaí',oats:'🥣 Oats',smoothie:'🥤 Smoothies',ensalada:'🥗 Ensaladas',coctel:'🍓 Cocteles',combo:'⭐ Combos',panini:'🥖 Paninis',cafe:'☕ Café',te:'🍵 Té & Más',pan:'🍞 Panes',papas:'🌶 Papas',otro:'➕ Extras'};
+const catEmoji={acai:'🫐',oats:'🥣',smoothie:'🥤',ensalada:'🥗',coctel:'🍓',combo:'⭐',panini:'🥖',cafe:'☕',te:'🍵',pan:'🍞',papas:'🌶️',otro:'✨'};
 const COLORS=['#7ec850','#5ab4e8','#e8c96a','#e87a6a','#a87ee8','#5ae8c8','#e8a06a','#e85ac8'];
 
 let toastT;
@@ -4231,7 +4283,7 @@ function renderVendedorBar(){
 let order=[]; let poscat='all'; let opOpen=true;
 
 // POS v2: color por categoría — la cajera localiza por color+posición, no leyendo
-const CAT_COLORS={acai:'#7b1fa2',oats:'#8d6e63',smoothie:'#d81b60',coctel:'#e53935',papas:'#fb8c00',combo:'#f9a825',panini:'#a1887f',cafe:'#6d4c41',te:'#558b2f',pan:'#c09a3e',otro:'#607d8b'};
+const CAT_COLORS={acai:'#7b1fa2',oats:'#8d6e63',smoothie:'#d81b60',ensalada:'#43a047',coctel:'#e53935',papas:'#fb8c00',combo:'#f9a825',panini:'#a1887f',cafe:'#6d4c41',te:'#558b2f',pan:'#c09a3e',otro:'#607d8b'};
 
 // Unidades vendidas por producto en los últimos N días (ordena el menú por uso REAL)
 function ventasRecientesPorProducto(dias=21){

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.5'; // Fix overflow POS: panel de orden completo en pantalla
+const CACHE_NAME = 'el-huerto-v14.6'; // Menú oficial jul-26 + categoría Ensaladas
 const ASSETS = [
   '/',
   '/index.html',
