@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.7'; // Recetas jul-26: Cortado, Boba Tea, Infusión, Ensalada
+const CACHE_NAME = 'el-huerto-v14.8'; // Corte guiado + WA al cierre + respaldo auto + smoke test
 const ASSETS = [
   '/',
   '/index.html',

@@ -1165,6 +1165,8 @@ nav{padding-top:env(safe-area-inset-top);}
           • El sistema calcula tus <strong>VENTAS REALES</strong> del día (aunque no coincidan con el POS)<br>
           • Esas ventas reales son las que aparecen en la semana y reportes
         </div>
+        <!-- Semáforo de descuadre: veredicto en vivo al escribir el contado -->
+        <div id="corte-semaforo" style="display:none;border-radius:var(--rsm);padding:12px 14px;margin-bottom:10px;font-weight:800;font-size:14.5px;text-align:center;"></div>
         <button class="btn bp bfull" onclick="realizarCorte()" style="padding:14px;font-size:15px;font-weight:700;">🧾 Realizar Corte de Caja</button>
       </div>
 
@@ -5081,6 +5083,31 @@ function renderCorteInfo(){
     }).join('');
 }
 
+// Umbral de descuadre: arriba de esto el corte EXIGE motivo escrito (patrón
+// "blind close + variance reason" de Square/Toast — el faltante se explica hoy,
+// no el domingo)
+const CORTE_UMBRAL_DESCUADRE=50;
+
+// Semáforo en vivo del corte: verde cuadrada, ámbar sobra, rojo falta
+function pintarSemaforoCorte(contado,diff){
+  const s=$('corte-semaforo'); if(!s) return;
+  if(contado<=0){s.style.display='none';return;}
+  s.style.display='block';
+  if(Math.abs(diff)<=5){
+    s.style.background='color-mix(in srgb, var(--accent) 14%, var(--surface))';
+    s.style.color='var(--accent)';s.style.border='1px solid var(--accent)';
+    s.textContent='✅ Caja cuadrada — diferencia '+fmt(diff);
+  }else if(diff>0){
+    s.style.background='color-mix(in srgb, var(--gold) 14%, var(--surface))';
+    s.style.color='var(--gold)';s.style.border='1px solid var(--gold)';
+    s.textContent='⚠ SOBRAN '+fmt(diff)+(diff>CORTE_UMBRAL_DESCUADRE?' — escribe el motivo en la nota':'');
+  }else{
+    s.style.background='color-mix(in srgb, var(--red) 14%, var(--surface))';
+    s.style.color='var(--red)';s.style.border='1px solid var(--red)';
+    s.textContent='🚨 FALTAN '+fmt(Math.abs(diff))+(Math.abs(diff)>CORTE_UMBRAL_DESCUADRE?' — escribe el motivo en la nota':'');
+  }
+}
+
 window.calcCorte=()=>{
   const contado=parseFloat($('corte-contado')?.value)||0;
   const td=today();
@@ -5101,6 +5128,8 @@ window.calcCorte=()=>{
       el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
     }
   }
+  // Semáforo guiado (veredicto grande junto al botón de corte)
+  pintarSemaforoCorte(contado,diff);
   // Actualizar panel de ventas reales
   actualizarVentasReales();
 };
@@ -5182,6 +5211,18 @@ window.realizarCorte=async()=>{
   const esperado=fondos+vEf+deps-retiros;
   const diferencia=contado-esperado;
 
+  // ══ CORTE GUIADO: descuadre grande exige motivo escrito (va a bitácora) ══
+  const notaCorte=$('corte-nota')?.value?.trim()||'';
+  if(Math.abs(diferencia)>CORTE_UMBRAL_DESCUADRE && !notaCorte){
+    toast(`🚨 ${diferencia<0?'FALTAN':'SOBRAN'} ${fmt(Math.abs(diferencia))}. Escribe el motivo en la Nota para poder cerrar el corte.`,5500,'error');
+    const n=$('corte-nota');
+    if(n){n.style.border='2px solid var(--red)';n.focus();setTimeout(()=>{n.style.border='';},4000);}
+    return;
+  }
+  // Confirmación con veredicto antes de guardar
+  const veredicto=Math.abs(diferencia)<=5?'✅ Caja cuadrada':(diferencia>0?`⚠ SOBRAN ${fmt(diferencia)}`:`🚨 FALTAN ${fmt(Math.abs(diferencia))}`);
+  if(!confirm(`${veredicto}\n\nEsperado en caja: ${fmt(esperado)}\nContado: ${fmt(contado)}\nDiferencia: ${(diferencia>=0?'+':'')+fmt(diferencia)}\n\n¿Confirmar corte de caja?`)) return;
+
   // ══ CÁLCULO DE VENTAS REALES DEL DÍA ══
   // Ventas efectivo REAL = Efectivo en caja al cierre - Fondo inicial - Depósitos + Retiros
   // (lo que quedó en caja descontando lo que no es venta)
@@ -5214,7 +5255,7 @@ window.realizarCorte=async()=>{
   };
   await fsSet('cortes',corte);
   // A4: bitácora inmutable del corte
-  logAudit('corte_realizado',{esperado:corte.esperado,contado:corte.contado,diferencia:corte.diferencia,tcReal:corte.tcReal||0,tcDiff:corte.tcDiff||0,ventasTotalReal:corte.ventasTotalReal||corte.ventasTotal});
+  logAudit('corte_realizado',{esperado:corte.esperado,contado:corte.contado,diferencia:corte.diferencia,motivo:corte.nota||'—',cerro:corte.cerroNombres?.join(' y ')||corte.realizadoPor,tcReal:corte.tcReal||0,tcDiff:corte.tcDiff||0,ventasTotalReal:corte.ventasTotalReal||corte.ventasTotal});
 
   // Mermas → kpiCaptura
   const mermas=parseFloat($('corte-mermas')?.value)||0;
@@ -5261,6 +5302,25 @@ window.realizarCorte=async()=>{
   printCorteTicket(corte);
   const difPosVsReal = ventasTotalReal - (vEf+vTc);
   toast(`🧾 Corte · Ventas reales: ${fmt(ventasTotalReal)} (${difPosVsReal>=0?'+':''}${fmt(difPosVsReal)} vs POS)`,5000);
+  // El resumen del cierre viaja solo a WhatsApp de Iván (un toque para enviar)
+  setTimeout(()=>enviarResumenCorteWA(corte),800);
+};
+
+// ── Resumen de corte → WhatsApp del dueño ──
+// El negocio le habla a Iván al cierre sin que abra el sistema: al guardar el
+// corte se abre WhatsApp con el resumen listo (falta solo tocar enviar).
+window.enviarResumenCorteWA=corte=>{
+  const num=cleanWANum(CFG.waReporte||'');
+  if(!num) return; // sin número configurado
+  const sem=Math.abs(corte.diferencia)<=5?'✅ Caja cuadrada':(corte.diferencia>0?`⚠ SOBRAN ${fmt(corte.diferencia)}`:`🚨 FALTAN ${fmt(Math.abs(corte.diferencia))}`);
+  const top=(()=>{
+    const cnt={};
+    D.ventas.filter(v=>v.fecha===corte.fecha&&!v.anulada).forEach(v=>v.items.forEach(i=>{cnt[i.nombre]=(cnt[i.nombre]||0)+i.qty;}));
+    return Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n,q])=>`  • ${n} ×${q}`).join('\n');
+  })();
+  const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}\n\n🏆 Top del día:\n${top||'  —'}`;
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
+  toast('📲 Resumen del corte listo en WhatsApp — solo toca enviar',3500);
 };
 
 window.printCorteById=id=>{const c=D.cortes.find(x=>x.id===id);if(c)printCorteTicket(c);};
@@ -8645,17 +8705,21 @@ function updateBackupLabel(){
   const last=localStorage.getItem('h5_last_backup');
   el.textContent=last?`Último respaldo: ${last}`:'Sin respaldos aún';
 }
-// Recordatorio semanal de respaldo (solo admin)
-setInterval(()=>{
+// Respaldo AUTOMÁTICO semanal (solo admin): ya no es un recordatorio que se
+// ignora — si pasaron 7+ días (o nunca hubo), el respaldo se descarga solo.
+function checkAutoBackup(){
   if(!READY||!SESSION||SESSION.tipo!=='admin') return;
+  if(window._backupAutoDone) return; // máx. uno por sesión
   const last=localStorage.getItem('h5_last_backup');
-  if(!last){return;}
-  const dias=Math.round((new Date(today())-new Date(last))/(1000*60*60*24));
-  if(dias>=7 && !window._backupReminded){
-    window._backupReminded=true;
-    toast(`🛡 Han pasado ${dias} días desde tu último respaldo. Ve a Config → Descargar respaldo.`,6000,'warn');
+  const dias=last?Math.round((new Date(today())-new Date(last))/(1000*60*60*24)):999;
+  if(dias>=7){
+    window._backupAutoDone=true;
+    exportBackup();
+    toast(`🛡 Respaldo automático descargado (${last?'pasaron '+dias+' días':'primero de este dispositivo'}). Guárdalo en tu Drive.`,6500);
   }
-},10*60*1000);
+}
+setInterval(checkAutoBackup,10*60*1000);
+setTimeout(checkAutoBackup,8000);
 setTimeout(updateBackupLabel,3000);
 
 window.reprintLastTicket=()=>{
