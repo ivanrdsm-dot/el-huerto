@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v13.1';
+const CACHE_NAME = 'el-huerto-v14.0'; // A0-A7 completas
 const ASSETS = [
   '/',
   '/index.html',

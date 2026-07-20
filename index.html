@@ -6147,6 +6147,34 @@ function renderInvDashboard(){
     </div>`;
   }
 
+  // A7: PREDICCIÓN DE FALTANTES — días restantes según consumo real
+  const predicciones=items.map(p=>{
+    const consumo=invConsumoPromedio(p.id,14);
+    if(!consumo||consumo<=0) return null;
+    const stock=invStockHoy(p.id)??p.qty??0;
+    const dias=stock/consumo;
+    return {p,consumo,stock,dias,sugerido:Math.round(consumo*7*100)/100};
+  }).filter(x=>x&&x.dias<=5).sort((a,b)=>a.dias-b.dias);
+  if(predicciones.length>0){
+    html+=`<div class="card" style="margin-bottom:12px;border:2px solid var(--purple);">
+      <div class="ct">🔮 Predicción de Faltantes — se agotan en ≤5 días</div>
+      <p style="font-size:10.5px;color:var(--text3);margin:2px 0 8px;">Calculado con el consumo promedio real de los últimos 14 días de capturas.</p>
+      ${predicciones.slice(0,12).map(({p,consumo,stock,dias,sugerido})=>{
+        const urg=dias<=1.5;
+        return `<div style="display:flex;justify-content:space-between;align-items:center;padding:7px 10px;background:${urg?'#3a1c1c22':'var(--surface2)'};border-radius:6px;margin-bottom:5px;border-left:3px solid ${urg?'var(--red)':'var(--gold)'};">
+          <div>
+            <strong style="font-size:12.5px;">${p.nombre}</strong>
+            <div style="font-size:10.5px;color:var(--text3);">Stock: ${stock} ${p.unidadOf||p.unit||''} · consume ~${consumo.toFixed(2)}/día</div>
+          </div>
+          <div style="text-align:right;">
+            <div class="mono fw7" style="color:${urg?'var(--red)':'var(--gold)'};font-size:13px;">${dias<1?'¡HOY!':Math.floor(dias)+' día'+(Math.floor(dias)!==1?'s':'')}</div>
+            <div style="font-size:10px;color:var(--text3);">pedir ~${sugerido} ${p.unidadOf||p.unit||''}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
   // Tabla completa
   html+=`<div class="card">
     <div class="ct">📦 Inventario Completo (${items.length} productos)</div>
@@ -6833,6 +6861,25 @@ function renderKpiComerciales(fechas){
       }).join('')}
     </div>`;
   }
+
+  // A7: BAJA ROTACIÓN — productos activos sin ventas en 14 días
+  try{
+    const hoy=new Date();
+    const hace14=new Date(hoy); hace14.setDate(hace14.getDate()-14);
+    const f14=localDate(hace14);
+    const vendidos14=new Set();
+    D.ventas.filter(v=>!v.anulada&&v.fecha>=f14).forEach(v=>(v.items||[]).forEach(i=>vendidos14.add(i.id)));
+    const lentos=D.productos.filter(p=>p.activo&&p.cat!=='otro'&&!vendidos14.has(p.id));
+    if(lentos.length>0){
+      html+=`<div class="card" style="margin-top:14px;border-left:4px solid var(--gold);">
+        <div class="ct">🐌 Baja Rotación — sin ventas en 14 días (${lentos.length})</div>
+        <p style="font-size:10.5px;color:var(--text3);margin:2px 0 8px;">Candidatos a promoción, rediseño o salir del menú.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;">
+          ${lentos.map(p=>`<span class="badge xy" style="font-size:10.5px;padding:4px 10px;">${p.nombre} · ${fmt(p.precio)}</span>`).join('')}
+        </div>
+      </div>`;
+    }
+  }catch(e){}
   $('kpi-content').innerHTML=html;
 }
 
@@ -7708,12 +7755,31 @@ function renderDashboard(){
       mensaje=`Vas <strong>${fmt(Math.abs(diff))} abajo</strong> (${pct}%) · ¡A vender más! Ayer: ${fmt(totalAyerMismaHora)}`;
     }
     const horaTxt=ahora.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
+    // A7: proyección del día = promedio del mismo día-de-semana (últimas 4 semanas)
+    let proyeccionHtml='';
+    try{
+      const dow=ahora.getDay();
+      const totalesMismoDia=[];
+      for(let w=1;w<=4;w++){
+        const d=new Date(ahora); d.setDate(d.getDate()-7*w);
+        if(d.getDay()===dow){
+          const t=calcDiaDB(localDate(d)).total;
+          if(t>0) totalesMismoDia.push(t);
+        }
+      }
+      if(totalesMismoDia.length>0){
+        const proy=totalesMismoDia.reduce((s,v)=>s+v,0)/totalesMismoDia.length;
+        const avance=proy>0?Math.min(100,Math.round(totalVentasHoy/proy*100)):0;
+        proyeccionHtml=`<div style="font-size:11px;opacity:.85;margin-top:5px;">🔮 Proyección del día: <strong>${fmt(proy)}</strong> (promedio de este día en 4 semanas) · llevas ${avance}%</div>`;
+      }
+    }catch(e){}
     $('db-live-widget').innerHTML=`<div style="background:${bgColor};color:${txtColor};border-radius:14px;padding:16px 22px;display:flex;align-items:center;gap:18px;box-shadow:0 4px 18px rgba(0,0,0,.15);">
       <div style="font-size:48px;line-height:1;">${emoji}</div>
       <div style="flex:1;">
         <div style="font-size:11px;text-transform:uppercase;letter-spacing:1.5px;opacity:.85;font-weight:700;margin-bottom:3px;">EN VIVO · ${horaTxt}</div>
         <div style="font-family:'Playfair Display',serif;font-size:30px;font-weight:900;line-height:1.1;margin-bottom:4px;">${fmt(totalVentasHoy)}</div>
         <div style="font-size:13px;opacity:.95;">${mensaje}</div>
+        ${proyeccionHtml}
       </div>
     </div>`;
   }
