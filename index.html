@@ -2170,6 +2170,7 @@ async function completeInit(){
   await migEmpleadosJul2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
+  await migRecetasJul2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -2433,6 +2434,41 @@ async function migrateMenuJul2026(){
   await markMig(migKey);
   logAudit('menu_actualizado',{version:'jul26',cambios:changed,fuente:'PDF menú oficial'});
   if(changed>0) toast(`✓ Menú oficial jul-26 aplicado: ${changed} cambios`,3500);
+}
+
+// Recetas de los productos nuevos jul-26 (gramajes estándar aprobados por Iván).
+// Boba Tea = lata ya preparada (se vende tal cual). Los costos de los insumos
+// nuevos quedan en $0 hasta que Iván los capture (food cost marcará "pend.").
+async function migRecetasJul2026(){
+  const migKey='h5recetas_jul26';
+  if(await migDone(migKey)) return;
+  const I=async(n,c,u)=>await ensureInvItem(n,c,u);
+  const setRec=async(prodId,ings)=>{
+    const existing=D.recetas.find(r=>r.prodId===prodId);
+    await fsSet('recetas',{id:existing?.id||Date.now()+prodId,prodId,ings});
+  };
+  const ing=(inv,qty,unit)=>({invId:inv.id,nombre:inv.nombre,qty:String(qty),unit:unit||inv.unit});
+  // Insumos (reusa los existentes por nombre; crea solo los que faltan)
+  const servilleta=await I('Servilleta','empaque','pz');
+  const popote=await I('Popote','empaque','pz');
+  const plato=await I('Plato desechable','empaque','pz');
+  const vaso12=await I('Vaso 12 oz','empaque','pz');
+  const tapaCafe=await I('Tapa para café','empaque','pz');
+  const cafeMolido=await I('Café molido','bebidas','g');
+  const leche=await I('Leche deslactosada','lacteos','ml');
+  const bobaLata=await I('Boba Tea (lata)','bebidas','pz');
+  const infusion=await I('Infusión de sabores (sobre)','bebidas','pz');
+  const lechuga=await I('Lechuga','verduras','g');
+  // Cortado: espresso doble (18 g) cortado con poca leche
+  await setRec(1070,[ing(cafeMolido,18,'g'),ing(leche,60,'ml'),ing(vaso12,1,'pz'),ing(tapaCafe,1,'pz'),ing(servilleta,1,'pz')]);
+  // Boba Tea: lata ya preparada + popote
+  await setRec(1071,[ing(bobaLata,1,'pz'),ing(popote,1,'pz'),ing(servilleta,1,'pz')]);
+  // Infusión de sabores: sobre + vaso con tapa
+  await setRec(1072,[ing(infusion,1,'pz'),ing(vaso12,1,'pz'),ing(tapaCafe,1,'pz'),ing(servilleta,1,'pz')]);
+  // Ensalada: base de lechuga + plato (los 3 toppings varían por cliente)
+  await setRec(1073,[ing(lechuga,150,'g'),ing(plato,1,'pz'),ing(servilleta,1,'pz')]);
+  await markMig(migKey);
+  logAudit('recetas_actualizadas',{version:'jul26',productos:['Cortado','Boba Tea','Infusión','Ensalada']});
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026

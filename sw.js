@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.6'; // Menú oficial jul-26 + categoría Ensaladas
+const CACHE_NAME = 'el-huerto-v14.7'; // Recetas jul-26: Cortado, Boba Tea, Infusión, Ensalada
 const ASSETS = [
   '/',
   '/index.html',
