@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.9'; // Inventario físico 23-jul + factura Costco + guard de unidades
+const CACHE_NAME = 'el-huerto-v14.10'; // Ver contraseña en login
 const ASSETS = [
   '/',
   '/index.html',

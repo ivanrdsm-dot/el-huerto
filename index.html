@@ -716,8 +716,13 @@ nav{padding-top:env(safe-area-inset-top);}
   <div class="pin-card">
     <div class="pin-title" id="pin-modal-title">🔐 Acceso</div>
     <div class="pin-sub" id="pin-modal-sub">Ingresa la contraseña</div>
-    <input type="password" class="pin-input" id="pin-input" placeholder="••••••" maxlength="20"
-      oninput="pinClear()" onkeydown="if(event.key==='Enter')checkPIN()">
+    <div style="position:relative;">
+      <input type="password" class="pin-input" id="pin-input" placeholder="••••••" maxlength="20"
+        oninput="pinClear()" onkeydown="if(event.key==='Enter')checkPIN()" style="padding-right:46px;">
+      <!-- Ver contraseña: el error #1 de login en tablet es el tecleo a ciegas -->
+      <button type="button" onclick="const i=$('pin-input');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'🙈';i.focus();"
+        style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:20px;cursor:pointer;padding:6px;line-height:1;">👁</button>
+    </div>
     <button class="btn bp bfull" onclick="checkPIN()" style="margin-bottom:8px;">Entrar</button>
     <button class="btn bs bfull bsm" onclick="closePIN()">Cancelar</button>
   </div>
