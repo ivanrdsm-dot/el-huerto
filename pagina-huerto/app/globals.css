@@ -1,0 +1,242 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   EL HUERTO — Sistema de diseño
+   Paleta oficial: verde olivo · rojo jitomate · crema avena
+   ========================================================================== */
+
+@theme {
+  /* Verdes */
+  --color-green-950: #202a18;
+  --color-green-900: #28351e;
+  --color-green-800: #344526;
+  --color-green-700: #40542e;
+  --color-moss-500: #6d765b;
+  --color-moss-300: #a8ae98;
+
+  /* Rojos */
+  --color-red-700: #9f291e;
+  --color-red-600: #b92f22;
+  --color-red-500: #ef3b24;
+  --color-red-300: #f47a65;
+
+  /* Cremas */
+  --color-cream-100: #f4eedf;
+  --color-cream-50: #fbf8f1;
+  --color-warmwhite: #fffdf8;
+
+  /* Neutros */
+  --color-ink: #24211e;
+  --color-muted: #6d685f;
+  --color-borde: #d9d1c1;
+
+  /* Tipografía (variables inyectadas por next/font en layout.tsx) */
+  --font-display: var(--font-archivo-black);
+  --font-condensed: var(--font-barlow-condensed);
+  --font-sans: var(--font-manrope);
+
+  /* Sombra natural para tarjetas */
+  --shadow-suave: 0 1px 2px rgb(36 33 30 / 0.05), 0 8px 24px -8px rgb(36 33 30 / 0.12);
+  --shadow-flotante: 0 2px 4px rgb(36 33 30 / 0.06), 0 16px 40px -12px rgb(36 33 30 / 0.18);
+
+  /* Curvas de movimiento */
+  --ease-huerto: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ------------------------------------------------------------------ base */
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  background-color: var(--color-cream-100);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+::selection {
+  background-color: var(--color-red-500);
+  color: var(--color-warmwhite);
+}
+
+/* Foco visible accesible */
+:focus-visible {
+  outline: 3px solid var(--color-red-600);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* ------------------------------------------------------------- utilidades */
+
+@utility font-display {
+  font-family: var(--font-display);
+}
+
+@utility font-condensed {
+  font-family: var(--font-condensed);
+}
+
+/* Título de sección estilo menú físico */
+@utility titulo-huerto {
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  line-height: 0.95;
+  letter-spacing: -0.01em;
+}
+
+/* Etiqueta condensada (kicker) */
+@utility kicker {
+  font-family: var(--font-condensed);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: 0.8rem;
+}
+
+/* Etiqueta de precio roja, como en los laterales impresos */
+@utility etiqueta-precio {
+  font-family: var(--font-condensed);
+  font-weight: 700;
+  background-color: var(--color-red-500);
+  color: var(--color-warmwhite);
+  padding: 0.15em 0.55em;
+  display: inline-block;
+  border-radius: 0.3rem;
+  transform: rotate(-2deg);
+}
+
+/* Textura de papel muy sutil (grano) */
+@utility texture-papel {
+  position: relative;
+}
+.texture-papel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.35;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.45 0 0 0 0 0.43 0 0 0 0 0.38 0 0 0 0.05 0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Línea punteada roja divisoria, como en el menú impreso */
+@utility divisor-punteado {
+  background-image: repeating-linear-gradient(
+    to right,
+    var(--color-red-500) 0 6px,
+    transparent 6px 14px
+  );
+  height: 2px;
+  border: none;
+}
+
+/* ------------------------------------------------------- animaciones base */
+
+@keyframes flotar {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes aparecer {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes marquesina {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+.anim-flotar {
+  animation: flotar 6s ease-in-out infinite;
+}
+
+.anim-marquesina {
+  animation: marquesina 28s linear infinite;
+}
+
+/* Reveal por scroll: controlado por components/motion/Reveal.tsx */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s var(--ease-huerto),
+    transform 0.7s var(--ease-huerto);
+  transition-delay: var(--reveal-delay, 0ms);
+}
+.reveal.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* Entrada del hero palabra por palabra */
+.hero-palabra {
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(0.6em);
+  animation: aparecer 0.7s var(--ease-huerto) forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .anim-flotar,
+  .anim-marquesina {
+    animation: none;
+  }
+  .reveal,
+  .hero-palabra {
+    opacity: 1;
+    transform: none;
+    transition: none;
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------- scrollbars */
+
+.carrusel {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.carrusel::-webkit-scrollbar {
+  display: none;
+}
+
+/* Skip link */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--color-red-600);
+  color: var(--color-warmwhite);
+  padding: 0.75rem 1.25rem;
+  font-weight: 700;
+}
+.skip-link:focus {
+  left: 0.75rem;
+  top: 0.75rem;
+}
