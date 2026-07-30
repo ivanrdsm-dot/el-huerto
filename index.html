@@ -2173,6 +2173,7 @@ async function completeInit(){
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
+  await migInvFisicoJul2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -2471,6 +2472,128 @@ async function migRecetasJul2026(){
   await setRec(1073,[ing(lechuga,150,'g'),ing(plato,1,'pz'),ing(servilleta,1,'pz')]);
   await markMig(migKey);
   logAudit('recetas_actualizadas',{version:'jul26',productos:['Cortado','Boba Tea','Infusión','Ensalada']});
+}
+
+// ══ INVENTARIO FÍSICO 23-jul-2026 + FACTURA COSTCO 29-jul (ARG 5824731) ══
+// Conteo del operador en Ciudad UP: los 73 renglones del Excel se cargan como
+// cantidad ABSOLUTA en la unidad contada (botes fraccionarios = envase abierto).
+// La factura Costco SUMA stock (perecederos no contados en el Excel) y fija
+// costo por unidad. El gasto \$2,160.70 se registra una sola vez.
+async function migInvFisicoJul2026(){
+  const migKey='h5inv_fis_jul26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const hit=D.inventario.find(i=>normInvNombre(i.nombre)===nn||normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(hit) return hit;
+    }
+    return null;
+  };
+  // SET absoluto (conteo físico manda); crea el artículo si no existe
+  const setAbs=async(nombre,qty,unit,catOf,alias=[])=>{
+    let inv=buscar([nombre,...alias]);
+    if(inv){inv.qty=qty;inv.unit=unit;if(!inv.catOf)inv.catOf=catOf;}
+    else{inv={id:++nid,nombre,cat:'otros',catOf,qty,unit,min:0,precio:0};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+  // SUMA de factura + costo por unidad; si la unidad del artículo no es
+  // convertible, solo actualiza el costo (no adivina cantidades)
+  const addFact=async(cands,qtyAdd,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qtyAdd,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;inv.precio=Math.round(precioUnit*(qtyAdd/q)*10000)/10000;}
+      else{inv.precio=precioUnit;}
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty:qtyAdd,unit,min:0,precio:precioUnit};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+
+  // ── Insumos y abarrotes (Tajín y Chamoy: abierto+cerrado combinados) ──
+  await setAbs('Susalias flama',11,'pz','abarrotes',['Susalias']);
+  await setAbs('Susalias enchiladas',13,'pz','abarrotes');
+  await setAbs('Splenda',2,'bote','abarrotes',['Stevia','Azúcar']);
+  await setAbs('Matcha',1,'bote','abarrotes');
+  await setAbs('Chai',0.25,'bote','abarrotes');
+  await setAbs('Canela',0.5,'bote','abarrotes');
+  await setAbs('Aceite en aerosol PAM',2,'lata','abarrotes',['PAM','Aceite en aerosol']);
+  await setAbs('Valentina',0.25,'bote','abarrotes',['Salsa Valentina']);
+  await setAbs('Chilito Tojín',1.75,'bote','abarrotes',['Tajín','Tajin','Chilito tajín']);
+  await setAbs('Salsa Maggi',1,'bote','abarrotes',['Salsa Maggi grande']);
+  await setAbs('Sal',5,'bote','abarrotes');
+  await setAbs('Chocolate en polvo',1,'lata','abarrotes',['Chocolate polvo']);
+  await setAbs('Frutimich',2.5,'bote','abarrotes',['Tamamax']);
+  await setAbs('Chile en polvo',3,'bote','abarrotes');
+  await setAbs('Chamoy',1.25,'bote','abarrotes',['Mega chamoy']);
+  await setAbs('Mega botanera',0.5,'bote','abarrotes',['Botanera','Salsa botanera']);
+  await setAbs('Proteína',0.25,'bote','abarrotes',['Proteina','Proteína en polvo']);
+  // ── Limpieza e higiene → Lista Interna ──
+  await setAbs('Desinfectante de alimentos',0.5,'bote','interna_ivan');
+  await setAbs('Salvo (lavatrastes)',0.25,'bote','interna_ivan',['Salvo']);
+  await setAbs('Limpiavidrios',1,'bote','interna_ivan');
+  await setAbs('Desengrasante',1,'bote','interna_ivan');
+  await setAbs('Desinfectante multiusos',1,'bote','interna_ivan');
+  await setAbs('Limpiador para electrónicos',1,'lata','interna_ivan');
+  await setAbs('Jabón de manos',0.5,'bote','interna_ivan');
+  await setAbs('Gel antibacterial',0.5,'bote','interna_ivan');
+  await setAbs('Kit de primeros auxilios',1,'kit','interna_ivan');
+  await setAbs('Trapeador',1,'pz','interna_ivan');
+  await setAbs('Cubeta',2,'pz','interna_ivan');
+  await setAbs('Escoba',1,'pz','interna_ivan');
+  await setAbs('Recogedor',1,'pz','interna_ivan');
+  await setAbs('Bote de basura',2,'pz','interna_ivan');
+  await setAbs('Bolsas de basura',1,'rollo','interna_ivan',['Bolsa para basura']);
+  await setAbs('Servitoallas',1,'rollo','interna_ivan');
+  // ── Equipo y utensilios (activos: min 0, sin alertas de stock) ──
+  for(const [n,q,u] of [['Licuadora Ninja',1,'pz'],['Licuadora Oster',1,'pz'],
+    ['Sandwichera Hamilton Beach',1,'pz'],['Congelador',1,'pz'],['Refrigerador',1,'pz'],
+    ['Mesa con lavamanos',1,'pz'],['Tetera',1,'pz'],['Cafetera Bialetti',1,'pz'],
+    ['Báscula',1,'pz'],['Cámara de seguridad',1,'pz'],['Caja fuerte',1,'pz'],
+    ['Terminal de cobro',1,'pz'],['Computadora',1,'pz'],['Cable de computadora',1,'pz'],
+    ['Charola de mostrador',1,'pz'],['Servilletero',1,'pz'],['Inserto chico',6,'pz'],
+    ['Inserto grande',2,'pz'],['Mamila',2,'pz'],['Tabla para picar',2,'pz'],
+    ['Cuchillo',2,'pz'],['Cuchillo sierra',1,'pz'],['Playo (film plástico)',1,'rollo']]){
+    await setAbs(n,q,u,'equipo');
+  }
+  // ── Desechables (16oz café blanco+color combinados: 50+50) ──
+  await setAbs('Charola papera',66,'pz','desechables');
+  await setAbs('Popote',1000,'pz','desechables',['Popotes']);
+  await setAbs('Servilletas',1000,'pz','desechables',['Servilleta']);
+  await setAbs('Bowl 1/2 L',14,'pz','desechables',['Vaso açaí 1/2 litro','Vaso acai 1/2 litro']);
+  await setAbs('Vaso açaí 12 oz',100,'pz','desechables',['Vaso acai 12 oz']);
+  await setAbs('Vaso plástico 16 oz',153,'pz','desechables',['Vaso 16 oz','Vaso 16 oz (frío)']);
+  await setAbs('Vaso p/café 16 oz',100,'pz','desechables',['Vaso cafe 16 oz']);
+  await setAbs('Vaso 14 oz',22,'pz','desechables',['Vaso cafe 14 oz blanco']);
+  await setAbs('Vaso p/café 12 oz',50,'pz','desechables',['Vaso 12 oz','Vaso cafe 12 oz blanco']);
+  await setAbs('Vaso expreso',100,'pz','desechables',['Vaso espresso 4 oz blanco']);
+  await setAbs('Vaso degustador',170,'pz','desechables');
+  await setAbs('Tapa 16 oz',350,'pz','desechables',['Tapa plana 16 oz','Tapa para café']);
+  await setAbs('Tapa domo',200,'pz','desechables',['Tapa domo 16 oz','Tapa Smoothie']);
+  await setAbs('Tapa degustador',30,'pz','desechables');
+
+  // ── Factura Costco 29-jul-2026 (precios netos con descuento aplicado) ──
+  await addFact(['Leche de almendra','Leche de almendras'],6,'pz',24.83,'lacteos_proteinas');       // 6×946ml \$149
+  await addFact(['Crutones'],907,'g',0.1643,'abarrotes');                                            // \$149
+  await addFact(['Mezcla 4 quesos','4 quesos','Mix 4 quesos'],2260,'g',0.1412,'lacteos_proteinas');  // 2×1.13kg \$319
+  await addFact(['Salami Genoa','Genoa'],6,'pz',33.17,'lacteos_proteinas');                          // 6×85g \$199
+  await addFact(['Tiras de pollo','Pollo'],906,'g',0.1755,'lacteos_proteinas');                      // 2×453g \$159
+  await addFact(['Elote dorado','Elote'],2900,'g',0.041,'abarrotes');                                // \$119
+  await addFact(['Aceitunas negras','Aceitunas'],3000,'g',0.0597,'frutas_verduras');                 // \$179
+  await addFact(['Lechuga','Ensalada italiana'],1816,'g',0.0439,'frutas_verduras');                  // 2×908g \$79.80
+  await addFact(['Leche deslactosada','Leche deslactosada light'],12000,'ml',0.0223,'lacteos_proteinas'); // 12×1L \$268
+  await addFact(['Tomate cherry','Tomate Glory','Jitomate cherry'],907,'g',0.0793,'frutas_verduras');// \$71.90
+  await addFact(['Jamón serrano'],2,'paquete',144.50,'lacteos_proteinas');                           // 2×250g \$289
+  await addFact(['Blueberry','Moras azules'],1360,'g',0.1316,'frutas_verduras');                     // 1.36kg \$179
+  // Gasto Costco (una sola vez, idempotente por ticket)
+  if(!D.gastos.find(g=>g.ticket==='ARG-5824731')){
+    await fsSet('gastos',{id:++nid,fecha:'2026-07-29',cat:'costco',prov:'Costco',monto:2160.70,
+      ticket:'ARG-5824731',metodo:'tarjeta',tipoEstrategico:'general',
+      notas:'Factura CFD: insumos ensaladas (lechuga, pollo, elote, crutones, aceitunas, tomate), leches, 4 quesos, jamón serrano, salami, moras'});
+  }
+  await markMig(migKey);
+  logAudit('inventario_fisico_cargado',{fecha_conteo:'2026-07-23',partidas:73,factura:'Costco ARG-5824731 \$2,160.70'});
+  toast('✓ Inventario físico 23-jul + factura Costco cargados',4000);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -3333,6 +3456,7 @@ window.invRecategorizar=()=>{
     abarrotes:'🛒 Abarrotes',
     interna_ivan:'🏠 Lista Interna',
     desechables:'🧴 Desechables',
+    equipo:'🛠 Equipo y Utensilios',
   };
 
   const html=`<div class="modal-bg" id="recat-modal" style="display:flex;" onclick="if(event.target===this)this.remove()">
@@ -4518,6 +4642,7 @@ async function descontarInventario(ventaItems){
       // Antes restaba 15 (g de avena) a 3.02 (kg) y aniquilaba el stock.
       const qtyReceta=parseFloat(ing.qty||1)*item.qty;
       const qtyDescontar=qtyToInvUnit(qtyReceta, ing.unit, inv.unit);
+      if(qtyDescontar==null){alertas.push(`⚠ ${inv.nombre}: receta en ${ing.unit} vs inventario en ${inv.unit} — no se descontó`);continue;}
       const newQty=Math.max(0,(inv.qty||0)-qtyDescontar);
       inv.qty=Math.round(newQty*1000)/1000;
       await fsSet('inventario',inv);
@@ -4791,6 +4916,7 @@ async function reponerInventario(ventaItems){
       // A3: misma conversión de unidades que el descuento (simetría exacta)
       const qtyRecetaRep=parseFloat(ing.qty||1)*item.qty;
       const qtyReponer=qtyToInvUnit(qtyRecetaRep, ing.unit, inv.unit);
+      if(qtyReponer==null) continue; // unidades incompatibles: simetría con el descuento
       inv.qty=Math.round(((inv.qty||0)+qtyReponer)*1000)/1000;
       await fsSet('inventario',inv);
     }
@@ -6216,6 +6342,7 @@ const CAT_OFICIALES=[
   {key:'abarrotes',nombre:'🛒 Abarrotes',color:'#e8c96a'},
   {key:'interna_ivan',nombre:'🏠 Lista Interna',color:'#a87ee8'},
   {key:'desechables',nombre:'🧴 Desechables',color:'#7ec850'},
+  {key:'equipo',nombre:'🛠 Equipo y Utensilios',color:'#8d6e63'},
 ];
 
 // ─── Helpers de stock ───
@@ -7722,7 +7849,9 @@ function qtyToInvUnit(qty, ingUnit, invUnit){
   if(a==='kg'&&b==='g') return qty*1000;
   if(a==='ml'&&b==='l') return qty/1000;
   if(a==='l'&&b==='ml') return qty*1000;
-  return qty; // sin conversión conocida: usar tal cual (comportamiento previo)
+  // Unidades incompatibles (ej. receta en g, inventario en bote): NO descontar
+  // a ciegas — restar "15 g" como "15 botes" aniquila el stock.
+  return null;
 }
 // Costo del insumo POR unidad de la receta (inv.precio es por inv.unit)
 function costoPorUnidadReceta(inv, unitReceta){
