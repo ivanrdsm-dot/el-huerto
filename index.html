@@ -6196,7 +6196,23 @@ window.enviarResumenCorteWA=corte=>{
     D.ventas.filter(v=>v.fecha===corte.fecha&&!v.anulada).forEach(v=>v.items.forEach(i=>{cnt[i.nombre]=(cnt[i.nombre]||0)+i.qty;}));
     return Object.entries(cnt).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([n,q])=>`  • ${n} ×${q}`).join('\n');
   })();
-  const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}\n\n🏆 Top del día:\n${top||'  —'}`;
+  // Tiempos de cocina del día (KDS): el servicio se mide igual que el dinero
+  const cocina=(()=>{
+    const t=CFG.ordTiempos||{urgent:12};
+    const ords=D.ventas.filter(x=>x.fecha===corte.fecha&&!x.anulada&&x.prep?.estado==='entregada'&&x.prep.tsEntrega);
+    const abiertas=D.ventas.filter(x=>x.fecha===corte.fecha&&!x.anulada&&x.prep&&x.prep.estado!=='entregada').length;
+    if(!ords.length&&!abiertas) return '';
+    const tms=ords.map(o=>(o.prep.tsEntrega-(o.tsCobro||o.id))/60000);
+    let s='\n\n👨‍🍳 *Cocina:*';
+    if(tms.length){
+      const prom=tms.reduce((a,b)=>a+b,0)/tms.length;
+      const enObj=tms.filter(m=>m<=t.urgent).length;
+      s+=`\n  ${ords.length} órdenes · promedio ${prom.toFixed(1)} min\n  ${Math.round(enObj/tms.length*100)}% dentro del objetivo (≤${t.urgent} min) · la más lenta: ${Math.max(...tms).toFixed(0)} min`;
+    }
+    if(abiertas) s+=`\n  ⚠ ${abiertas} orden(es) quedaron SIN entregar`;
+    return s;
+  })();
+  const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}${cocina}\n\n🏆 Top del día:\n${top||'  —'}`;
   window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
   toast('📲 Resumen del corte listo en WhatsApp — solo toca enviar',3500);
 };

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.17'; // Comandera Bluetooth + toppings por producto
+const CACHE_NAME = 'el-huerto-v14.18'; // Tiempos de cocina en el resumen del corte
 const ASSETS = [
   '/',
   '/index.html',
