@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.14'; // Boba Tea: 30 g de perlas por vaso
+const CACHE_NAME = 'el-huerto-v14.15'; // KDS v2: etapas libres, escrituras verificadas, animaciones
 const ASSETS = [
   '/',
   '/index.html',

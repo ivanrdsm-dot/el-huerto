@@ -306,7 +306,19 @@ select option{background:var(--surface2);}
 .ord-hist{font-size:10px;color:var(--text3);border-top:1px dashed var(--border);padding-top:5px;}
 .ord-btns{display:flex;gap:6px;margin-top:2px;}
 .ord-btns .btn{min-height:46px;font-weight:800;}
-.ord-estado{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;background:var(--surface3);}
+.ord-estado{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;background:var(--surface3);transition:all .2s ease;}
+/* Animaciones del KDS: entrada de tarjetas nuevas, salida al entregar,
+   selector de etapas con feedback táctil */
+.ord-card{transition:border-color .25s ease, box-shadow .25s ease;}
+.ord-card.ord-nueva{animation:ordIn .38s cubic-bezier(.2,.9,.3,1.2) both;}
+@keyframes ordIn{from{opacity:0;transform:translateY(14px) scale(.96);}to{opacity:1;transform:none;}}
+.ord-card.ord-exit{animation:ordOut .28s ease both;pointer-events:none;}
+@keyframes ordOut{to{opacity:0;transform:translateX(36px) scale(.94);}}
+.ord-seg{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;}
+.ord-seg button{min-height:46px;border-radius:9px;border:2px solid var(--border);background:var(--surface2);color:var(--text2);font-weight:800;font-size:11px;cursor:pointer;transition:all .18s ease;padding:4px 2px;}
+.ord-seg button.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));color:var(--accent);transform:scale(1.05);box-shadow:0 2px 8px color-mix(in srgb, var(--accent) 25%, transparent);}
+.ord-seg button:active{transform:scale(.93);}
+.pcat{transition:all .18s ease;}
 .vconf-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14.5px;font-weight:700;cursor:pointer;min-height:54px;}
 .vconf-btn:active{transform:scale(.97);background:var(--surface3);}
 .vconf-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#1a2e18;flex-shrink:0;}
@@ -1131,7 +1143,7 @@ nav{padding-top:env(safe-area-inset-top);}
         </div>
         <!-- Resumen automático del sistema -->
         <div style="background:var(--surface2);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:10px;">📊 Según el sistema (POS)</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:10px;">📊 Referencia — lo que el sistema espera (POS)</div>
           <div class="sr"><span style="font-size:12.5px;">💰 Fondo inicial</span><span class="mono ab fw7" id="corte-fondo">$0.00</span></div>
           <div class="sr"><span style="font-size:12.5px;">💵 Ventas efectivo</span><span class="mono ag fw7" id="corte-vef">$0.00</span></div>
           <div class="sr"><span style="font-size:12.5px;">📥 Depósitos</span><span class="mono ab" id="corte-dep">$0.00</span></div>
@@ -1148,7 +1160,7 @@ nav{padding-top:env(safe-area-inset-top);}
 
         <!-- Resumen de VENTAS REALES calculadas en vivo -->
         <div style="background:#fff3e0;border:2px solid var(--orange);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);font-weight:700;margin-bottom:10px;">💰 Ventas reales del día (lo que vas a registrar)</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);font-weight:700;margin-bottom:10px;">💰 Ventas reales del día — se calcula solo con los pasos 1 y 2</div>
           <div class="sr"><span style="font-size:12.5px;">💵 Ventas efectivo real</span><span class="mono ag fw7" id="corte-ef-real">$0.00</span></div>
           <div class="sr"><span style="font-size:12.5px;">💳 Ventas tarjeta real</span><span class="mono ay fw7" id="corte-tc-real-lbl">$0.00</span></div>
           <div style="border-top:2px solid var(--orange);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
@@ -1161,7 +1173,7 @@ nav{padding-top:env(safe-area-inset-top);}
         </div>
         <!-- Conteo de efectivo -->
         <div style="background:#f0faf0;border:1px solid var(--accent);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;">💵 Cuenta tu efectivo</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;">1️⃣ Cuenta tu efectivo — pon cuántos billetes de cada uno y el total se suma solo</div>
           <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
             <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$1000</label><input type="number" class="corte-bill" data-val="1000" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
             <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$500</label><input type="number" class="corte-bill" data-val="500" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
@@ -1184,7 +1196,7 @@ nav{padding-top:env(safe-area-inset-top);}
         </div>
         <!-- Ajuste tarjeta -->
         <div style="background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--goldd);font-weight:700;margin-bottom:10px;">💳 Verifica tarjetas (terminal bancario)</div>
+          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--goldd);font-weight:700;margin-bottom:10px;">2️⃣ Captura el total de la terminal (tarjetas)</div>
           <div class="ii" style="gap:10px;">
             <div class="fg" style="margin-bottom:0;">
               <label>Total tarjeta terminal</label>
@@ -1198,6 +1210,7 @@ nav{padding-top:env(safe-area-inset-top);}
           </div>
         </div>
         <!-- Quién cerró + nota -->
+        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:8px;">3️⃣ Quién cerró, nota y confirmar</div>
         <div class="ii" style="margin-bottom:10px;">
           <div style="display:flex;gap:14px;flex-wrap:wrap;">
             <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="cdc" style="width:auto;"> <span id="lbl-e1">Adilene</span> cerró</label>
@@ -5114,6 +5127,7 @@ const ORD_EST={
   entregada:{icon:'📦',label:'Entregada'}
 };
 let ordFiltro='activas', ordQ='', ordCajero='';
+const _ordSeen=new Set(); // tarjetas ya pintadas (controla animación de entrada)
 const hhmm=ts=>new Date(ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
 const fmtMinSec=ms=>{const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
 const ordTiempoCls=min=>{const t=CFG.ordTiempos||{warn:7,urgent:12};return min>=t.urgent?'o-urgent':min>=t.warn?'o-warn':'o-ok';};
@@ -5144,7 +5158,7 @@ function ordCard(v){
   const est=ORD_EST[v.prep.estado]||ORD_EST.cobrada;
   const items=v.items.map(i=>`<b>${i.qty}×</b> ${i.nombre}${i.nota?` <span style="color:var(--gold);">📝 ${i.nota}</span>`:''}`).join('<br>');
   const totalMin=done?Math.round((v.prep.tsEntrega-(v.tsCobro||v.id))/60000):null;
-  return `<div class="ord-card ${cls}" data-oid="${v.id}">
+  return `<div class="ord-card ${cls} ${_ordSeen.has(String(v.id))?'':'ord-nueva'}" data-oid="${v.id}">
     <div class="ord-head">
       <span class="ord-folio">${v.ticket}</span>
       <span class="ord-estado">${est.icon} ${est.label}</span>
@@ -5163,9 +5177,13 @@ function ordCard(v){
     <div class="ord-hist">${ordHistLinea(v)}</div>
     ${done
       ?(SESSION?.tipo==='admin'?`<div class="ord-btns"><button class="btn bs bfull bsm" onclick="reabrirOrden(${v.id})">↩ Reabrir</button></div>`:'')
-      :`<div class="ord-btns">
-        ${est.next?`<button class="btn bs bfull" onclick="avanzarOrden(${v.id})">${est.btn}</button>`:''}
-        <button class="btn bp bfull" onclick="entregarOrden(${v.id})">📦 Entregada</button>
+      :`<div class="ord-seg">
+        <button class="${v.prep.estado==='cobrada'?'on':''}" onclick="setEstadoOrden(${v.id},'cobrada')">🧾 Cobrada</button>
+        <button class="${v.prep.estado==='preparando'?'on':''}" onclick="setEstadoOrden(${v.id},'preparando')">👨‍🍳 En prep.</button>
+        <button class="${v.prep.estado==='lista'?'on':''}" onclick="setEstadoOrden(${v.id},'lista')">✅ Lista</button>
+      </div>
+      <div class="ord-btns">
+        <button class="btn bp bfull" onclick="entregarOrden(${v.id})">📦 Orden entregada</button>
       </div>`}
   </div>`;
 }
@@ -5182,6 +5200,8 @@ function renderOrdenesGrid(){
   g.innerHTML=list.length===0
     ?`<div class="card" style="grid-column:1/-1;text-align:center;padding:26px;color:var(--text3);">${ordFiltro==='entregadas'?'Sin órdenes entregadas hoy':'🎉 No hay órdenes pendientes'}</div>`
     :list.map(ordCard).join('');
+  // Registrar ids ya pintados: la animación de entrada es solo para nuevas
+  list.forEach(v=>_ordSeen.add(String(v.id)));
 }
 
 function renderOrdenes(){
@@ -5209,27 +5229,54 @@ function renderOrdenes(){
 }
 
 // ── Acciones (todas auditadas; doble entrega imposible) ──
-window.avanzarOrden=async id=>{
+// UI OPTIMISTA + REVERSIÓN: la tarjeta responde al instante; si Firestore
+// no confirma la escritura, el estado se revierte y se avisa. Antes un
+// fallo silencioso hacía que "Lista" pareciera no guardarse.
+window.setEstadoOrden=async(id,estado)=>{
   const v=D.ventas.find(x=>x.id===id); if(!v||!v.prep) return;
-  const next=ORD_EST[v.prep.estado]?.next; if(!next) return;
-  v.prep.estado=next;
-  v.prep.hist=[...(v.prep.hist||[]),{e:next,ts:Date.now(),por:SESSION?.nombre||activeVend?.nombre||'—'}];
-  await fsSet('ventas',v);
-  logAudit('orden_estado',{ticket:v.ticket,estado:next,por:SESSION?.nombre||'—'});
-  renderOrdenes();
+  if(v.prep.estado===estado) return;
+  if(v.prep.estado==='entregada'){toast('⚠ La orden ya fue entregada — pide al admin reabrirla',3000,'warn');return;}
+  const prev=v.prep.estado;
+  v.prep.estado=estado;
+  v.prep.hist=[...(v.prep.hist||[]),{e:estado,ts:Date.now(),por:SESSION?.nombre||activeVend?.nombre||'—'}];
+  renderOrdenes(); // respuesta inmediata
+  const ok=await fsSet('ventas',v);
+  if(!ok){
+    v.prep.estado=prev; v.prep.hist=v.prep.hist.slice(0,-1);
+    renderOrdenes();
+    toast('❌ Sin conexión: el cambio NO se guardó. Reintenta.',4500,'error');
+    return;
+  }
+  logAudit('orden_estado',{ticket:v.ticket,estado,por:SESSION?.nombre||'—'});
+};
+// Compatibilidad: avanza a la siguiente etapa
+window.avanzarOrden=id=>{
+  const v=D.ventas.find(x=>x.id===id);
+  const next=ORD_EST[v?.prep?.estado]?.next;
+  if(next) setEstadoOrden(id,next);
 };
 window.entregarOrden=async id=>{
   const v=D.ventas.find(x=>x.id===id); if(!v||!v.prep) return;
   if(v.prep.estado==='entregada'){toast('⚠ Esta orden ya fue entregada',2400,'warn');return;}
   if(!confirm(`¿Confirmas que la orden ${v.ticket} ya fue entregada al cliente?`)) return;
+  const prev={estado:v.prep.estado,tsEntrega:v.prep.tsEntrega};
   const ts=Date.now();
   v.prep.estado='entregada'; v.prep.tsEntrega=ts;
   v.prep.hist=[...(v.prep.hist||[]),{e:'entregada',ts,por:SESSION?.nombre||activeVend?.nombre||'—'}];
-  await fsSet('ventas',v);
+  // Animación de salida antes de re-dibujar
+  const card=document.querySelector(`.ord-card[data-oid="${id}"]`);
+  if(card){card.classList.add('ord-exit');await new Promise(r=>setTimeout(r,260));}
+  renderOrdenes();
+  const ok=await fsSet('ventas',v);
+  if(!ok){
+    v.prep.estado=prev.estado; v.prep.tsEntrega=prev.tsEntrega; v.prep.hist=v.prep.hist.slice(0,-1);
+    renderOrdenes();
+    toast('❌ Sin conexión: la entrega NO se guardó. Reintenta.',4500,'error');
+    return;
+  }
   const min=Math.round((ts-(v.tsCobro||v.id))/60000);
   logAudit('orden_entregada',{ticket:v.ticket,minutos:min,por:SESSION?.nombre||'—'});
   toast(`📦 ${v.ticket} entregada en ${min} min`);
-  renderOrdenes();
 };
 window.reabrirOrden=async id=>{
   if(SESSION?.tipo!=='admin'){toast('⚠ Solo el administrador puede reabrir órdenes',2600,'warn');return;}
