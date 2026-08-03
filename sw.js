@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.11'; // Contraseña de Juan Pablo
+const CACHE_NAME = 'el-huerto-v14.12'; // Módulo Órdenes (KDS): timers, estados, reportes
 const ASSETS = [
   '/',
   '/index.html',

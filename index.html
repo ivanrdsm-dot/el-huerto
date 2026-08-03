@@ -288,6 +288,25 @@ select option{background:var(--surface2);}
 .op-extra input{padding:7px 9px;font-size:11.5px;border-radius:8px;min-width:0;width:100%;}
 .op-actions{position:sticky;bottom:-12px;background:var(--surface);margin:0 -12px -12px;padding:8px 12px 12px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:6px;z-index:2;border-radius:0 0 var(--r) var(--r);}
 .pago-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+/* ── Órdenes (KDS) ── */
+.ord-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px;}
+@media(max-width:600px){.ord-grid{grid-template-columns:1fr;}}
+.ord-card{background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--accent);border-radius:var(--rsm);padding:12px;display:flex;flex-direction:column;gap:8px;}
+.ord-card.o-warn{border-left-color:var(--gold);}
+.ord-card.o-urgent{border-left-color:var(--red);animation:ordPulse 1.6s ease-in-out infinite;}
+@keyframes ordPulse{0%,100%{box-shadow:none;}50%{box-shadow:0 0 0 3px color-mix(in srgb, var(--red) 30%, transparent);}}
+.ord-head{display:flex;align-items:center;justify-content:space-between;gap:8px;}
+.ord-folio{font-family:'DM Mono',monospace;font-weight:800;font-size:14px;}
+.ord-timer{font-family:'DM Mono',monospace;font-weight:900;font-size:19px;color:var(--accent);}
+.o-warn .ord-timer{color:var(--gold);}
+.o-urgent .ord-timer{color:var(--red);}
+.ord-items{font-size:12.5px;line-height:1.55;}
+.ord-items b{font-family:'DM Mono',monospace;}
+.ord-meta{font-size:10.5px;color:var(--text3);display:flex;gap:10px;flex-wrap:wrap;}
+.ord-hist{font-size:10px;color:var(--text3);border-top:1px dashed var(--border);padding-top:5px;}
+.ord-btns{display:flex;gap:6px;margin-top:2px;}
+.ord-btns .btn{min-height:46px;font-weight:800;}
+.ord-estado{font-size:11px;font-weight:800;padding:3px 9px;border-radius:20px;background:var(--surface3);}
 .vconf-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14.5px;font-weight:700;cursor:pointer;min-height:54px;}
 .vconf-btn:active{transform:scale(.97);background:var(--surface3);}
 .vconf-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#1a2e18;flex-shrink:0;}
@@ -749,6 +768,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <button class="ntab" onclick="go('miperfil')">👤 Mi Perfil</button>
     <button class="ntab" onclick="go('reloj')">🕐 Reloj</button>
     <button class="ntab" onclick="go('pos')">🛒 Ventas</button>
+    <button class="ntab" onclick="go('ordenes')">🔔 Órdenes <span id="ord-nav-cnt" class="badge xg" style="display:none;margin-left:3px;"></span></button>
     <button class="ntab" onclick="go('historial')">📋 Historial</button>
     <button class="ntab" onclick="go('caja')">💰 Caja</button>
     <button class="ntab" onclick="go('gastos')">📉 Gastos</button>
@@ -782,6 +802,7 @@ nav{padding-top:env(safe-area-inset-top);}
   <button class="mnbtn" onclick="go('miperfil')"><span class="mni">👤</span>Perfil</button>
   <button class="mnbtn" onclick="go('reloj')"><span class="mni">🕐</span>Reloj</button>
   <button class="mnbtn active" onclick="go('pos')"><span class="mni">🛒</span>Ventas</button>
+  <button class="mnbtn" onclick="go('ordenes')"><span class="mni">🔔</span>Órdenes</button>
   <button class="mnbtn" onclick="go('inventario')"><span class="mni">📦</span>Inventario</button>
   <button class="mnbtn" onclick="go('caja')"><span class="mni">💰</span>Caja</button>
   <button class="mnbtn" onclick="go('nomina')"><span class="mni">👩</span>Nómina</button>
@@ -1029,6 +1050,33 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
 </div>
 <button class="fab" id="fab-order" onclick="toggleOP()">🛒</button>
+
+<!-- ══ ÓRDENES EN PREPARACIÓN (KDS) ══ -->
+<div id="page-ordenes" class="page">
+  <div class="sh">
+    <span class="st">🔔 Órdenes</span>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+      <input id="ord-q" placeholder="🔍 Folio, cliente o producto…" oninput="ordSetQ(this.value)" style="width:210px;padding:6px 10px;font-size:12.5px;">
+      <select id="ord-cajero" onchange="ordSetCajero(this.value)" style="width:auto;padding:6px 8px;font-size:12px;"><option value="">Todos los cajeros</option></select>
+      <button class="btn bs bsm" id="ord-cfg-btn" onclick="toggleOrdCfg()" style="display:none;">⚙️ Tiempos</button>
+    </div>
+  </div>
+  <!-- Config de tiempos objetivo (solo admin) -->
+  <div id="ord-cfg" class="card" style="display:none;margin-bottom:10px;padding:12px;">
+    <div style="display:flex;gap:12px;align-items:end;flex-wrap:wrap;">
+      <div class="fg" style="margin:0;"><label>🟡 Advertencia a partir de (min)</label><input type="number" id="ord-cfg-warn" min="1" style="width:90px;"></div>
+      <div class="fg" style="margin:0;"><label>🔴 Urgente a partir de (min)</label><input type="number" id="ord-cfg-urgent" min="2" style="width:90px;"></div>
+      <button class="btn bp bsm" onclick="saveOrdTiempos()">💾 Guardar</button>
+      <span style="font-size:11px;color:var(--text3);">El objetivo de entrega es el límite urgente. Aplica en este dispositivo.</span>
+    </div>
+  </div>
+  <!-- Filtros por estado -->
+  <div class="pos-cats" id="ord-tabs" style="margin-bottom:10px;"></div>
+  <!-- Tarjetas de órdenes -->
+  <div id="ord-grid" class="ord-grid"></div>
+  <!-- Historial + reportes del día -->
+  <div id="ord-stats" style="margin-top:14px;"></div>
+</div>
 
 <!-- ══ HISTORIAL ══ -->
 <div id="page-historial" class="page">
@@ -2067,6 +2115,7 @@ async function ensureAuth(){
 let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true,
   waReporte:'525646665718',waHora:'21:00',
+  ordTiempos:{warn:7,urgent:12}, // minutos: verde → ámbar → rojo en Órdenes
   kpiTargets:{
     ticketPromedio:130,
     conversionCombo:30,
@@ -4703,6 +4752,8 @@ async function cobrar(metodo,recibido=0){
     // Ahora: si falla, el carrito se mantiene y la cajera puede reintentar.
     venta.tsCreacion=orderStartedAt||tid; // cuándo empezó la orden (primer producto)
     venta.tsCobro=Date.now(); // cuándo se cobró
+    // KDS: la venta nace como orden activa (timer corre desde el cobro)
+    venta.prep={estado:'cobrada',hist:[{e:'cobrada',ts:venta.tsCobro,por:activeVend?.nombre||'—'}]};
     venta.cliente=$('op-cliente')?.value?.trim()||null;
     // A3: snapshot del costo de insumos AL MOMENTO de la venta.
     // Así el margen histórico no cambia si después suben los precios.
@@ -4928,6 +4979,247 @@ async function reponerInventario(ventaItems){
   }
 }
 window.reprintTicket=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printTicket(v);};
+
+// ═══════════════════════════════════════════════════════════════
+// ÓRDENES EN PREPARACIÓN (KDS)
+// La orden ES la venta (venta.prep): se crea sola al cobrar, sincroniza
+// en tiempo real por Firestore a todas las terminales, y no puede
+// duplicarse ni perderse al recargar. El timer corre desde tsCobro.
+// Las tarjetas NO muestran dinero (política: empleadas sin montos).
+// ═══════════════════════════════════════════════════════════════
+const ORD_EST={
+  cobrada:{icon:'🧾',label:'Cobrada',next:'preparando',btn:'👨‍🍳 Preparar'},
+  preparando:{icon:'👨‍🍳',label:'En preparación',next:'lista',btn:'✅ Lista'},
+  lista:{icon:'✅',label:'Lista para entregar',next:null,btn:null},
+  entregada:{icon:'📦',label:'Entregada'}
+};
+let ordFiltro='activas', ordQ='', ordCajero='';
+const hhmm=ts=>new Date(ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
+const fmtMinSec=ms=>{const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
+const ordTiempoCls=min=>{const t=CFG.ordTiempos||{warn:7,urgent:12};return min>=t.urgent?'o-urgent':min>=t.warn?'o-warn':'o-ok';};
+function ordActivas(){return D.ventas.filter(v=>v.prep&&!v.anulada&&v.prep.estado!=='entregada');}
+function ordEntregadasHoy(){const td=today();return D.ventas.filter(v=>v.prep&&v.prep.estado==='entregada'&&v.fecha===td);}
+
+window.ordSetQ=v=>{ordQ=v.toLowerCase();renderOrdenesGrid();};
+window.ordSetCajero=v=>{ordCajero=v;renderOrdenesGrid();};
+window.ordSetFiltro=f=>{ordFiltro=f;renderOrdenes();};
+window.toggleOrdCfg=()=>{const c=$('ord-cfg');c.style.display=c.style.display==='none'?'':'none';};
+window.saveOrdTiempos=()=>{
+  const w=parseInt($('ord-cfg-warn').value)||7, u=parseInt($('ord-cfg-urgent').value)||12;
+  CFG.ordTiempos={warn:Math.min(w,u-1),urgent:u};
+  try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}
+  toast(`✓ Tiempos: advertencia ${CFG.ordTiempos.warn} min · urgente ${u} min`);
+  $('ord-cfg').style.display='none';
+  renderOrdenes();
+};
+
+function ordHistLinea(v){
+  return (v.prep.hist||[]).map(h=>`${ORD_EST[h.e]?.icon||'·'} ${hhmm(h.ts)}`).join(' → ');
+}
+
+function ordCard(v){
+  const min=(Date.now()-(v.tsCobro||v.id))/60000;
+  const done=v.prep.estado==='entregada';
+  const cls=done?'':ordTiempoCls(min);
+  const est=ORD_EST[v.prep.estado]||ORD_EST.cobrada;
+  const items=v.items.map(i=>`<b>${i.qty}×</b> ${i.nombre}${i.nota?` <span style="color:var(--gold);">📝 ${i.nota}</span>`:''}`).join('<br>');
+  const totalMin=done?Math.round((v.prep.tsEntrega-(v.tsCobro||v.id))/60000):null;
+  return `<div class="ord-card ${cls}" data-oid="${v.id}">
+    <div class="ord-head">
+      <span class="ord-folio">${v.ticket}</span>
+      <span class="ord-estado">${est.icon} ${est.label}</span>
+      ${done
+        ?`<span class="ord-timer" style="color:var(--teal);">${totalMin} min</span>`
+        :`<span class="ord-timer" data-tsc="${v.tsCobro||v.id}">${fmtMinSec(Date.now()-(v.tsCobro||v.id))}</span>`}
+    </div>
+    <div class="ord-items">${items}</div>
+    ${v.nota?`<div style="font-size:11.5px;color:var(--gold);">📝 ${v.nota}</div>`:''}
+    <div class="ord-meta">
+      <span>🕐 Cobro ${hhmm(v.tsCobro||v.id)}</span>
+      ${v.cliente?`<span>👤 ${v.cliente}</span>`:''}
+      <span>💁 ${v.vendedorNombre||'—'}</span>
+      <span>${v.metodo==='efectivo'?'💵':'💳'}</span>
+    </div>
+    <div class="ord-hist">${ordHistLinea(v)}</div>
+    ${done
+      ?(SESSION?.tipo==='admin'?`<div class="ord-btns"><button class="btn bs bfull bsm" onclick="reabrirOrden(${v.id})">↩ Reabrir</button></div>`:'')
+      :`<div class="ord-btns">
+        ${est.next?`<button class="btn bs bfull" onclick="avanzarOrden(${v.id})">${est.btn}</button>`:''}
+        <button class="btn bp bfull" onclick="entregarOrden(${v.id})">📦 Entregada</button>
+      </div>`}
+  </div>`;
+}
+
+function renderOrdenesGrid(){
+  const g=$('ord-grid'); if(!g) return;
+  let list=ordFiltro==='entregadas'?ordEntregadasHoy():ordActivas();
+  if(['cobrada','preparando','lista'].includes(ordFiltro)) list=list.filter(v=>v.prep.estado===ordFiltro);
+  if(ordFiltro==='atrasadas'){const u=(CFG.ordTiempos||{urgent:12}).urgent;list=list.filter(v=>(Date.now()-(v.tsCobro||v.id))/60000>=u);}
+  if(ordCajero) list=list.filter(v=>String(v.vendedorId)===ordCajero);
+  if(ordQ) list=list.filter(v=>v.ticket.toLowerCase().includes(ordQ)||(v.cliente||'').toLowerCase().includes(ordQ)||v.items.some(i=>i.nombre.toLowerCase().includes(ordQ)));
+  list=[...list].sort((a,b)=>(a.tsCobro||a.id)-(b.tsCobro||b.id)); // más antigua primero
+  if(ordFiltro==='entregadas') list.reverse(); // entregadas: recientes primero
+  g.innerHTML=list.length===0
+    ?`<div class="card" style="grid-column:1/-1;text-align:center;padding:26px;color:var(--text3);">${ordFiltro==='entregadas'?'Sin órdenes entregadas hoy':'🎉 No hay órdenes pendientes'}</div>`
+    :list.map(ordCard).join('');
+}
+
+function renderOrdenes(){
+  // Tabs de estado
+  const act=ordActivas();
+  const u=(CFG.ordTiempos||{urgent:12}).urgent;
+  const atr=act.filter(v=>(Date.now()-(v.tsCobro||v.id))/60000>=u).length;
+  const cnt=e=>act.filter(v=>v.prep.estado===e).length;
+  const tabs=[
+    ['activas',`Activas (${act.length})`],['cobrada',`🧾 Cobradas (${cnt('cobrada')})`],
+    ['preparando',`👨‍🍳 En prep. (${cnt('preparando')})`],['lista',`✅ Listas (${cnt('lista')})`],
+    ['atrasadas',`⏰ Atrasadas (${atr})`],['entregadas',`📦 Entregadas hoy (${ordEntregadasHoy().length})`]
+  ];
+  if($('ord-tabs'))$('ord-tabs').innerHTML=tabs.map(([k,l])=>`<button class="pcat ${ordFiltro===k?'on':''}" onclick="ordSetFiltro('${k}')">${l}</button>`).join('');
+  // Cajeros presentes en órdenes de hoy
+  const sel=$('ord-cajero');
+  if(sel){const pv=sel.value;const vs=[...new Map(D.ventas.filter(v=>v.prep&&v.fecha===today()).map(v=>[v.vendedorId,v.vendedorNombre])).entries()];
+    sel.innerHTML='<option value="">Todos los cajeros</option>'+vs.map(([id,n])=>`<option value="${id}">${n}</option>`).join('');sel.value=pv;}
+  // Config solo admin
+  const esAdmin=SESSION?.tipo==='admin';
+  if($('ord-cfg-btn'))$('ord-cfg-btn').style.display=esAdmin?'':'none';
+  if(esAdmin){const t=CFG.ordTiempos||{warn:7,urgent:12};if($('ord-cfg-warn'))$('ord-cfg-warn').value=t.warn;if($('ord-cfg-urgent'))$('ord-cfg-urgent').value=t.urgent;}
+  renderOrdenesGrid();
+  renderOrdStats();
+}
+
+// ── Acciones (todas auditadas; doble entrega imposible) ──
+window.avanzarOrden=async id=>{
+  const v=D.ventas.find(x=>x.id===id); if(!v||!v.prep) return;
+  const next=ORD_EST[v.prep.estado]?.next; if(!next) return;
+  v.prep.estado=next;
+  v.prep.hist=[...(v.prep.hist||[]),{e:next,ts:Date.now(),por:SESSION?.nombre||activeVend?.nombre||'—'}];
+  await fsSet('ventas',v);
+  logAudit('orden_estado',{ticket:v.ticket,estado:next,por:SESSION?.nombre||'—'});
+  renderOrdenes();
+};
+window.entregarOrden=async id=>{
+  const v=D.ventas.find(x=>x.id===id); if(!v||!v.prep) return;
+  if(v.prep.estado==='entregada'){toast('⚠ Esta orden ya fue entregada',2400,'warn');return;}
+  if(!confirm(`¿Confirmas que la orden ${v.ticket} ya fue entregada al cliente?`)) return;
+  const ts=Date.now();
+  v.prep.estado='entregada'; v.prep.tsEntrega=ts;
+  v.prep.hist=[...(v.prep.hist||[]),{e:'entregada',ts,por:SESSION?.nombre||activeVend?.nombre||'—'}];
+  await fsSet('ventas',v);
+  const min=Math.round((ts-(v.tsCobro||v.id))/60000);
+  logAudit('orden_entregada',{ticket:v.ticket,minutos:min,por:SESSION?.nombre||'—'});
+  toast(`📦 ${v.ticket} entregada en ${min} min`);
+  renderOrdenes();
+};
+window.reabrirOrden=async id=>{
+  if(SESSION?.tipo!=='admin'){toast('⚠ Solo el administrador puede reabrir órdenes',2600,'warn');return;}
+  const v=D.ventas.find(x=>x.id===id); if(!v||!v.prep) return;
+  if(!confirm(`¿Reabrir la orden ${v.ticket}? Volverá a Órdenes activas.`)) return;
+  v.prep.estado='lista'; v.prep.tsEntrega=null;
+  v.prep.hist=[...(v.prep.hist||[]),{e:'lista',ts:Date.now(),por:SESSION?.nombre+' (reabierta)'}];
+  await fsSet('ventas',v);
+  logAudit('orden_reabierta',{ticket:v.ticket,por:SESSION?.nombre});
+  renderOrdenes();
+};
+
+// ── Timer en vivo: solo actualiza textos (no re-render completo) ──
+const _ordNotified=new Set();
+setInterval(()=>{
+  if(currentPage!=='ordenes') return;
+  const t=CFG.ordTiempos||{warn:7,urgent:12};
+  document.querySelectorAll('.ord-timer[data-tsc]').forEach(el=>{
+    const ts=parseFloat(el.dataset.tsc);
+    const ms=Date.now()-ts, min=ms/60000;
+    el.textContent=fmtMinSec(ms);
+    const card=el.closest('.ord-card');
+    if(card){card.classList.remove('o-ok','o-warn','o-urgent');card.classList.add(ordTiempoCls(min));}
+    // Aviso discreto al cruzar el umbral urgente (una vez por orden)
+    const oid=card?.dataset.oid;
+    if(oid&&min>=t.urgent&&!_ordNotified.has(oid)){
+      _ordNotified.add(oid);
+      if(typeof notifPush==='function') notifPush('⏰ Orden atrasada',`${card.querySelector('.ord-folio')?.textContent||''} lleva ${Math.round(min)} min sin entregarse`,{tag:'ord-atrasada'});
+    }
+  });
+},1000);
+
+// ── Historial y reportes (solo admin ve esta sección) ──
+window.ordSetPer=()=>renderOrdStats();
+function ordFechasPeriodo(per){
+  const td=today();
+  if(per==='dia') return [td];
+  if(per==='semana') return getWDays(td);
+  return null; // mes: prefijo
+}
+function renderOrdStats(){
+  const el=$('ord-stats'); if(!el) return;
+  if(SESSION?.tipo!=='admin'){el.innerHTML='';return;}
+  const per=document.getElementById('ord-per')?.value||'dia';
+  const fechas=ordFechasPeriodo(per); const cm=curM();
+  const done=D.ventas.filter(v=>v.prep&&v.prep.estado==='entregada'&&v.prep.tsEntrega&&(fechas?fechas.includes(v.fecha):v.fecha.startsWith(cm)));
+  const t=CFG.ordTiempos||{warn:7,urgent:12};
+  const mins=done.map(v=>({v,m:(v.prep.tsEntrega-(v.tsCobro||v.id))/60000}));
+  const prom=mins.length?mins.reduce((s,x)=>s+x.m,0)/mins.length:0;
+  const enObj=mins.filter(x=>x.m<=t.urgent).length;
+  const rapida=mins.length?mins.reduce((a,b)=>a.m<b.m?a:b):null;
+  const lenta=mins.length?mins.reduce((a,b)=>a.m>b.m?a:b):null;
+  // Por producto (el tiempo de la orden se atribuye a cada producto que la compone)
+  const porProd={};
+  mins.forEach(({v,m})=>v.items.forEach(i=>{if(!porProd[i.nombre])porProd[i.nombre]={s:0,c:0};porProd[i.nombre].s+=m;porProd[i.nombre].c++;}));
+  const prodTop=Object.entries(porProd).map(([n,x])=>({n,avg:x.s/x.c,c:x.c})).sort((a,b)=>b.avg-a.avg).slice(0,6);
+  // Por cajero
+  const porCaj={};
+  mins.forEach(({v,m})=>{const k=v.vendedorNombre||'—';if(!porCaj[k])porCaj[k]={s:0,c:0};porCaj[k].s+=m;porCaj[k].c++;});
+  // Por hora (carga de trabajo)
+  const porHora={};
+  done.forEach(v=>{const h=new Date(v.tsCobro||v.id).getHours();porHora[h]=(porHora[h]||0)+1;});
+  const horasTop=Object.entries(porHora).sort((a,b)=>b[1]-a[1]).slice(0,3);
+  el.innerHTML=`<div class="card" style="padding:14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px;">
+      <span class="ct" style="margin:0;">📊 Tiempos de servicio</span>
+      <div style="display:flex;gap:6px;">
+        <select id="ord-per" onchange="ordSetPer()" style="width:auto;padding:5px 8px;font-size:12px;">
+          <option value="dia" ${per==='dia'?'selected':''}>Hoy</option>
+          <option value="semana" ${per==='semana'?'selected':''}>Esta semana</option>
+          <option value="mes" ${per==='mes'?'selected':''}>Este mes</option>
+        </select>
+        <button class="btn bs bsm" onclick="ordExportCSV()">⬇ CSV</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:12px;">
+      <div style="background:var(--surface2);border-radius:var(--rsm);padding:10px;text-align:center;"><div class="ct">Órdenes</div><div class="kv">${done.length}</div></div>
+      <div style="background:var(--surface2);border-radius:var(--rsm);padding:10px;text-align:center;"><div class="ct">Promedio</div><div class="kv ${prom<=t.warn?'ag':prom<=t.urgent?'gold':'red'}">${mins.length?prom.toFixed(1)+' min':'—'}</div></div>
+      <div style="background:var(--surface2);border-radius:var(--rsm);padding:10px;text-align:center;"><div class="ct">Dentro del objetivo (≤${t.urgent}m)</div><div class="kv ${mins.length&&enObj/mins.length>=.8?'ag':'gold'}">${mins.length?Math.round(enObj/mins.length*100)+'%':'—'}</div></div>
+      <div style="background:var(--surface2);border-radius:var(--rsm);padding:10px;text-align:center;"><div class="ct">Atrasadas</div><div class="kv ${mins.length-enObj>0?'red':'ag'}">${mins.length-enObj}</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px;font-size:12px;">
+      <div>
+        <div class="ct">⏱ Extremos</div>
+        ${rapida?`<div>🏆 Más rápida: <b>${rapida.v.ticket}</b> — ${rapida.m.toFixed(1)} min</div><div>🐢 Más tardada: <b>${lenta.v.ticket}</b> — ${lenta.m.toFixed(1)} min</div>`:'<div style="color:var(--text3);">Sin datos</div>'}
+        ${horasTop.length?`<div style="margin-top:6px;">🔥 Horas pico: ${horasTop.map(([h,c])=>`<b>${h}:00</b> (${c})`).join(' · ')}</div>`:''}
+      </div>
+      <div>
+        <div class="ct">🍽 Productos más tardados (prom.)</div>
+        ${prodTop.length?prodTop.map(p=>`<div style="display:flex;justify-content:space-between;"><span>${p.n} <span style="color:var(--text3);">×${p.c}</span></span><b>${p.avg.toFixed(1)} min</b></div>`).join(''):'<div style="color:var(--text3);">Sin datos</div>'}
+      </div>
+      <div>
+        <div class="ct">💁 Por cajero</div>
+        ${Object.keys(porCaj).length?Object.entries(porCaj).map(([n,x])=>`<div style="display:flex;justify-content:space-between;"><span>${n} <span style="color:var(--text3);">×${x.c}</span></span><b>${(x.s/x.c).toFixed(1)} min</b></div>`).join(''):'<div style="color:var(--text3);">Sin datos</div>'}
+      </div>
+    </div>
+  </div>`;
+}
+window.ordExportCSV=()=>{
+  const per=document.getElementById('ord-per')?.value||'dia';
+  const fechas=ordFechasPeriodo(per); const cm=curM();
+  const done=D.ventas.filter(v=>v.prep&&v.prep.estado==='entregada'&&v.prep.tsEntrega&&(fechas?fechas.includes(v.fecha):v.fecha.startsWith(cm)));
+  const rows=[['Folio','Fecha','Cobro','Entrega','Minutos','Productos','Cajero','Método','Cliente','Nota']];
+  done.forEach(v=>rows.push([v.ticket,v.fecha,hhmm(v.tsCobro||v.id),hhmm(v.prep.tsEntrega),((v.prep.tsEntrega-(v.tsCobro||v.id))/60000).toFixed(1),v.items.map(i=>i.qty+'x '+i.nombre).join(' | '),v.vendedorNombre||'',v.metodo,v.cliente||'',v.nota||'']));
+  const csv=rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'}));
+  a.download=`ordenes_${per}_${today()}.csv`; a.click();
+  toast('⬇ CSV de órdenes descargado');
+};
 window.openVentaModal=id=>{
   const v=D.ventas.find(x=>x.id===id); if(!v) return;
   const e=D.empleados.find(x=>x.id===v.vendedorId);
@@ -8790,7 +9082,9 @@ window.editProd=id=>{
 window.toggleProd=async id=>{const p=D.productos.find(x=>x.id===id);if(!p)return;await fsSet('productos',{...p,activo:!p.activo});toast(p.activo?'⚫ Ocultado':'✓ Activado');};
 window.saveConfig=()=>{
   const prevTargets=CFG.kpiTargets;
+  const prevOrd=CFG.ordTiempos||{warn:7,urgent:12};
   CFG={
+    ordTiempos:prevOrd,
     negocio:$('cfg-neg').value.trim()||'El Huerto',
     tel:$('cfg-tel').value.trim(),
     msg:$('cfg-msg').value.trim()||'¡Gracias!',
@@ -8915,6 +9209,7 @@ const AUD_META={
   movimiento_efectivo:['💸','#e65100'], movimiento_eliminado:['🗑','#c62828'],
   gasto_eliminado:['🗑','#c62828'], nomina_pagada:['👩','#6a1b9a'], nomina_pago_eliminado:['🗑','#c62828'],
   merma_registrada:['🍂','#e65100'], respaldo_descargado:['💾','#00695c'], sesion_iniciada:['🔑','#1565c0'],
+  orden_estado:['🔔','#6d4c41'], orden_entregada:['📦','#2e7d32'], orden_reabierta:['↩','#e65100'],
   orden_compra_creada:['📝','#f57f17'], orden_compra_recibida:['📦','#2e7d32']
 };
 function renderBitacora(){
@@ -9198,6 +9493,7 @@ let currentPage='pos'; // page-pos es la activa por default en el HTML
 const PAGE_RENDERERS={
   dashboard: ()=>renderDashboard(),
   pos: ()=>{renderPOS();renderOrder();},
+  ordenes: ()=>renderOrdenes(),
   historial: ()=>renderHistorial(),
   caja: ()=>renderCaja(),
   gastos: ()=>renderGastos(),
@@ -9224,6 +9520,12 @@ function updateGlobalBadges(){
       const bajos=D.inventario.filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
       if(bajos.length>0){nb.style.display='';nb.textContent=bajos.length+' ⚠';}
       else nb.style.display='none';
+    }
+    // Contador de órdenes activas en la pestaña 🔔 Órdenes
+    const oc=$('ord-nav-cnt');
+    if(oc&&typeof ordActivas==='function'){
+      const n=ordActivas().length;
+      if(n>0){oc.style.display='';oc.textContent=n;}else oc.style.display='none';
     }
     if(typeof renderLock==='function') renderLock();
   }catch(e){/* no-op */}

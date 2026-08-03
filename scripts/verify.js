@@ -35,7 +35,7 @@ const FNS = ['cobrar', 'renderOrder', 'renderPOS', 'realizarCorte', 'calcDia',
   'descontarInventario', 'reponerInventario', 'qtyToInvUnit', 'foodCostProducto',
   'loadMigrations', 'migDone', 'markMig', 'exportBackup', 'logAudit',
   'pedirVendedorVenta', 'confVendedor', 'enviarResumenCorteWA', 'checkAutoBackup',
-  'fsSetCritical', 'empsActivos'];
+  'fsSetCritical', 'empsActivos', 'renderOrdenes', 'entregarOrden', 'avanzarOrden', 'reabrirOrden'];
 FNS.forEach(fn => {
   const re = new RegExp(`(function ${fn}\\b|window\\.${fn}\\s*=|const ${fn}\\s*=)`);
   if (re.test(html)) ok(fn); else fail(`función no encontrada: ${fn}`);
@@ -45,7 +45,7 @@ FNS.forEach(fn => {
 console.log('\n[3/5] Elementos de UI');
 const IDS = ['page-pos', 'order-panel', 'op-items', 'op-tot', 'pcats', 'pin-modal',
   'cobro-modal', 'vconf-modal', 'vend-modal', 'corte-contado', 'corte-semaforo',
-  'corte-nota', 'lock-emp-btns'];
+  'corte-nota', 'lock-emp-btns', 'page-ordenes', 'ord-grid', 'ord-tabs', 'ord-stats'];
 IDS.forEach(id => {
   if (html.includes(`id="${id}"`)) ok('#' + id); else fail(`elemento no encontrado: #${id}`);
 });
