@@ -319,6 +319,19 @@ select option{background:var(--surface2);}
 .ord-seg button.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));color:var(--accent);transform:scale(1.05);box-shadow:0 2px 8px color-mix(in srgb, var(--accent) 25%, transparent);}
 .ord-seg button:active{transform:scale(.93);}
 .pcat{transition:all .18s ease;}
+/* ── Modo Pantalla de Cocina: tablet fija junto a la barra ── */
+body.kds-mode nav,body.kds-mode .mnav,body.kds-mode .fab{display:none!important;}
+body.kds-mode #ord-q,body.kds-mode #ord-cajero,body.kds-mode #ord-cfg-btn,body.kds-mode #ord-cfg,body.kds-mode #ord-stats{display:none!important;}
+body.kds-mode .ord-grid{grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:14px;}
+body.kds-mode .ord-card{padding:16px;border-left-width:7px;}
+body.kds-mode .ord-timer{font-size:27px;}
+body.kds-mode .ord-folio{font-size:17px;}
+body.kds-mode .ord-items{font-size:15.5px;line-height:1.6;}
+body.kds-mode .ord-estado{font-size:12.5px;}
+body.kds-mode .ord-seg button{min-height:58px;font-size:13.5px;}
+body.kds-mode .ord-btns .btn{min-height:58px;font-size:15px;}
+body.kds-mode .pcat{font-size:13.5px;padding:9px 15px;}
+body.kds-mode .st{font-size:20px;}
 .vconf-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14.5px;font-weight:700;cursor:pointer;min-height:54px;}
 .vconf-btn:active{transform:scale(.97);background:var(--surface3);}
 .vconf-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#1a2e18;flex-shrink:0;}
@@ -1071,6 +1084,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <input id="ord-q" placeholder="🔍 Folio, cliente o producto…" oninput="ordSetQ(this.value)" style="width:210px;padding:6px 10px;font-size:12.5px;">
       <select id="ord-cajero" onchange="ordSetCajero(this.value)" style="width:auto;padding:6px 8px;font-size:12px;"><option value="">Todos los cajeros</option></select>
       <button class="btn bs bsm" id="ord-cfg-btn" onclick="toggleOrdCfg()" style="display:none;">⚙️ Tiempos</button>
+      <button class="btn bor bsm" id="ord-kds-btn" onclick="toggleKDS()">🖥 Cocina</button>
     </div>
   </div>
   <!-- Config de tiempos objetivo (solo admin) -->
@@ -5128,6 +5142,56 @@ const ORD_EST={
 };
 let ordFiltro='activas', ordQ='', ordCajero='';
 const _ordSeen=new Set(); // tarjetas ya pintadas (controla animación de entrada)
+
+// ── Modo Pantalla de Cocina (tablet fija): persiste tras recargas ──
+window.toggleKDS=()=>{
+  const on=!document.body.classList.contains('kds-mode');
+  document.body.classList.toggle('kds-mode',on);
+  try{localStorage.setItem('h5kds',on?'1':'');}catch(e){}
+  if(on){
+    go('ordenes');
+    document.documentElement.requestFullscreen?.().catch(()=>{});
+    toast('🖥 Modo Cocina activo — este dispositivo queda como pantalla de órdenes',3500);
+  }else{
+    document.exitFullscreen?.().catch(()=>{});
+    toast('Modo Cocina desactivado');
+  }
+  renderOrdenes();
+};
+// Al arrancar: si esta tablet estaba en Modo Cocina, restaurarlo
+if(localStorage.getItem('h5kds')==='1'){
+  document.body.classList.add('kds-mode');
+  setTimeout(()=>{if(typeof SESSION!=='undefined'&&SESSION) go('ordenes');},1600);
+}
+
+// ── Campana de orden nueva (suena en la pantalla de cocina) ──
+function playNewOrderSound(){
+  try{
+    const ctx=new(window.AudioContext||window.webkitAudioContext)();
+    // Ding-dong de cocina: La alto → Mi (discreto)
+    const ding=(freq,t0,dur)=>{
+      const o=ctx.createOscillator(); const g=ctx.createGain();
+      o.connect(g); g.connect(ctx.destination);
+      o.frequency.value=freq; o.type='triangle';
+      g.gain.setValueAtTime(0.3,ctx.currentTime+t0);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+t0+dur);
+      o.start(ctx.currentTime+t0); o.stop(ctx.currentTime+t0+dur);
+    };
+    ding(880,0,0.35); ding(659.25,0.22,0.5);
+  }catch(e){}
+}
+let _ordSoundInit=false; const _ordSoundSeen=new Set();
+// Se llama en cada cambio de datos (desde updateGlobalBadges): si llegó
+// una orden nueva y este dispositivo está viendo Órdenes (o es la
+// pantalla de cocina), suena la campana. La primera pasada solo registra.
+function checkNuevaOrdenSound(){
+  if(typeof ordActivas!=='function') return;
+  const act=ordActivas();
+  if(!_ordSoundInit){act.forEach(v=>_ordSoundSeen.add(String(v.id)));_ordSoundInit=true;return;}
+  let hayNueva=false;
+  act.forEach(v=>{const k=String(v.id);if(!_ordSoundSeen.has(k)){_ordSoundSeen.add(k);hayNueva=true;}});
+  if(hayNueva&&(currentPage==='ordenes'||document.body.classList.contains('kds-mode'))) playNewOrderSound();
+}
 const hhmm=ts=>new Date(ts).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
 const fmtMinSec=ms=>{const s=Math.max(0,Math.floor(ms/1000));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
 const ordTiempoCls=min=>{const t=CFG.ordTiempos||{warn:7,urgent:12};return min>=t.urgent?'o-urgent':min>=t.warn?'o-warn':'o-ok';};
@@ -5223,6 +5287,8 @@ function renderOrdenes(){
   // Config solo admin
   const esAdmin=SESSION?.tipo==='admin';
   if($('ord-cfg-btn'))$('ord-cfg-btn').style.display=esAdmin?'':'none';
+  const kb=$('ord-kds-btn');
+  if(kb) kb.textContent=document.body.classList.contains('kds-mode')?'✕ Salir de Cocina':'🖥 Cocina';
   if(esAdmin){const t=CFG.ordTiempos||{warn:7,urgent:12};if($('ord-cfg-warn'))$('ord-cfg-warn').value=t.warn;if($('ord-cfg-urgent'))$('ord-cfg-urgent').value=t.urgent;}
   renderOrdenesGrid();
   renderOrdStats();
@@ -9694,6 +9760,8 @@ function updateGlobalBadges(){
       const n=ordActivas().length;
       if(n>0){oc.style.display='';oc.textContent=n;}else oc.style.display='none';
     }
+    // Campana si llegó una orden nueva (pantalla de cocina / página Órdenes)
+    if(typeof checkNuevaOrdenSound==='function') checkNuevaOrdenSound();
     if(typeof renderLock==='function') renderLock();
   }catch(e){/* no-op */}
 }

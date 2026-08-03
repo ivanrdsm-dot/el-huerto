@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.15'; // KDS v2: etapas libres, escrituras verificadas, animaciones
+const CACHE_NAME = 'el-huerto-v14.16'; // Modo Pantalla de Cocina + campana de orden nueva
 const ASSETS = [
   '/',
   '/index.html',

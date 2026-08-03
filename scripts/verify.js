@@ -35,7 +35,8 @@ const FNS = ['cobrar', 'renderOrder', 'renderPOS', 'realizarCorte', 'calcDia',
   'descontarInventario', 'reponerInventario', 'qtyToInvUnit', 'foodCostProducto',
   'loadMigrations', 'migDone', 'markMig', 'exportBackup', 'logAudit',
   'pedirVendedorVenta', 'confVendedor', 'enviarResumenCorteWA', 'checkAutoBackup',
-  'fsSetCritical', 'empsActivos', 'renderOrdenes', 'entregarOrden', 'avanzarOrden', 'reabrirOrden', 'setEstadoOrden'];
+  'fsSetCritical', 'empsActivos', 'renderOrdenes', 'entregarOrden', 'avanzarOrden', 'reabrirOrden', 'setEstadoOrden',
+  'toggleKDS', 'playNewOrderSound', 'checkNuevaOrdenSound'];
 FNS.forEach(fn => {
   const re = new RegExp(`(function ${fn}\\b|window\\.${fn}\\s*=|const ${fn}\\s*=)`);
   if (re.test(html)) ok(fn); else fail(`función no encontrada: ${fn}`);
