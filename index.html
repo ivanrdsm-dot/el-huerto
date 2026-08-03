@@ -2229,6 +2229,7 @@ async function completeInit(){
   await migRecetasJul2026();
   await migInvFisicoJul2026();
   await migComprasAgo2026();
+  await migBobaAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -2740,6 +2741,33 @@ async function migComprasAgo2026(){
   await markMig(migKey);
   logAudit('compras_registradas',{lote:'1-2 ago 2026',tickets:gastos.length,total:gastos.reduce((s,g)=>s+g.monto,0),omitidos:omitidos.length?omitidos:undefined});
   toast('✓ Compras 1-2 ago: '+gastos.length+' tickets registrados ('+fmt(gastos.reduce((s,g)=>s+g.monto,0))+')',4500);
+}
+
+// ══ BOBA TEA CON PERLAS — 30 g por vaso (confirmado por Iván) ══
+// La bolsa de \$180 se registra como presentación de 1 kg (precio de
+// mercado 2026: 1 kg ≈ \$210 retail, cubeta 3.2 kg ≈ \$460 — a \$180 en
+// distribuidora solo cuadra la de 1 kg). Si la bolsa real es más grande,
+// se corrige con una migración de una línea.
+async function migBobaAgo2026(){
+  const migKey='h5boba_ago26';
+  if(await migDone(migKey)) return;
+  // Perlas: bolsa → gramos (1 bolsa = 1000 g) para que la receta descuente
+  const perlas=D.inventario.find(i=>/perlas/i.test(i.nombre));
+  if(perlas&&perlas.unit!=='g'){
+    const bolsas=perlas.qty||0;
+    perlas.qty=Math.round(bolsas*1000);
+    perlas.unit='g';
+    perlas.precio=0.18; // \$180 / 1000 g
+    await fsSet('inventario',perlas);
+  }
+  // Receta Boba Tea (1071): lata + 30 g de perlas + popote + servilleta
+  const rec=D.recetas.find(r=>r.prodId===1071);
+  if(rec&&perlas&&!rec.ings.some(i=>/perlas/i.test(i.nombre||''))){
+    rec.ings=[...rec.ings,{invId:perlas.id,nombre:perlas.nombre,qty:'30',unit:'g'}];
+    await fsSet('recetas',rec);
+  }
+  await markMig(migKey);
+  logAudit('recetas_actualizadas',{producto:'Boba Tea',cambio:'+30 g perlas explosivas por vaso (\$5.40 de insumo)'});
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026

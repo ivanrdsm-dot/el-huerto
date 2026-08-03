@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.13'; // Compras 1-2 ago: 8 tickets + inventario
+const CACHE_NAME = 'el-huerto-v14.14'; // Boba Tea: 30 g de perlas por vaso
 const ASSETS = [
   '/',
   '/index.html',
