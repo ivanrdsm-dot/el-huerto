@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.12'; // Módulo Órdenes (KDS): timers, estados, reportes
+const CACHE_NAME = 'el-huerto-v14.13'; // Compras 1-2 ago: 8 tickets + inventario
 const ASSETS = [
   '/',
   '/index.html',

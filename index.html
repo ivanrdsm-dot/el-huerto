@@ -2228,6 +2228,7 @@ async function completeInit(){
   await migrateMenuJul2026();
   await migRecetasJul2026();
   await migInvFisicoJul2026();
+  await migComprasAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -2648,6 +2649,97 @@ async function migInvFisicoJul2026(){
   await markMig(migKey);
   logAudit('inventario_fisico_cargado',{fecha_conteo:'2026-07-23',partidas:73,factura:'Costco ARG-5824731 \$2,160.70'});
   toast('✓ Inventario físico 23-jul + factura Costco cargados',4000);
+}
+
+// ══ COMPRAS 1-2 AGOSTO 2026 — 6 tickets + frutería El Zorro + pan ══
+// OfficeMax (papelería \$83.10) · City Market (hielo \$79.80) · Caza Ofertas
+// (\$256) · Corporación Rodríguez (frutos secos + perlas boba \$683.50) ·
+// Camber ×2 (\$684.50 + \$17.50) · El Zorro (fruta/verdura \$820, solo
+// cantidades: sin precio por artículo) · 50 pzas pan a \$5.80 (\$290).
+async function migComprasAgo2026(){
+  const migKey='h5compras_ago26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const hit=D.inventario.find(i=>normInvNombre(i.nombre)===nn||normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(hit) return hit;
+    }
+    return null;
+  };
+  const omitidos=[];
+  // Suma stock + fija costo por unidad (crea el artículo si no existe)
+  const addC=async(cands,qty,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qty,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;if(precioUnit!=null)inv.precio=Math.round(precioUnit*(qty/q)*10000)/10000;}
+      else if(precioUnit!=null){inv.precio=precioUnit;omitidos.push(inv.nombre);}
+      else{omitidos.push(inv.nombre);return;}
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit||0};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+  // Solo cantidad (El Zorro no da precio por artículo — no se inventa)
+  const addQ=async(cands,qty,unit)=>addC(cands,qty,unit,null,'frutas_verduras');
+
+  // ── Corporación Rodríguez 01-ago (\$683.50) ──
+  await addC(['Arándano deshidratado','Arándano'],250,'g',0.12,'abarrotes');
+  await addC(['Nuez','Nuez granillo'],500,'g',0.242,'abarrotes');
+  await addC(['Almendra natural','Almendras'],500,'g',0.22,'abarrotes');
+  await addC(['Cacahuate natural'],500,'g',0.069,'abarrotes');
+  await addC(['Pistache'],500,'g',0.29,'abarrotes');
+  await addC(['Granola'],1000,'g',0.063,'abarrotes');
+  await addC(['Perlas explosivas (boba)','Perlas boba'],1,'bolsa',180,'abarrotes');
+  // ── Caza Ofertas 01-ago (\$256) ──
+  await addC(['Achiote'],2,'caja',32,'abarrotes');
+  await addC(['Aderezo miel mostaza'],1,'pz',192,'abarrotes');
+  // ── Camber Super Abasto 01-ago (\$684.50 + \$17.50) ──
+  await addC(['Aderezo César','Aderezo Cesar'],1,'pz',145,'abarrotes');
+  await addC(['Aderezo Mil Islas'],1,'pz',145,'abarrotes');
+  await addC(['Mayonesa chipotle'],2,'pz',39.50,'abarrotes');
+  await addC(['Jarabe natural (Madrileña)','Jarabe natural'],1,'pz',77.50,'abarrotes');
+  await addC(['Pimienta negra molida','Pimienta'],250,'g',0.10,'abarrotes');
+  await addC(['Valentina','Salsa Valentina'],1,'bote',147,'abarrotes');
+  await addC(['Valentina amarilla','Salsa Valentina amarilla'],1,'bote',36.50,'abarrotes');
+  await addC(['Servitoallas'],1,'rollo',29.50,'interna_ivan');
+  await addC(['Chile piquín con limón','Chile piquín'],500,'g',0.035,'abarrotes');
+  // ── City Market 02-ago: hielo 2×5 kg (\$79.80) ──
+  await addC(['Hielo'],10000,'g',0.00798,'abarrotes');
+  // ── Pan para paninis: 50 pzas a \$5.80 ──
+  await addC(['Pan de panini','Pan para panini'],50,'pz',5.80,'abarrotes');
+  // ── Frutería El Zorro 01-ago (\$820 total, cantidades sin precio unitario) ──
+  await addQ(['Zanahoria'],4,'kg');
+  await addQ(['Pepino'],4,'kg');
+  await addQ(['Manzana'],1,'kg');
+  await addQ(['Piña'],3,'pz');
+  await addQ(['Aguacate'],1,'kg');
+  await addQ(['Jitomate'],2,'kg');
+  await addQ(['Sandía'],6,'kg');
+  await addQ(['Plátano'],6,'kg');
+  await addQ(['Mango verde','Mango'],4,'kg');
+  await addQ(['Fresa'],1,'domo');
+  await addQ(['Jícama'],4,'kg');
+
+  // ── Gastos (idempotentes por ticket) ──
+  const gastos=[
+    {fecha:'2026-08-02',cat:'servicios',prov:'OfficeMax',monto:83.10,ticket:'OMX-15157',metodo:'efectivo',notas:'Enmicados oficio ×2, copias BN, CCO — papelería'},
+    {fecha:'2026-08-02',cat:'proveedor',prov:'City Market',monto:79.80,ticket:'CM-780897',metodo:'tarjeta',notas:'Hielo Fiesta 2×5 kg'},
+    {fecha:'2026-08-01',cat:'proveedor',prov:'Caza Ofertas',monto:256.00,ticket:'CO-68550',metodo:'efectivo',notas:'Achiote ×2 cajas, aderezo miel mostaza ½ galón'},
+    {fecha:'2026-08-01',cat:'proveedor',prov:'Corporación Rodríguez',monto:683.50,ticket:'CR-147',metodo:'efectivo',notas:'Arándano 250g, nuez 500g, almendra 500g, cacahuate 500g, pistache 500g, granola 1kg, perlas explosivas (boba)'},
+    {fecha:'2026-08-01',cat:'proveedor',prov:'Camber Super Abasto',monto:684.50,ticket:'CSA-1161738',metodo:'efectivo',notas:'Aderezos César/Mil Islas, mayonesa chipotle ×2, jarabe, pimienta 250g, Valentina + amarilla, servitoallas'},
+    {fecha:'2026-08-01',cat:'proveedor',prov:'Camber Super Abasto',monto:17.50,ticket:'CSA-1161739',metodo:'efectivo',notas:'Chile piquín c/limón 500g'},
+    {fecha:'2026-08-01',cat:'proveedor',prov:'Frutería El Zorro',monto:820.00,ticket:'ZORRO-01AGO26',metodo:'efectivo',notas:'Zanahoria 4kg, pepino 4kg, manzana 1kg, piña 3pz, aguacate 1kg, jitomate 2kg, sandía 6kg, plátano 6kg, mango 4kg, fresa 1 domo, jícama 4kg'},
+    {fecha:'2026-08-01',cat:'proveedor',prov:'Panadería (pan panini)',monto:290.00,ticket:'PAN-01AGO26',metodo:'efectivo',notas:'50 piezas de pan a \$5.80'},
+  ];
+  for(const g of gastos){
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      await fsSet('gastos',{id:++nid,tipoEstrategico:'general',...g});
+    }
+  }
+  await markMig(migKey);
+  logAudit('compras_registradas',{lote:'1-2 ago 2026',tickets:gastos.length,total:gastos.reduce((s,g)=>s+g.monto,0),omitidos:omitidos.length?omitidos:undefined});
+  toast('✓ Compras 1-2 ago: '+gastos.length+' tickets registrados ('+fmt(gastos.reduce((s,g)=>s+g.monto,0))+')',4500);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
