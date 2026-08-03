@@ -332,6 +332,11 @@ body.kds-mode .ord-seg button{min-height:58px;font-size:13.5px;}
 body.kds-mode .ord-btns .btn{min-height:58px;font-size:15px;}
 body.kds-mode .pcat{font-size:13.5px;padding:9px 15px;}
 body.kds-mode .st{font-size:20px;}
+/* Chips de toppings (selector de preparación) */
+.prep-chip{padding:11px 14px;border-radius:20px;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s ease;min-height:44px;}
+.prep-chip.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));color:var(--accent);transform:scale(1.05);}
+.prep-chip:active{transform:scale(.93);}
+.oi-prep{font-size:10.5px;color:var(--accent);margin-top:1px;line-height:1.3;}
 .vconf-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14.5px;font-weight:700;cursor:pointer;min-height:54px;}
 .vconf-btn:active{transform:scale(.97);background:var(--surface3);}
 .vconf-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#1a2e18;flex-shrink:0;}
@@ -1942,6 +1947,20 @@ nav{padding-top:env(safe-area-inset-top);}
         <span>🖨 Imprimir ticket automáticamente al cobrar</span>
       </label>
     </div>
+    <!-- Comandera Bluetooth (Bisofice 58A — ESC/POS directo, sin diálogo) -->
+    <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin:10px 0;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:8px;">👨‍🍳 Comandera de cocina (Bluetooth)</div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <button class="btn bbl bsm" onclick="conectarImpresoraBT()">📡 Conectar impresora</button>
+        <button class="btn bs bsm" onclick="testComanda()">🖨 Prueba</button>
+        <span id="bt-estado" style="font-size:11.5px;color:var(--text3);">Sin conectar</span>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-top:10px;text-transform:none;letter-spacing:0;color:var(--text);">
+        <input type="checkbox" id="cfg-comanda-auto" style="width:auto;transform:scale(1.3);">
+        <span>👨‍🍳 Imprimir comanda automáticamente al cobrar</span>
+      </label>
+      <div style="font-size:10.5px;color:var(--text3);margin-top:6px;">Enciende la Bisofice 58A, toca Conectar y elígela en la lista. Queda emparejada para esta terminal.</div>
+    </div>
     <button class="btn bp bsm" onclick="saveConfig()">Guardar Config</button>
     <button class="btn bs bsm" onclick="reprintLastTicket()" style="margin-left:6px;">🔁 Reimprimir último ticket</button>
     <!-- Instrucciones Chrome kiosk -->
@@ -2086,6 +2105,19 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- MODAL SELECCIÓN VENDEDOR -->
+<!-- Selección de toppings/preparación al agregar producto (va a la comanda) -->
+<div class="modal-bg" id="prep-modal" style="display:none;">
+  <div class="modal" style="max-width:430px;">
+    <div class="modal-head"><span class="modal-title" id="prep-title">🧩 Elige los toppings</span><button class="btn bs bxs" onclick="cancelarPrep()">✕</button></div>
+    <div id="prep-contador" style="font-size:12px;color:var(--text2);margin-bottom:10px;"></div>
+    <div id="prep-chips" style="display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px;"></div>
+    <div style="display:flex;gap:8px;">
+      <button class="btn bs bfull" onclick="cancelarPrep()">Cancelar</button>
+      <button class="btn bp bfull" id="prep-ok" onclick="confirmarPrep()" disabled style="opacity:.4;">Agregar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Confirmación de vendedor por venta (patrón Square/Toast: cada cobro queda atribuido) -->
 <div class="modal-bg" id="vconf-modal" style="display:none;">
   <div class="modal" style="max-width:340px;">
@@ -2143,6 +2175,7 @@ let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true,
   waReporte:'525646665718',waHora:'21:00',
   ordTiempos:{warn:7,urgent:12}, // minutos: verde → ámbar → rojo en Órdenes
+  comandaAuto:true, // comanda a cocina al cobrar (Bluetooth ESC/POS)
   kpiTargets:{
     ticketPromedio:130,
     conversionCombo:30,
@@ -4714,23 +4747,199 @@ window.setPcat=c=>{poscat=c;renderPOS();};
 window.renderPOS=renderPOS;
 
 let orderStartedAt=null; // timestamp de cuando se inició la orden actual
-function addItem(pid){
+// ═══════════════════════════════════════════════════════════════
+// PREPARACIÓN DEL MENÚ — con qué se hace cada producto
+// 'fijo': composición que se imprime tal cual en la comanda.
+// 'elige': la cajera selecciona toppings al agregar (van a comanda y KDS).
+// ═══════════════════════════════════════════════════════════════
+const PREP_LISTAS={
+  bowl:['Fresa','Blueberry','Plátano','Mango','Peanut butter','Spread de matcha','Almond butter','Granola','Avena','Miel de abeja'],
+  ensalada:['Pollo','Aguacate','Pepino','Jitomate cherry','Zanahoria rallada','Elote','Queso parmesano','Queso panela','Crutones','Almendras','Nuez','Semillas de girasol','Cacahuate','Arándanos','Aceitunas negras','Mango','Fresa'],
+  coctel:['Fresa','Plátano','Mango','Manzana','Sandía','Piña','Melón','Papaya'],
+};
+const PROD_PREP={
+  1001:{elige:1,de:'bowl',base:'Açaí + granola'},
+  1002:{elige:2,de:'bowl',base:'Açaí + granola'},
+  1003:{elige:3,de:'bowl',base:'Açaí + granola'},
+  1004:{elige:1,de:'bowl',base:'Avena overnight + leche + granola'},
+  1005:{elige:2,de:'bowl',base:'Avena overnight + leche + granola'},
+  1006:{elige:3,de:'bowl',base:'Avena overnight + leche + granola'},
+  1073:{elige:3,de:'ensalada',base:'Base de lechuga'},
+  1013:{elige:2,de:'coctel',base:''},
+  1008:{fijo:'Fresa, plátano y leche'},
+  1009:{fijo:'Manzana, leche y zanahoria'},
+  1010:{fijo:'Sandía y limón'},
+  1011:{fijo:'Plátano, mango y leche'},
+  1012:{fijo:'Plátano, crema de almendra, avena y leche'},
+  1063:{fijo:'Matcha, plátano, avena, crema de almendra, miel y leche'},
+  1064:{fijo:'Chai, plátano, avena, crema de almendra, miel y leche'},
+  1065:{fijo:'Fresa, blueberry, plátano, avena y leche'},
+  1019:{fijo:'Jitomate, pepino, aceitunas + queso mozzarella'},
+  1020:{fijo:'Jitomate, pepino, aceitunas + mezcla 4 quesos'},
+  1021:{fijo:'Jitomate, pepino, aceitunas, queso + pechuga de pavo'},
+  1022:{fijo:'Jitomate, pepino, aceitunas, queso + jamón serrano'},
+  1023:{fijo:'Jitomate, pepino, aceitunas, queso + chorizo pamplona'},
+  1070:{fijo:'Espresso doble + leche'},
+  1071:{fijo:'Lata de té + 30 g perlas explosivas'},
+  1015:{fijo:'Susalias + pepino, jícama, zanahoria + chile y limón'},
+};
+// Texto de preparación de un renglón de orden (elegido o fijo)
+function prepTexto(item){
+  const pp=PROD_PREP[item.id];
+  if(item.prep&&item.prep.length) return (pp?.base?pp.base+' · ':'')+item.prep.join(', ');
+  return pp?.fijo||'';
+}
+
+let prepPendiente=null; // {pid, n, lista:[], sel:Set}
+window.abrirPrepModal=pid=>{
+  const p=D.productos.find(x=>x.id===pid); const pp=PROD_PREP[pid];
+  if(!p||!pp?.elige) return;
+  prepPendiente={pid,n:pp.elige,sel:new Set()};
+  $('prep-title').textContent=`🧩 ${p.nombre}`;
+  $('prep-chips').innerHTML=PREP_LISTAS[pp.de].map(t=>`<button class="prep-chip" data-t="${t}" onclick="togglePrepChip(this)">${t}</button>`).join('');
+  actualizarPrepUI();
+  $('prep-modal').style.display='flex';
+};
+window.togglePrepChip=btn=>{
+  const t=btn.dataset.t;
+  if(prepPendiente.sel.has(t)){prepPendiente.sel.delete(t);btn.classList.remove('on');}
+  else if(prepPendiente.sel.size<prepPendiente.n){prepPendiente.sel.add(t);btn.classList.add('on');}
+  else{toast(`Máximo ${prepPendiente.n} — quita uno para cambiar`,1800,'warn');return;}
+  actualizarPrepUI();
+};
+function actualizarPrepUI(){
+  const{n,sel}=prepPendiente;
+  $('prep-contador').textContent=`Elige ${n} · llevas ${sel.size}/${n}`;
+  const ok=$('prep-ok');
+  ok.disabled=sel.size!==n; ok.style.opacity=sel.size===n?'1':'.4';
+}
+window.cancelarPrep=()=>{prepPendiente=null;$('prep-modal').style.display='none';};
+window.confirmarPrep=()=>{
+  if(!prepPendiente||prepPendiente.sel.size!==prepPendiente.n) return;
+  const{pid,sel}=prepPendiente;
+  pushItemOrden(pid,[...sel]);
+  cancelarPrep();
+};
+
+function pushItemOrden(pid,prep){
   const p=D.productos.find(x=>x.id===pid); if(!p) return;
-  const ex=order.find(o=>o.id===pid);
+  const key=prep?prep.join('|'):'';
+  const ex=order.find(o=>o.id===pid&&((o.prep||[]).join('|')===key));
   if(ex) ex.qty++;
-  else order.push({id:pid,nombre:p.nombre,precio:p.precio,qty:1,nota:''});
-  // Capturar timestamp de inicio (primer item de la orden)
+  else order.push({id:pid,nombre:p.nombre,precio:p.precio,qty:1,nota:'',...(prep?{prep}:{})});
   if(!orderStartedAt) orderStartedAt=Date.now();
   renderOrder();
-  // Feedback inmediato — la cajera ve y siente que el producto se agregó
   try{navigator.vibrate&&navigator.vibrate(20);}catch(_){}
-  // Animación visual del item agregado
   const target=document.querySelector(`.pitem[data-pid="${pid}"]`);
   if(target){target.classList.add('pitem-added');setTimeout(()=>target.classList.remove('pitem-added'),250);}
-  // SIEMPRE mostrar el carrito en mobile cuando agregan algo
   if(window.innerWidth<=960){opOpen=true;$('order-panel').classList.remove('hidden');$('op-arr').textContent='▲';}
 }
+
+function addItem(pid){
+  // Productos con toppings a elegir → modal primero; el resto directo
+  if(PROD_PREP[pid]?.elige){abrirPrepModal(pid);return;}
+  pushItemOrden(pid,null);
+}
 window.addItem=addItem;
+
+// ═══════════════════════════════════════════════════════════════
+// COMANDERA BLUETOOTH — Bisofice 58A (ESC/POS por Web Bluetooth)
+// La comanda sale SOLA al cobrar: sin diálogo de impresión.
+// ═══════════════════════════════════════════════════════════════
+const BT_SERVICIOS=[0x18f0,'e7810a71-73ae-499d-8c15-faa9aef0c3f2',0xffe0,0xff00];
+let btComandera={device:null,ch:null};
+function btEstadoUI(){
+  const el=$('bt-estado'); if(!el) return;
+  el.textContent=btComandera.ch?`✓ Conectada: ${btComandera.device?.name||'impresora'}`:'Sin conectar';
+  el.style.color=btComandera.ch?'var(--accent)':'var(--text3)';
+}
+window.conectarImpresoraBT=async()=>{
+  if(!navigator.bluetooth){toast('⚠ Este navegador no tiene Bluetooth web — usa Chrome',4000,'warn');return;}
+  try{
+    const device=await navigator.bluetooth.requestDevice({acceptAllDevices:true,optionalServices:BT_SERVICIOS});
+    const server=await device.gatt.connect();
+    let ch=null;
+    for(const s of await server.getPrimaryServices()){
+      for(const c of await s.getCharacteristics()){
+        if(c.properties.writeWithoutResponse||c.properties.write){ch=c;break;}
+      }
+      if(ch) break;
+    }
+    if(!ch){toast('❌ La impresora no expone canal de escritura',4000,'error');return;}
+    btComandera={device,ch};
+    device.addEventListener('gattserverdisconnected',()=>{btComandera.ch=null;btEstadoUI();});
+    btEstadoUI();
+    toast('✓ Comandera conectada: '+(device.name||'impresora'),3000);
+    logAudit('comandera_conectada',{nombre:device.name||'—'});
+  }catch(e){if(e.name!=='NotFoundError')toast('❌ '+e.message,3500,'error');}
+};
+async function btReconectar(){
+  // Reintento silencioso si el dispositivo sigue emparejado
+  try{
+    if(btComandera.device&&!btComandera.ch){
+      const server=await btComandera.device.gatt.connect();
+      for(const s of await server.getPrimaryServices()){
+        for(const c of await s.getCharacteristics()){
+          if(c.properties.writeWithoutResponse||c.properties.write){btComandera.ch=c;btEstadoUI();return true;}
+        }
+      }
+    }
+  }catch(e){}
+  return !!btComandera.ch;
+}
+// Texto → bytes ESC/POS (la 58A usa codepage ASCII: sin acentos)
+function escposTxt(s){
+  return [...s.normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/ñ/g,'n').replace(/Ñ/g,'N')]
+    .map(c=>{const b=c.charCodeAt(0);return b<128?b:63;});
+}
+function escposComanda(v){
+  const B=[]; const push=(...a)=>B.push(...a); const txt=s=>push(...escposTxt(s));
+  const NL=()=>push(10);
+  push(0x1B,0x40);            // init
+  push(0x1B,0x61,1);          // centrar
+  push(0x1D,0x21,0x11);       // doble alto+ancho
+  txt('COMANDA'); NL();
+  push(0x1D,0x21,0x00);       // normal
+  txt(`${v.ticket}  ${v.hora}`); NL();
+  if(v.cliente){txt(`Cliente: ${v.cliente}`);NL();}
+  if(v.nota){txt(`** ${v.nota} **`);NL();}
+  txt('----------------------------'); NL();
+  push(0x1B,0x61,0);          // izquierda
+  v.items.forEach(i=>{
+    push(0x1D,0x21,0x11);     // producto GRANDE
+    txt(`${i.qty}x ${i.nombre.toUpperCase()}`); NL();
+    push(0x1D,0x21,0x00);
+    const prep=prepTexto(i);
+    if(prep){txt(`  > ${prep}`);NL();}
+    if(i.nota){push(0x1B,0x45,1);txt(`  ** ${i.nota} **`);push(0x1B,0x45,0);NL();}
+    NL();
+  });
+  push(0x1B,0x61,1);
+  txt('----------------------------'); NL();
+  txt(`Atiende: ${v.vendedorNombre||'-'}`); NL();
+  push(10,10,10,10);          // avanzar papel para cortar a mano
+  return new Uint8Array(B);
+}
+async function btEnviar(bytes){
+  if(!btComandera.ch&&!(await btReconectar())) return false;
+  try{
+    const CH=120; // BLE: escribir en trozos
+    for(let i=0;i<bytes.length;i+=CH){
+      const chunk=bytes.slice(i,i+CH);
+      if(btComandera.ch.properties.writeWithoutResponse) await btComandera.ch.writeValueWithoutResponse(chunk);
+      else await btComandera.ch.writeValue(chunk);
+      await new Promise(r=>setTimeout(r,25));
+    }
+    return true;
+  }catch(e){console.warn('BT print:',e);btComandera.ch=null;btEstadoUI();return false;}
+}
+window.printComanda=async v=>{
+  const ok=await btEnviar(escposComanda(v));
+  if(ok) toast('👨‍🍳 Comanda impresa',2000);
+  else if(!window._btAvisado){window._btAvisado=true;toast('🖨 Comandera sin conectar — Config → Conectar impresora',4000,'warn');}
+};
+window.testComanda=()=>printComanda({ticket:'#PRUEBA',hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),cliente:'Prueba',nota:'',vendedorNombre:SESSION?.nombre||'—',items:[{id:1003,qty:1,nombre:'Açaí Bowl 3 Toppings',prep:['Fresa','Mango','Granola'],nota:'sin miel'}]});
+window.reprintComanda=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printComanda(v);};
 
 function getDescuento(){
   const sub=order.reduce((s,o)=>s+o.precio*o.qty,0);
@@ -4760,23 +4969,28 @@ function renderOrder(){
   $('op-tot').textContent=fmt(total);
   const fab=$('fab-order'); if(fab) fab.textContent=cnt>0?cnt:'🛒';
   $('op-items').innerHTML=order.length===0?`<p style="color:var(--text3);font-size:12px;padding:14px 0;text-align:center;">🛒 Toca un producto para agregar</p>`:
-    order.map(o=>`<div class="oi">
+    order.map((o,ix)=>`<div class="oi">
       <div style="flex:1;min-width:0;">
         <div class="oi-name">${o.nombre}</div>
-        <input class="oi-nota" value="${o.nota||''}" placeholder="nota…" oninput="setNota(${o.id},this.value)">
+        ${o.prep&&o.prep.length?`<div class="oi-prep">🧩 ${o.prep.join(' · ')}</div>`:''}
+        <input class="oi-nota" value="${o.nota||''}" placeholder="nota…" oninput="setNotaIdx(${ix},this.value)">
       </div>
       <div class="oi-qty">
-        <button class="qbtn" onclick="chgQty(${o.id},-1)">−</button>
+        <button class="qbtn" onclick="chgQtyIdx(${ix},-1)">−</button>
         <span class="qval">${o.qty}</span>
-        <button class="qbtn" onclick="chgQty(${o.id},1)">+</button>
+        <button class="qbtn" onclick="chgQtyIdx(${ix},1)">+</button>
       </div>
       <span class="oi-price">${fmt(o.precio*o.qty)}</span>
-      <button class="oi-del" onclick="chgQty(${o.id},-99)">✕</button>
+      <button class="oi-del" onclick="chgQtyIdx(${ix},-99)">✕</button>
     </div>`).join('');
 }
 
 window.chgQty=(pid,d)=>{const i=order.findIndex(o=>o.id===pid);if(i<0)return;order[i].qty+=d;if(order[i].qty<=0)order.splice(i,1);renderOrder();};
 window.setNota=(pid,v)=>{const o=order.find(x=>x.id===pid);if(o)o.nota=v;};
+// Por índice de línea: el mismo producto puede tener varias líneas con
+// toppings distintos — el id ya no identifica la línea
+window.chgQtyIdx=(i,d)=>{if(!order[i])return;order[i].qty+=d;if(order[i].qty<=0)order.splice(i,1);renderOrder();};
+window.setNotaIdx=(i,v)=>{if(order[i])order[i].nota=v;};
 window.clearOrder=()=>{order=[];orderStartedAt=null;ventaVendedorOk=false;if($('op-desc-val'))$('op-desc-val').value='';renderOrder();toast('Orden limpiada');};
 window.toggleOP=()=>{opOpen=!opOpen;$('order-panel').classList.toggle('hidden',!opOpen);$('op-arr').textContent=opOpen?'▲':'▼';};
 
@@ -4930,6 +5144,8 @@ async function cobrar(metodo,recibido=0){
     // Inventario es secundario — si falla no debe bloquear la venta
     try{await descontarInventario(venta.items);}catch(invErr){console.warn('Inv:',invErr);}
     printTicket(venta);
+    // Comanda a cocina: automática, directa por Bluetooth (sin diálogo)
+    if(CFG.comandaAuto!==false) printComanda(venta);
     playSaleSound();
     showSaleSuccess(venta);
     // Notif para admin si venta > $500 (solo cuando está en background)
@@ -4967,7 +5183,9 @@ window.cobrar=cobrar;
 function printTicket(v){
   const itemsHTML=v.items.map(i=>{
     const n=i.nombre.length>28?i.nombre.slice(0,28)+'…':i.nombre;
+    const prep=(i.prep&&i.prep.length)?i.prep.join(', '):'';
     return `<div class="tk-item">${n}${i.nota?' <span style="font-size:9px;color:#666;">('+i.nota+')</span>':''}</div>
+    ${prep?`<div style="font-size:9px;padding-left:8px;">+ ${prep}</div>`:''}
     <div class="tk-row"><span style="padding-left:8px;">x${i.qty} @ ${fmt(i.precio)}</span><span>${fmt(i.precio*i.qty)}</span></div>`;
   }).join('');
 
@@ -5220,7 +5438,10 @@ function ordCard(v){
   const done=v.prep.estado==='entregada';
   const cls=done?'':ordTiempoCls(min);
   const est=ORD_EST[v.prep.estado]||ORD_EST.cobrada;
-  const items=v.items.map(i=>`<b>${i.qty}×</b> ${i.nombre}${i.nota?` <span style="color:var(--gold);">📝 ${i.nota}</span>`:''}`).join('<br>');
+  const items=v.items.map(i=>{
+    const prep=prepTexto(i);
+    return `<b>${i.qty}×</b> ${i.nombre}${prep?`<br><span style="font-size:11px;color:var(--accent);padding-left:14px;">🧩 ${prep}</span>`:''}${i.nota?` <span style="color:var(--gold);">📝 ${i.nota}</span>`:''}`;
+  }).join('<br>');
   const totalMin=done?Math.round((v.prep.tsEntrega-(v.tsCobro||v.id))/60000):null;
   return `<div class="ord-card ${cls} ${_ordSeen.has(String(v.id))?'':'ord-nueva'}" data-oid="${v.id}">
     <div class="ord-head">
@@ -5247,6 +5468,7 @@ function ordCard(v){
         <button class="${v.prep.estado==='lista'?'on':''}" onclick="setEstadoOrden(${v.id},'lista')">✅ Lista</button>
       </div>
       <div class="ord-btns">
+        <button class="btn bs" onclick="reprintComanda(${v.id})" title="Reimprimir comanda" style="min-width:52px;">🖨</button>
         <button class="btn bp bfull" onclick="entregarOrden(${v.id})">📦 Orden entregada</button>
       </div>`}
   </div>`;
@@ -9279,6 +9501,8 @@ function renderConfig(){
   if($('cfg-tel')&&CFG.tel)$('cfg-tel').value=CFG.tel;
   if($('cfg-msg')&&CFG.msg)$('cfg-msg').value=CFG.msg;
   if($('cfg-autoprint'))$('cfg-autoprint').checked=CFG.autoPrint!==false;
+  if($('cfg-comanda-auto'))$('cfg-comanda-auto').checked=CFG.comandaAuto!==false;
+  btEstadoUI();
   if($('cfg-wa-num')&&CFG.waReporte)$('cfg-wa-num').value=CFG.waReporte;
   if($('cfg-wa-hora')&&CFG.waHora)$('cfg-wa-hora').value=CFG.waHora;
   if($('cfg-empleados'))$('cfg-empleados').innerHTML=D.empleados.map(e=>`<div class="sr">
@@ -9322,6 +9546,7 @@ window.saveConfig=()=>{
     tel:$('cfg-tel').value.trim(),
     msg:$('cfg-msg').value.trim()||'¡Gracias!',
     autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true,
+    comandaAuto:$('cfg-comanda-auto')?$('cfg-comanda-auto').checked:true,
     waReporte:$('cfg-wa-num')?cleanWANum($('cfg-wa-num').value):'',
     waHora:$('cfg-wa-hora')?$('cfg-wa-hora').value||'21:00':'21:00',
     kpiTargets:prevTargets

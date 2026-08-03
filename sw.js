@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.16'; // Modo Pantalla de Cocina + campana de orden nueva
+const CACHE_NAME = 'el-huerto-v14.17'; // Comandera Bluetooth + toppings por producto
 const ASSETS = [
   '/',
   '/index.html',
