@@ -220,7 +220,7 @@ select option{background:var(--surface2);}
 }
 .pcat:hover{border-color:var(--accent);color:var(--accent);}
 .pcat.on{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700;box-shadow:0 2px 8px rgba(46,125,50,.25);}
-.pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(102px,1fr));gap:7px;}
+.pos-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(116px,1fr));gap:7px;}
 @media(max-width:768px){.pos-grid{grid-template-columns:repeat(4,1fr);gap:6px;}}
 @media(max-width:480px){.pos-grid{grid-template-columns:repeat(3,1fr);gap:6px;}}
 .pitem{
@@ -270,15 +270,15 @@ select option{background:var(--surface2);}
 #op-items{overflow-y:auto;max-height:36vh;overscroll-behavior:contain;}
 .oi{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);}
 .oi:last-child{border-bottom:none;}
-.oi-name{font-size:12px;font-weight:700;line-height:1.25;}
-.oi-nota{width:100%;margin-top:2px;font-size:10.5px;padding:1px 0;border:none!important;border-bottom:1px dashed var(--border)!important;border-radius:0!important;background:transparent!important;color:var(--text2);}
+.oi-name{font-size:13.5px;font-weight:700;line-height:1.25;}
+.oi-nota{width:100%;margin-top:2px;font-size:11.5px;padding:1px 0;border:none!important;border-bottom:1px dashed var(--border)!important;border-radius:0!important;background:transparent!important;color:var(--text2);}
 .oi-nota:focus{outline:none;border-bottom-color:var(--accent)!important;}
 .oi-qty{display:flex;align-items:center;background:var(--surface3);border:1px solid var(--border);border-radius:8px;overflow:hidden;flex-shrink:0;}
 .qbtn{width:26px;height:28px;border:none;background:transparent;color:var(--text);font-size:15px;cursor:pointer;display:flex;align-items:center;justify-content:center;line-height:1;font-weight:700;flex-shrink:0;}
 .qbtn:active{background:var(--accent);color:#fff;}
 @media(max-width:768px){.qbtn{width:33px;height:34px;font-size:18px;}}
-.qval{font-family:'DM Mono',monospace;font-size:12.5px;font-weight:800;min-width:20px;text-align:center;}
-.oi-price{font-family:'DM Mono',monospace;font-size:12px;font-weight:600;color:var(--text);min-width:52px;text-align:right;}
+.qval{font-family:'DM Mono',monospace;font-size:14px;font-weight:800;min-width:22px;text-align:center;}
+.oi-price{font-family:'DM Mono',monospace;font-size:13.5px;font-weight:700;color:var(--text);min-width:58px;text-align:right;}
 .oi-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px;}
 .oi-del:hover{color:var(--red);}
 .ototal-bar{background:var(--surface2);border-radius:var(--rsm);padding:9px 11px;}
@@ -501,19 +501,19 @@ body{
 }
 /* Chip del emoji teñido con el color de la categoría */
 .pi-emoji{
-  width:24px;height:24px;border-radius:7px;
+  width:27px;height:27px;border-radius:8px;
   display:flex;align-items:center;justify-content:center;
-  font-size:14px;margin:0 auto 4px;
+  font-size:16px;margin:0 auto 4px;
   background:color-mix(in srgb, var(--cc) 12%, var(--surface));
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cc) 25%, transparent);
 }
-.piname{font-size:11px;font-weight:800;letter-spacing:-.1px;line-height:1.2;margin-bottom:4px;}
+.piname{font-size:12.5px;font-weight:800;letter-spacing:-.1px;line-height:1.22;margin-bottom:4px;}
 .pidesc{display:none;} /* la descripción sale del tile: la cajera reconoce, no lee */
 .piprice{
   background:color-mix(in srgb, var(--cc) 10%, var(--surface))!important;
   color:var(--cc)!important;
   box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--cc) 22%, transparent);
-  font-size:12px;padding:1px 6px;
+  font-size:13.5px;padding:2px 8px;
 }
 /* Favoritos: anillo dorado + estrella */
 .pitem-fav{box-shadow:0 0 0 2px rgba(249,168,37,.45), 0 4px 14px rgba(26,46,24,.10);position:relative;}
@@ -521,7 +521,7 @@ body{
 /* Encabezado de sección dentro de la grilla */
 .pos-sec{
   grid-column:1/-1;display:flex;align-items:center;gap:7px;
-  margin:3px 0 0;font-size:9.5px;font-weight:800;
+  margin:4px 0 0;font-size:11px;font-weight:800;
   letter-spacing:1.4px;text-transform:uppercase;color:var(--text3);
 }
 /* Panel de orden: oculto hasta que agregan el primer producto (desktop) */
@@ -653,8 +653,8 @@ nav{padding-top:env(safe-area-inset-top);}
   /* POS grid compacto pero con tap cómodo */
   .pos-grid{gap:6px;}
   .pitem{padding:8px 5px 9px;min-height:0;}
-  .piname{font-size:10.5px;}
-  .piprice{font-size:11px;}
+  .piname{font-size:12px;}
+  .piprice{font-size:12.5px;}
 
   /* KPIs tarjeta única */
   .kpi-grid{grid-template-columns:1fr!important;}
@@ -1049,6 +1049,10 @@ nav{padding-top:env(safe-area-inset-top);}
           <button class="btn bs bsm" onclick="go('historial')">📋 Ventas</button>
         </div>
         <div class="pos-cats" id="pcats"></div>
+        <!-- Aviso de caja sin apertura: visible hasta que se registre el fondo del día -->
+        <div id="apertura-banner" style="display:none;margin-top:8px;background:color-mix(in srgb, var(--gold) 14%, var(--surface));border:1.5px solid var(--gold);border-radius:var(--rsm);padding:9px 12px;font-size:12.5px;font-weight:700;color:var(--goldd);cursor:pointer;" onclick="$('apertura-modal').style.display='flex';setTimeout(()=>$('apertura-monto')?.focus(),150);">
+          ⚠ Caja sin apertura — toca aquí para registrar con cuánto efectivo inicia el día
+        </div>
         <!-- Órdenes vivas sin salir de Ventas: toca = avanza etapa, 📦 = entregada -->
         <div id="pos-ord-strip" class="pos-ord-strip" style="display:none;"></div>
       </div>
@@ -1352,14 +1356,19 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- MODAL APERTURA DE CAJA -->
-<div id="apertura-modal" style="display:none;" class="modal-bg" onclick="if(event.target===this)this.style.display='none'">
-  <div class="modal" style="max-width:380px;text-align:center;">
+<!-- Apertura de caja: se registra UNA vez al día por quien abra el turno.
+     Sin tap-afuera: la decisión debe ser explícita (registrar o "ahora no"). -->
+<div id="apertura-modal" style="display:none;" class="modal-bg">
+  <div class="modal" style="max-width:400px;text-align:center;">
     <div class="modal-head"><span class="modal-title">💰 Apertura de Caja</span></div>
-    <p style="font-size:12px;color:var(--text2);margin-bottom:14px;">Registra el fondo inicial con el que abres caja hoy.</p>
-    <div class="fg"><label>Monto del fondo inicial</label><input type="number" id="apertura-monto" placeholder="$0.00" step="0.01"></div>
+    <p style="font-size:12.5px;color:var(--text2);margin-bottom:6px;">Cuenta el efectivo del cajón y regístralo.</p>
+    <p style="font-size:11px;color:var(--text3);margin-bottom:14px;">Se captura <b>una sola vez al día</b> — con este monto el corte de la noche cuadra solo.</p>
+    <div class="fg"><label>¿Con cuánto efectivo inicia la caja hoy?</label>
+      <input type="number" id="apertura-monto" placeholder="$0.00" step="0.01" inputmode="decimal" style="font-size:20px;font-weight:800;text-align:center;padding:12px;">
+    </div>
     <div style="display:flex;gap:8px;">
-      <button class="btn bp bfull" onclick="confirmarApertura()">💰 Registrar Apertura</button>
-      <button class="btn bs" onclick="$('apertura-modal').style.display='none'">Saltar</button>
+      <button class="btn bp bfull" onclick="confirmarApertura()" style="min-height:50px;font-size:14.5px;">💰 Registrar apertura</button>
+      <button class="btn bs" onclick="$('apertura-modal').style.display='none';toast('⚠ Caja sin apertura — podrás registrarla desde el aviso en Ventas',3500,'warn')" style="min-width:88px;">Ahora no</button>
     </div>
   </div>
 </div>
@@ -2336,6 +2345,7 @@ async function completeInit(){
   await migInvFisicoJul2026();
   await migComprasAgo2026();
   await migBobaAgo2026();
+  await migCostco04Ago2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -2874,6 +2884,55 @@ async function migBobaAgo2026(){
   }
   await markMig(migKey);
   logAudit('recetas_actualizadas',{producto:'Boba Tea',cambio:'+30 g perlas explosivas por vaso (\$5.40 de insumo)'});
+}
+
+// ══ FACTURA COSTCO 04-AGO-2026 (ARG 5832696, \$2,965.10 efectivo) ══
+// Además de sumar stock, esta factura trae las PRESENTACIONES reales de
+// proteína (2.48 kg), matcha (800 g) y chai (700 g) — se convierten de
+// 'bote' a gramos para que las recetas descuenten y el food cost cierre.
+async function migCostco04Ago2026(){
+  const migKey='h5costco_04ago26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const hit=D.inventario.find(i=>normInvNombre(i.nombre)===nn||normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(hit) return hit;
+    }
+    return null;
+  };
+  // Convierte un artículo en botes → gramos usando el peso real del envase
+  const aGramos=async(cands,gramosPorBote,masGramos,precioTotal)=>{
+    const inv=buscar(cands); if(!inv) return;
+    if(inv.unit!=='g'){inv.qty=Math.round((inv.qty||0)*gramosPorBote);inv.unit='g';}
+    inv.qty=Math.round(((inv.qty||0)+masGramos)*10)/10;
+    inv.precio=Math.round(precioTotal/masGramos*10000)/10000;
+    await fsSet('inventario',inv);
+  };
+  await aGramos(['Proteína','Proteina'],2480,2480,1599.06);      // ON Gold Standard 2.48 kg (base+IVA)
+  await aGramos(['Matcha'],800,800,319.00);                       // Zoma Tea 800 g
+  await aGramos(['Chai'],700,700,255.20);                         // Gourmet & Healthy 700 g
+  const addC=async(cands,qty,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qty,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;inv.precio=Math.round(precioUnit*(qty/q)*10000)/10000;}
+      else inv.precio=precioUnit;
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+  await addC(['Leche deslactosada','Leche deslactosada light'],12000,'ml',0.0223,'lacteos_proteinas'); // 12×1L \$268
+  await addC(['Jitomate','Tomate en racimo'],907,'g',0.066,'frutas_verduras');                          // \$59.90
+  await addC(['Jamón serrano'],2,'paquete',144.50,'lacteos_proteinas');                                 // 2×250g \$289
+  await addC(['Crema de almendras','Crema de almendra'],765,'g',0.2288,'lacteos_proteinas');            // \$175
+  if(!D.gastos.find(g=>g.ticket==='ARG-5832696')){
+    await fsSet('gastos',{id:++nid,fecha:'2026-08-04',cat:'costco',prov:'Costco',monto:2965.10,
+      ticket:'ARG-5832696',metodo:'efectivo',tipoEstrategico:'general',
+      notas:'Proteína whey 2.48kg, leche deslactosada 12L, matcha 800g, chai 700g, tomate racimo, jamón serrano 2paq, crema almendras 765g'});
+  }
+  await markMig(migKey);
+  logAudit('compras_registradas',{factura:'Costco ARG-5832696',total:2965.10,nota:'proteína/matcha/chai convertidos a gramos con presentación real'});
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -4751,6 +4810,9 @@ function posTile(p,fav=false){
 
 function renderPOS(){
   renderVendedorBar();
+  // Aviso hasta que exista el fondo de apertura del día
+  const ab=$('apertura-banner');
+  if(ab) ab.style.display=D.retiros.find(r=>r.fecha===today()&&r.tipo==='fondo')?'none':'';
   const q=($('pos-q')?.value||'').toLowerCase();
   const ventasCnt=ventasRecientesPorProducto(21);
   const activos=D.productos.filter(p=>p.activo);
@@ -6429,18 +6491,23 @@ window.confirmarApertura=async()=>{
     toast(`💰 Fondo actualizado: ${fmt(monto)}`,3000);
     return;
   }
-  const r={id:Date.now(),fecha:td,monto,tipo:'fondo',concepto:'Fondo de apertura'};
+  const r={id:Date.now(),fecha:td,monto,tipo:'fondo',concepto:'Fondo de apertura',
+    por:SESSION?.nombre||'—',hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false})};
   await fsSet('retiros',r);
+  logAudit('apertura_caja',{monto,por:r.por,hora:r.hora});
   $('apertura-modal').style.display='none';
-  toast(`💰 Apertura registrada: ${fmt(monto)}`);
+  if(typeof renderPOS==='function'&&currentPage==='pos') renderPOS();
+  toast(`💰 Apertura registrada por ${r.por}: ${fmt(monto)} — el corte de hoy cuadrará contra este fondo`,4500);
 };
 
 function checkApertura(){
   const td=today();
   const fondoHoy=D.retiros.find(r=>r.fecha===td&&r.tipo==='fondo');
-  // Solo mostrar modal si no hay fondo Y es admin (empleadas NO pueden abrir caja)
-  if(!fondoHoy && SESSION && SESSION.tipo==='admin'){
+  // Quien abra el turno (Claudia, Juan Pablo o admin) registra el efectivo
+  // inicial UNA sola vez al día — con eso el corte de la noche cuadra.
+  if(!fondoHoy && SESSION){
     $('apertura-modal').style.display='flex';
+    setTimeout(()=>$('apertura-monto')?.focus(),150);
   }
 }
 
@@ -9866,6 +9933,7 @@ const AUD_META={
   gasto_eliminado:['🗑','#c62828'], nomina_pagada:['👩','#6a1b9a'], nomina_pago_eliminado:['🗑','#c62828'],
   merma_registrada:['🍂','#e65100'], respaldo_descargado:['💾','#00695c'], sesion_iniciada:['🔑','#1565c0'],
   orden_estado:['🔔','#6d4c41'], orden_entregada:['📦','#2e7d32'], orden_reabierta:['↩','#e65100'],
+  apertura_caja:['💰','#2e7d32'], compra_mercado:['🧺','#6d4c41'], compras_registradas:['🧾','#6d4c41'],
   orden_compra_creada:['📝','#f57f17'], orden_compra_recibida:['📦','#2e7d32']
 };
 function renderBitacora(){
