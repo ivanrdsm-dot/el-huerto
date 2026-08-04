@@ -802,6 +802,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <button class="ntab" onclick="go('historial')">📋 Historial</button>
     <button class="ntab" onclick="go('caja')">💰 Caja</button>
     <button class="ntab" onclick="go('gastos')">📉 Gastos</button>
+    <button class="ntab" onclick="go('mercado')">🧺 Compras</button>
     <button class="ntab" onclick="go('nomina')">👩 Nómina</button>
     <button class="ntab" onclick="go('vendedores')">🏆 Vendedores</button>
     <button class="ntab" onclick="go('clientes')">👥 Clientes</button>
@@ -834,6 +835,7 @@ nav{padding-top:env(safe-area-inset-top);}
   <button class="mnbtn active" onclick="go('pos')"><span class="mni">🛒</span>Ventas</button>
   <button class="mnbtn" onclick="go('ordenes')"><span class="mni">🔔</span>Órdenes</button>
   <button class="mnbtn" onclick="go('inventario')"><span class="mni">📦</span>Inventario</button>
+  <button class="mnbtn" onclick="go('mercado')"><span class="mni">🧺</span>Compras</button>
   <button class="mnbtn" onclick="go('caja')"><span class="mni">💰</span>Caja</button>
   <button class="mnbtn" onclick="go('nomina')"><span class="mni">👩</span>Nómina</button>
   <button class="mnbtn" onclick="go('ajustes')"><span class="mni">🔧</span>Ajustes</button>
@@ -1107,6 +1109,35 @@ nav{padding-top:env(safe-area-inset-top);}
   <div id="ord-grid" class="ord-grid"></div>
   <!-- Historial + reportes del día -->
   <div id="ord-stats" style="margin-top:14px;"></div>
+</div>
+
+<!-- ══ MODO MERCADO — compras desde el celular ══ -->
+<div id="page-mercado" class="page">
+  <div class="sh">
+    <span class="st">🧺 Compras</span>
+    <span style="font-size:11px;color:var(--text3);">captura en el mercado → sube gasto + inventario + costos</span>
+  </div>
+  <div class="card" style="padding:12px;margin-bottom:10px;">
+    <div style="display:grid;grid-template-columns:1fr 130px;gap:8px;">
+      <div class="fg" style="margin:0;"><label>Proveedor</label><input id="mc-prov" placeholder="Ej: El Zorro" list="pvdl" oninput="MC.prov=this.value;mcSave()"></div>
+      <div class="fg" style="margin:0;"><label>Pago</label><select id="mc-metodo" onchange="MC.metodo=this.value;mcSave()"><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta</option></select></div>
+    </div>
+  </div>
+  <div class="card" style="padding:12px;margin-bottom:10px;">
+    <div class="ct">🧠 Se está acabando — toca para agregar</div>
+    <div id="mc-sug" style="display:flex;flex-wrap:wrap;gap:6px;"></div>
+    <div class="fg" style="margin:10px 0 0;"><input id="mc-q" placeholder="🔍 Buscar cualquier artículo del inventario…" oninput="renderMercadoSug()"></div>
+    <div id="mc-busq" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;"></div>
+    <button class="btn bs bsm" onclick="mcNuevoItem()" style="margin-top:8px;">➕ Artículo nuevo (no está en inventario)</button>
+  </div>
+  <div id="mc-items"></div>
+  <div class="card" id="mc-total-bar" style="position:sticky;bottom:64px;padding:12px;display:none;z-index:50;box-shadow:0 -4px 16px rgba(0,0,0,.12);">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+      <span style="font-weight:900;font-size:14px;">TOTAL COMPRA</span>
+      <span class="mono" id="mc-total" style="font-size:23px;font-weight:900;color:var(--accent);">$0.00</span>
+    </div>
+    <button class="btn bp bfull" onclick="registrarCompra()" style="min-height:54px;font-size:15px;font-weight:800;">✓ Registrar compra</button>
+  </div>
 </div>
 
 <!-- ══ HISTORIAL ══ -->
@@ -4338,7 +4369,7 @@ const EMP_PASSWORDS = {}; // Populated from empleados.pin field
 // (PINs de empleadas ahora en EMP_PASS_HASH arriba — mismo PIN, distinto almacenamiento)
 // Páginas restringidas a admin solamente (nadie más entra)
 // Inventario lo ven TODAS las empleadas (Adilene y Claudia) para captura diaria
-const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','kpis','clientes'];
+const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','kpis','clientes','mercado'];
 // Páginas que Clau (gerente) puede ver además de ventas
 const GERENTE_PERMS = ['kpis']; // Claudia ve KPIs (lectura). Inventario lo ven todas (no es ADMIN_ONLY ni GERENTE_PERMS).
 // ID de Clau
@@ -4940,6 +4971,123 @@ window.printComanda=async v=>{
 };
 window.testComanda=()=>printComanda({ticket:'#PRUEBA',hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),cliente:'Prueba',nota:'',vendedorNombre:SESSION?.nombre||'—',items:[{id:1003,qty:1,nombre:'Açaí Bowl 3 Toppings',prep:['Fresa','Mango','Granola'],nota:'sin miel'}]});
 window.reprintComanda=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printComanda(v);};
+
+// ═══════════════════════════════════════════════════════════════
+// MODO MERCADO — captura de compras desde el celular
+// Lista inteligente desde el stock (agotados/bajos primero), captura
+// rápida de cantidad + $/unidad con importe que cuadra en vivo, y al
+// confirmar: gasto PRIMERO (registro de dinero), luego inventario con
+// cantidades y costo por unidad. El borrador vive en localStorage:
+// si el teléfono se bloquea en el mercado, la lista no se pierde.
+// ═══════════════════════════════════════════════════════════════
+let MC={prov:'',metodo:'efectivo',items:[]};
+function mcSave(){try{localStorage.setItem('h5compra_draft',JSON.stringify(MC));}catch(e){}}
+try{const d=localStorage.getItem('h5compra_draft');if(d)MC=JSON.parse(d);}catch(e){}
+
+window.mcAddInv=id=>{
+  const inv=D.inventario.find(i=>i.id==id); if(!inv) return;
+  if(MC.items.find(x=>x.invId==inv.id)){toast('Ya está en tu lista',1500,'warn');return;}
+  MC.items.push({invId:inv.id,nombre:inv.nombre,unit:inv.unit||'kg',qty:'',precio:'',importe:''});
+  mcSave();renderMercado();
+  setTimeout(()=>document.querySelector(`#mci-${MC.items.length-1} .mc-qty`)?.focus(),100);
+};
+window.mcNuevoItem=()=>{
+  const n=prompt('Nombre del artículo nuevo:'); if(!n||!n.trim()) return;
+  const u=(prompt('Unidad (kg, g, pz, L, bote, caja…):','kg')||'kg').trim();
+  MC.items.push({invId:null,nombre:n.trim(),unit:u,qty:'',precio:'',importe:'',nuevo:true});
+  mcSave();renderMercado();
+};
+window.mcDel=ix=>{MC.items.splice(ix,1);mcSave();renderMercado();};
+// Cuadre bidireccional: qty×precio→importe, o importe÷qty→precio
+window.mcUpd=(ix,campo,val)=>{
+  const it=MC.items[ix]; if(!it) return;
+  it[campo]=val;
+  const q=parseFloat(it.qty)||0, p=parseFloat(it.precio)||0, im=parseFloat(it.importe)||0;
+  if(campo==='importe'&&q>0) it.precio=(im/q).toFixed(2);
+  else if(q>0&&p>0) it.importe=(q*p).toFixed(2);
+  mcSave();
+  // Actualiza solo los campos calculados (sin re-render: no pierde el foco)
+  const row=document.getElementById('mci-'+ix);
+  if(row){
+    const pEl=row.querySelector('.mc-precio'), iEl=row.querySelector('.mc-importe');
+    if(campo!=='precio'&&pEl&&document.activeElement!==pEl) pEl.value=it.precio;
+    if(campo!=='importe'&&iEl&&document.activeElement!==iEl) iEl.value=it.importe;
+  }
+  mcTotalUI();
+};
+const mcTotal=()=>MC.items.reduce((s,x)=>s+(parseFloat(x.importe)||0),0);
+function mcTotalUI(){
+  if($('mc-total'))$('mc-total').textContent=fmt(mcTotal());
+  if($('mc-total-bar'))$('mc-total-bar').style.display=MC.items.length?'':'none';
+}
+window.renderMercadoSug=()=>{
+  const q=($('mc-q')?.value||'').toLowerCase();
+  const enLista=new Set(MC.items.map(x=>x.invId));
+  const items=D.inventario.filter(i=>i.catOf!=='equipo');
+  const orden={agotado:0,bajo:1,medio:2};
+  const sug=items.map(i=>({i,e:invEstadoStock(i)}))
+    .filter(x=>x.e.estado in orden&&!enLista.has(x.i.id))
+    .sort((a,b)=>orden[a.e.estado]-orden[b.e.estado]).slice(0,14);
+  if($('mc-sug'))$('mc-sug').innerHTML=sug.length
+    ?sug.map(({i,e})=>`<button class="prep-chip" onclick="mcAddInv(${i.id})">${e.icono} ${i.nombre} <span style="font-weight:400;color:var(--text3);">(${i.qty||0} ${i.unit})</span></button>`).join('')
+    :'<span style="font-size:11.5px;color:var(--text3);">Nada urgente 🎉 — busca abajo lo que necesites</span>';
+  const res=q?items.filter(i=>i.nombre.toLowerCase().includes(q)&&!enLista.has(i.id)).slice(0,10):[];
+  if($('mc-busq'))$('mc-busq').innerHTML=res.map(i=>`<button class="prep-chip" onclick="mcAddInv(${i.id})">${i.nombre} <span style="font-weight:400;color:var(--text3);">(${i.qty||0} ${i.unit})</span></button>`).join('');
+};
+function renderMercado(){
+  if($('mc-prov')&&document.activeElement!==$('mc-prov'))$('mc-prov').value=MC.prov||'';
+  if($('mc-metodo'))$('mc-metodo').value=MC.metodo||'efectivo';
+  renderMercadoSug();
+  if($('mc-items'))$('mc-items').innerHTML=MC.items.map((x,ix)=>`
+    <div class="card" id="mci-${ix}" style="padding:10px 12px;margin-bottom:8px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+        <b style="font-size:13.5px;">${x.nombre} ${x.nuevo?'<span class="badge xb">nuevo</span>':''}</b>
+        <button class="oi-del" onclick="mcDel(${ix})" style="font-size:16px;">✕</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;">
+        <div class="fg" style="margin:0;"><label>Cantidad (${x.unit})</label><input class="mc-qty" type="number" inputmode="decimal" step="any" value="${x.qty}" oninput="mcUpd(${ix},'qty',this.value)" style="font-size:15px;font-weight:700;text-align:center;"></div>
+        <div class="fg" style="margin:0;"><label>$ por ${x.unit}</label><input class="mc-precio" type="number" inputmode="decimal" step="any" value="${x.precio}" oninput="mcUpd(${ix},'precio',this.value)" style="font-size:15px;text-align:center;"></div>
+        <div class="fg" style="margin:0;"><label>Importe $</label><input class="mc-importe" type="number" inputmode="decimal" step="any" value="${x.importe}" oninput="mcUpd(${ix},'importe',this.value)" style="font-size:15px;font-weight:700;text-align:center;"></div>
+      </div>
+    </div>`).join('');
+  mcTotalUI();
+}
+window.registrarCompra=async()=>{
+  MC.prov=$('mc-prov')?.value?.trim()||MC.prov;
+  MC.metodo=$('mc-metodo')?.value||'efectivo';
+  if(!MC.prov){toast('⚠ Pon el proveedor',2400,'warn');$('mc-prov')?.focus();return;}
+  const listos=MC.items.filter(x=>(parseFloat(x.qty)||0)>0&&(parseFloat(x.importe)||0)>0);
+  const incompletos=MC.items.length-listos.length;
+  if(!listos.length){toast('⚠ Captura cantidad e importe de al menos un artículo',3000,'warn');return;}
+  const total=Math.round(listos.reduce((s,x)=>s+parseFloat(x.importe),0)*100)/100;
+  if(!confirm(`Compra en ${MC.prov}:\n${listos.map(x=>`· ${x.qty} ${x.unit} ${x.nombre} — $${x.importe}`).join('\n')}\n\nTOTAL: ${fmt(total)}${incompletos?`\n(${incompletos} renglón(es) sin completar se descartan)`:''}\n\n¿Registrar? Se suma a gastos e inventario.`)) return;
+  let nid=Date.now();
+  // 1) El dinero primero: si el gasto no entra, no se toca inventario
+  const g={id:nid,fecha:today(),cat:MC.prov.toLowerCase().includes('costco')?'costco':'proveedor',
+    prov:MC.prov,monto:total,ticket:'COMPRA-'+String(nid).slice(-6),metodo:MC.metodo,tipoEstrategico:'general',
+    notas:listos.map(x=>`${x.qty} ${x.unit} ${x.nombre} $${x.importe}`).join(' · ')};
+  const ok=await fsSet('gastos',g);
+  if(!ok){toast('❌ Sin conexión: la compra NO se registró. Tu lista sigue guardada — reintenta con señal.',5500,'error');return;}
+  // 2) Inventario: suma cantidades y fija costo por unidad
+  const omitidos=[];
+  for(const x of listos){
+    let inv=x.invId?D.inventario.find(i=>i.id==x.invId):null;
+    const qty=parseFloat(x.qty), precio=parseFloat(x.precio)||parseFloat(x.importe)/qty;
+    if(inv){
+      const qc=qtyToInvUnit(qty,x.unit,inv.unit);
+      if(qc!=null){inv.qty=Math.round(((inv.qty||0)+qc)*1000)/1000;inv.precio=Math.round(precio*(qty/qc)*10000)/10000;}
+      else{inv.precio=Math.round(precio*10000)/10000;omitidos.push(inv.nombre);}
+    }else{
+      inv={id:++nid,nombre:x.nombre,cat:'otros',catOf:'abarrotes',qty,unit:x.unit,min:0,precio:Math.round(precio*10000)/10000};
+      D.inventario.push(inv);
+    }
+    await fsSet('inventario',inv);
+  }
+  logAudit('compra_mercado',{prov:MC.prov,total,articulos:listos.length,ticket:g.ticket,omitidos:omitidos.length?omitidos:undefined});
+  MC={prov:'',metodo:'efectivo',items:[]};mcSave();
+  renderMercado();
+  toast(`✓ ${fmt(total)} en ${MC.prov||g.prov} — gastos e inventario actualizados${omitidos.length?' · ⚠ revisar unidades: '+omitidos.join(', '):''}`,5500);
+};
 
 function getDescuento(){
   const sub=order.reduce((s,o)=>s+o.precio*o.qty,0);
@@ -9968,6 +10116,7 @@ const PAGE_RENDERERS={
   dashboard: ()=>renderDashboard(),
   pos: ()=>{renderPOS();renderOrder();},
   ordenes: ()=>renderOrdenes(),
+  mercado: ()=>renderMercado(),
   historial: ()=>renderHistorial(),
   caja: ()=>renderCaja(),
   gastos: ()=>renderGastos(),

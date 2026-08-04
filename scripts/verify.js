@@ -37,7 +37,8 @@ const FNS = ['cobrar', 'renderOrder', 'renderPOS', 'realizarCorte', 'calcDia',
   'pedirVendedorVenta', 'confVendedor', 'enviarResumenCorteWA', 'checkAutoBackup',
   'fsSetCritical', 'empsActivos', 'renderOrdenes', 'entregarOrden', 'avanzarOrden', 'reabrirOrden', 'setEstadoOrden',
   'toggleKDS', 'playNewOrderSound', 'checkNuevaOrdenSound',
-  'printComanda', 'conectarImpresoraBT', 'escposComanda', 'abrirPrepModal', 'pushItemOrden', 'prepTexto'];
+  'printComanda', 'conectarImpresoraBT', 'escposComanda', 'abrirPrepModal', 'pushItemOrden', 'prepTexto',
+  'renderMercado', 'registrarCompra', 'mcAddInv'];
 FNS.forEach(fn => {
   const re = new RegExp(`(function ${fn}\\b|window\\.${fn}\\s*=|const ${fn}\\s*=)`);
   if (re.test(html)) ok(fn); else fail(`función no encontrada: ${fn}`);
@@ -48,7 +49,8 @@ console.log('\n[3/5] Elementos de UI');
 const IDS = ['page-pos', 'order-panel', 'op-items', 'op-tot', 'pcats', 'pin-modal',
   'cobro-modal', 'vconf-modal', 'vend-modal', 'corte-contado', 'corte-semaforo',
   'corte-nota', 'lock-emp-btns', 'page-ordenes', 'ord-grid', 'ord-tabs', 'ord-stats',
-  'prep-modal', 'prep-chips', 'bt-estado', 'cfg-comanda-auto'];
+  'prep-modal', 'prep-chips', 'bt-estado', 'cfg-comanda-auto',
+  'page-mercado', 'mc-items', 'mc-sug', 'mc-total-bar'];
 IDS.forEach(id => {
   if (html.includes(`id="${id}"`)) ok('#' + id); else fail(`elemento no encontrado: #${id}`);
 });
