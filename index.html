@@ -337,6 +337,17 @@ body.kds-mode .st{font-size:20px;}
 .prep-chip.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));color:var(--accent);transform:scale(1.05);}
 .prep-chip:active{transform:scale(.93);}
 .oi-prep{font-size:10.5px;color:var(--accent);margin-top:1px;line-height:1.3;}
+/* Strip de órdenes vivas dentro del POS */
+.pos-ord-strip{display:flex;gap:7px;overflow-x:auto;padding:2px 0 5px;margin-top:8px;scrollbar-width:none;}
+.pos-ord-strip::-webkit-scrollbar{display:none;}
+.pos-oc{flex:0 0 auto;display:flex;align-items:center;gap:7px;background:var(--surface);border:1.5px solid var(--border);border-left:4px solid var(--accent);border-radius:10px;padding:7px 10px;cursor:pointer;transition:all .18s ease;}
+.pos-oc:active{transform:scale(.95);}
+.pos-oc.o-warn{border-left-color:var(--gold);}
+.pos-oc.o-urgent{border-left-color:var(--red);animation:ordPulse 1.6s ease-in-out infinite;}
+.pos-oc .ord-timer{font-size:14px;}
+.pos-oc-folio{font-family:'DM Mono',monospace;font-weight:800;font-size:11.5px;}
+.pos-oc-est{font-size:15px;}
+.pos-oc-done{background:none;border:none;font-size:17px;cursor:pointer;padding:2px 3px;}
 .vconf-btn{display:flex;align-items:center;gap:10px;width:100%;padding:12px 14px;background:var(--surface2);border:2px solid var(--border);border-radius:var(--rsm);color:var(--text);font-size:14.5px;font-weight:700;cursor:pointer;min-height:54px;}
 .vconf-btn:active{transform:scale(.97);background:var(--surface3);}
 .vconf-av{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-weight:700;font-size:15px;color:#1a2e18;flex-shrink:0;}
@@ -828,15 +839,17 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
 </nav>
 
+<!-- Orden por frecuencia de uso: lo operativo primero, lo administrativo después.
+     canAccess oculta lo restringido: las empleadas ven Ventas/Órdenes/Inventario/Reloj/Perfil -->
 <div class="mnav">
-  <button class="mnbtn" onclick="go('dashboard')"><span class="mni">🏠</span>Inicio</button>
-  <button class="mnbtn" onclick="go('miperfil')"><span class="mni">👤</span>Perfil</button>
-  <button class="mnbtn" onclick="go('reloj')"><span class="mni">🕐</span>Reloj</button>
   <button class="mnbtn active" onclick="go('pos')"><span class="mni">🛒</span>Ventas</button>
   <button class="mnbtn" onclick="go('ordenes')"><span class="mni">🔔</span>Órdenes</button>
-  <button class="mnbtn" onclick="go('inventario')"><span class="mni">📦</span>Inventario</button>
-  <button class="mnbtn" onclick="go('mercado')"><span class="mni">🧺</span>Compras</button>
   <button class="mnbtn" onclick="go('caja')"><span class="mni">💰</span>Caja</button>
+  <button class="mnbtn" onclick="go('mercado')"><span class="mni">🧺</span>Compras</button>
+  <button class="mnbtn" onclick="go('inventario')"><span class="mni">📦</span>Inventario</button>
+  <button class="mnbtn" onclick="go('dashboard')"><span class="mni">🏠</span>Inicio</button>
+  <button class="mnbtn" onclick="go('reloj')"><span class="mni">🕐</span>Reloj</button>
+  <button class="mnbtn" onclick="go('miperfil')"><span class="mni">👤</span>Perfil</button>
   <button class="mnbtn" onclick="go('nomina')"><span class="mni">👩</span>Nómina</button>
   <button class="mnbtn" onclick="go('ajustes')"><span class="mni">🔧</span>Ajustes</button>
 </div>
@@ -1036,6 +1049,8 @@ nav{padding-top:env(safe-area-inset-top);}
           <button class="btn bs bsm" onclick="go('historial')">📋 Ventas</button>
         </div>
         <div class="pos-cats" id="pcats"></div>
+        <!-- Órdenes vivas sin salir de Ventas: toca = avanza etapa, 📦 = entregada -->
+        <div id="pos-ord-strip" class="pos-ord-strip" style="display:none;"></div>
       </div>
       <div class="card" style="padding:10px;flex:1;">
         <div class="pos-grid" id="pgrid"></div>
@@ -5662,6 +5677,25 @@ function renderOrdenes(){
   if(esAdmin){const t=CFG.ordTiempos||{warn:7,urgent:12};if($('ord-cfg-warn'))$('ord-cfg-warn').value=t.warn;if($('ord-cfg-urgent'))$('ord-cfg-urgent').value=t.urgent;}
   renderOrdenesGrid();
   renderOrdStats();
+  renderPosOrdenes();
+}
+
+// Strip de órdenes vivas en el POS: la cajera trackea sin cambiar de página
+function renderPosOrdenes(){
+  const el=$('pos-ord-strip'); if(!el) return;
+  const act=[...ordActivas()].sort((a,b)=>(a.tsCobro||a.id)-(b.tsCobro||b.id));
+  if(!act.length){el.style.display='none';el.innerHTML='';return;}
+  el.style.display='flex';
+  el.innerHTML=act.map(v=>{
+    const ts=v.tsCobro||v.id, min=(Date.now()-ts)/60000;
+    const est=ORD_EST[v.prep.estado]||ORD_EST.cobrada;
+    return `<div class="pos-oc ${ordTiempoCls(min)}" onclick="avanzarOrden(${v.id})" title="${v.items.map(i=>i.qty+'× '+i.nombre).join(' · ')} — toca para avanzar (${est.label})">
+      <span class="pos-oc-folio">${v.ticket}</span>
+      <span class="ord-timer" data-tsc="${ts}">${fmtMinSec(Date.now()-ts)}</span>
+      <span class="pos-oc-est">${est.icon}</span>
+      <button class="pos-oc-done" onclick="event.stopPropagation();entregarOrden(${v.id})" title="Orden entregada">📦</button>
+    </div>`;
+  }).join('');
 }
 
 // ── Acciones (todas auditadas; doble entrega imposible) ──
@@ -5728,13 +5762,13 @@ window.reabrirOrden=async id=>{
 // ── Timer en vivo: solo actualiza textos (no re-render completo) ──
 const _ordNotified=new Set();
 setInterval(()=>{
-  if(currentPage!=='ordenes') return;
+  if(currentPage!=='ordenes'&&currentPage!=='pos') return;
   const t=CFG.ordTiempos||{warn:7,urgent:12};
   document.querySelectorAll('.ord-timer[data-tsc]').forEach(el=>{
     const ts=parseFloat(el.dataset.tsc);
     const ms=Date.now()-ts, min=ms/60000;
     el.textContent=fmtMinSec(ms);
-    const card=el.closest('.ord-card');
+    const card=el.closest('.ord-card,.pos-oc');
     if(card){card.classList.remove('o-ok','o-warn','o-urgent');card.classList.add(ordTiempoCls(min));}
     // Aviso discreto al cruzar el umbral urgente (una vez por orden)
     const oid=card?.dataset.oid;
@@ -8049,7 +8083,7 @@ function renderReloj(){
 
   // Tarjetas de empleadas
   if($('reloj-cards')){
-    $('reloj-cards').innerHTML=D.empleados.map(e=>{
+    $('reloj-cards').innerHTML=empsActivos().map(e=>{
       const abierto=getCheckinHoy(e.id);
       const todosHoy=D.checkins.filter(c=>c.empId===e.id && c.fecha===td);
       const minsHoy=calcMinsFromCheckins(todosHoy, true);
@@ -8082,7 +8116,7 @@ function renderReloj(){
 
   // Reporte semanal
   const mon=$('reloj-sem')?.value||getMonday(today());
-  const empData=D.empleados.map(e=>({emp:e,...getHorasSemana(e.id,mon)}));
+  const empData=empsActivos().map(e=>({emp:e,...getHorasSemana(e.id,mon)}));
 
   if($('reloj-week-table')){
     const dayNames=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
@@ -8551,8 +8585,8 @@ function renderMiPerfil(){
     if(sel){
       sel.style.display='';
       const prevVal=sel.value;
-      sel.innerHTML=D.empleados.map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
-      sel.value=prevVal||D.empleados[0]?.id||'';
+      sel.innerHTML=empsActivos().map(e=>`<option value="${e.id}">${e.nombre}</option>`).join('');
+      sel.value=prevVal||empsActivos()[0]?.id||'';
     }
     empId=parseInt(sel?.value)||D.empleados[0]?.id;
   } else if(SESSION?.tipo==='emp'){
@@ -8719,7 +8753,7 @@ window.pdfReporteHoras=()=>{
   pdf.text(`Semana: ${mon} al ${localDate(endD)}`,14,26);
 
   const dayNames=['Lun','Mar','Mié','Jue','Vie','Sáb','Dom'];
-  const empData=D.empleados.map(e=>({emp:e,...getHorasSemana(e.id,mon)}));
+  const empData=empsActivos().map(e=>({emp:e,...getHorasSemana(e.id,mon)}));
 
   // Construir tabla
   const head=[['Día',...empData.flatMap(ed=>[ed.emp.nombre+' Entrada',ed.emp.nombre+' Salida',ed.emp.nombre+' Horas'])]];
@@ -9930,7 +9964,7 @@ function renderAjustes(){
     }
     // Quién falta
     const presentIds=new Set(chkHoy.map(c=>c.empId));
-    const faltantes=D.empleados.filter(e=>!presentIds.has(e.id));
+    const faltantes=empsActivos().filter(e=>!presentIds.has(e.id));
     if(faltantes.length>0){
       $('checkin-hoy').innerHTML+=faltantes.map(e=>`
         <div class="checkin-row" style="opacity:.5;">
@@ -10114,7 +10148,7 @@ let currentPage='pos'; // page-pos es la activa por default en el HTML
 
 const PAGE_RENDERERS={
   dashboard: ()=>renderDashboard(),
-  pos: ()=>{renderPOS();renderOrder();},
+  pos: ()=>{renderPOS();renderOrder();renderPosOrdenes();},
   ordenes: ()=>renderOrdenes(),
   mercado: ()=>renderMercado(),
   historial: ()=>renderHistorial(),

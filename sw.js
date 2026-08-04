@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.19'; // Modo Mercado: compras desde el celular
+const CACHE_NAME = 'el-huerto-v14.20'; // Órdenes en el POS + reloj sin bajas + menú por rol
 const ASSETS = [
   '/',
   '/index.html',
