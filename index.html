@@ -5551,7 +5551,19 @@ function renderTarjetaPublica(){
   const el=$('tarjeta-view');if(!el)return;
   el.style.display='block';
   const c=D.lealtad.find(x=>x.codigo===_tarjetaCode.toUpperCase());
-  if(!c){el.innerHTML='<div style="padding:70px 20px;text-align:center;font-family:sans-serif;color:#888;">Cargando tu tarjeta… 🌱</div>';return;}
+  if(!c){
+    // Si los datos ya cargaron y no existe, es un código inválido (no "cargando")
+    const cargado=(typeof READY!=='undefined'&&READY)||D.productos.length>0;
+    el.innerHTML=cargado
+      ?`<div style="padding:60px 24px;text-align:center;font-family:'DM Sans',sans-serif;color:#8a7a68;">
+          <div style="font-size:42px;margin-bottom:12px;">🌱</div>
+          <div style="font-family:'Playfair Display',serif;font-size:22px;color:#D9481C;font-weight:800;margin-bottom:8px;">El Huerto</div>
+          <div style="font-size:14px;margin-bottom:6px;">No encontramos la tarjeta <b>${_tarjetaCode}</b></div>
+          <div style="font-size:12px;">Revisa el link o pide tu tarjeta en el mostrador de Ciudad UP.</div>
+        </div>`
+      :'<div style="padding:70px 20px;text-align:center;font-family:sans-serif;color:#888;">Cargando tu tarjeta… 🌱</div>';
+    return;
+  }
   const meta=ltMeta();
   const sellos=[...Array(meta)].map((_,i)=>`<div style="font-size:36px;line-height:1;filter:${i<(c.sellos||0)?'none':'grayscale(1) opacity(.25)'};">🧑‍🌾</div>`).join('');
   el.innerHTML=`<div style="max-width:430px;margin:26px auto;padding:0 14px;font-family:'DM Sans',sans-serif;">
