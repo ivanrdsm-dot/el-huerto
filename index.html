@@ -354,6 +354,8 @@ body.kds-mode .ord-seg button{min-height:58px;font-size:13.5px;}
 body.kds-mode .ord-btns .btn{min-height:58px;font-size:15px;}
 body.kds-mode .pcat{font-size:13.5px;padding:9px 15px;}
 body.kds-mode .st{font-size:20px;}
+/* Modo tarjeta pública: solo se ve la tarjeta del cliente */
+body.modo-tarjeta nav,body.modo-tarjeta .mnav,body.modo-tarjeta #lock-screen,body.modo-tarjeta #loader,body.modo-tarjeta .fab,body.modo-tarjeta main{display:none!important;}
 /* Chips de toppings (selector de preparación) */
 .prep-chip{padding:11px 14px;border-radius:20px;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s ease;min-height:44px;}
 .prep-chip.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));color:var(--accent);transform:scale(1.05);}
@@ -1090,6 +1092,8 @@ nav{padding-top:env(safe-area-inset-top);}
         <span id="op-arr" style="color:var(--text3);font-size:12px;">▲</span>
       </div>
       <div id="op-items"></div>
+      <!-- Cliente de lealtad: escanear QR, ver sellos y canjear premio -->
+      <div id="op-lealtad"></div>
       <div class="ototal-bar">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:4px;"><span>Subtotal</span><span id="op-sub" class="mono">$0.00</span></div>
         <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;padding-bottom:5px;border-bottom:1px dashed var(--border);">
@@ -1546,6 +1550,22 @@ nav{padding-top:env(safe-area-inset-top);}
 <div id="page-clientes" class="page">
   <div class="sh"><span class="st">👥 Clientes</span>
     <span style="font-size:11px;color:var(--text3);">Detectados por tel/nombre capturado en el POS</span>
+  </div>
+  <!-- Programa de lealtad: tarjetas, sellos y campañas -->
+  <div class="card" style="margin-bottom:12px;padding:14px;">
+    <div class="sh" style="margin-bottom:10px;"><span class="ct" style="margin-bottom:0;">🎟 Programa de Lealtad</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn bor bsm" onclick="campanaInactivos()">📣 Campaña: inactivos 14+ días</button>
+      </div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:12px;">
+      <input id="lp-nombre" placeholder="Nombre del cliente">
+      <input id="lp-tel" placeholder="WhatsApp (10 dígitos)" inputmode="numeric">
+      <button class="btn bp bsm" onclick="altaLealtadPanel()">➕ Crear tarjeta</button>
+    </div>
+    <div id="lealtad-kpis" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
+    <div id="lealtad-tabla" style="overflow-x:auto;"></div>
+    <div id="lealtad-campana" style="margin-top:10px;"></div>
   </div>
   <div class="g4" style="margin-bottom:12px;" id="cl-kpis"></div>
   <div class="card">
@@ -2187,6 +2207,30 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- MODAL SELECCIÓN VENDEDOR -->
+<!-- Escáner de tarjeta de lealtad (cámara + código manual + alta rápida) -->
+<div class="modal-bg" id="scan-modal" style="display:none;">
+  <div class="modal" style="max-width:420px;">
+    <div class="modal-head"><span class="modal-title">🎟 Tarjeta de lealtad</span><button class="btn bs bxs" onclick="cerrarScan()">✕</button></div>
+    <video id="scan-video" playsinline style="display:none;width:100%;border-radius:10px;background:#000;max-height:260px;object-fit:cover;margin-bottom:10px;"></video>
+    <div id="scan-hint" style="font-size:11.5px;color:var(--text3);margin-bottom:10px;text-align:center;">Apunta la cámara al QR de la tarjeta del cliente</div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <input id="scan-code" placeholder="…o escribe el código (EH-XXXXXX) / nombre / tel" oninput="buscarLealtadUI(this.value)" style="flex:1;">
+    </div>
+    <div id="scan-results" style="display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto;"></div>
+    <div style="border-top:1px dashed var(--border);margin-top:12px;padding-top:12px;">
+      <div style="font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:700;margin-bottom:8px;">➕ Cliente nuevo</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px;">
+        <input id="lt-nombre" placeholder="Nombre">
+        <input id="lt-tel" placeholder="WhatsApp (10 díg.)" inputmode="numeric">
+      </div>
+      <button class="btn bp bfull" onclick="altaLealtad()">🎟 Crear tarjeta y asignar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Tarjeta pública del cliente (?tarjeta=EH-XXXXXX) — diseño estilo Wallet -->
+<div id="tarjeta-view" style="display:none;position:fixed;inset:0;z-index:99999;background:#e9e4da;overflow-y:auto;"></div>
+
 <!-- Selección de toppings/preparación al agregar producto (va a la comanda) -->
 <div class="modal-bg" id="prep-modal" style="display:none;">
   <div class="modal" style="max-width:430px;">
@@ -2229,6 +2273,8 @@ nav{padding-top:env(safe-area-inset-top);}
   <div class="sale-ok-badge" id="sale-ok-badge">VENTA REGISTRADA</div>
 </div>
 
+<!-- QR para tarjetas de lealtad (genera el código que escanea el POS) -->
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
@@ -2253,12 +2299,13 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
   waReporte:'525646665718',waHora:'21:00',
   ordTiempos:{warn:7,urgent:12}, // minutos: verde → ámbar → rojo en Órdenes
   comandaAuto:true, // comanda a cocina al cobrar (Bluetooth ESC/POS)
+  lealtad:{meta:10,premio:'Smoothie gratis'}, // tarjeta de sellos digital
   kpiTargets:{
     ticketPromedio:130,
     conversionCombo:30,
@@ -2402,7 +2449,7 @@ async function completeInit(){
 }
 
 function listenAll(){
-  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra'];
+  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad'];
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
   const loaded=new Set();
 
@@ -5312,6 +5359,232 @@ window.registrarCompra=async()=>{
   toast(`✓ ${fmt(total)} en ${MC.prov||g.prov} — gastos e inventario actualizados${omitidos.length?' · ⚠ revisar unidades: '+omitidos.join(', '):''}`,5500);
 };
 
+// ═══════════════════════════════════════════════════════════════
+// LEALTAD — tarjetas de sellos digitales in-house (estilo Luyoa)
+// El cliente recibe un link con su tarjeta (QR + sellos en vivo).
+// La cajera escanea el QR desde el POS; el sello se suma solo al
+// cobrar; al completar la meta gana el premio; el canje descuenta
+// el producto más barato del carrito (regla estándar anti-abuso).
+// ═══════════════════════════════════════════════════════════════
+let lealtadActual=null, canjeActivo=false, _canjeDesc=false;
+let _scanStream=null,_scanLoop=null;
+const ltMeta=()=>CFG.lealtad?.meta||10;
+const ltPremio=()=>CFG.lealtad?.premio||'Smoothie gratis';
+const tarjetaLink=c=>`https://el-huerto.vercel.app/?tarjeta=${c.codigo}`;
+function genCodigoLealtad(){
+  const A='ABCDEFGHJKMNPQRSTUVWXYZ23456789';let s='';
+  for(let i=0;i<6;i++)s+=A[Math.floor(Math.random()*A.length)];
+  return 'EH-'+s;
+}
+window.abrirScanLealtad=async()=>{
+  $('scan-modal').style.display='flex';
+  $('scan-code').value='';$('scan-results').innerHTML='';
+  try{
+    if('BarcodeDetector' in window){
+      const det=new BarcodeDetector({formats:['qr_code']});
+      _scanStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}});
+      const v=$('scan-video');v.srcObject=_scanStream;v.style.display='';await v.play();
+      _scanLoop=setInterval(async()=>{
+        try{
+          const codes=await det.detect(v);
+          if(codes.length){
+            const m=(codes[0].rawValue||'').match(/EH-[A-Z0-9]{6}/i);
+            if(m) asignarLealtadPorCodigo(m[0].toUpperCase());
+          }
+        }catch(e){}
+      },350);
+    }else{$('scan-hint').textContent='Este navegador no tiene escáner — busca por código, nombre o teléfono';}
+  }catch(e){$('scan-hint').textContent='Cámara no disponible — busca por código, nombre o teléfono';}
+};
+window.cerrarScan=()=>{
+  if(_scanLoop){clearInterval(_scanLoop);_scanLoop=null;}
+  if(_scanStream){_scanStream.getTracks().forEach(t=>t.stop());_scanStream=null;}
+  $('scan-video').style.display='none';
+  $('scan-modal').style.display='none';
+};
+window.buscarLealtadUI=q=>{
+  q=(q||'').trim().toLowerCase();
+  const res=!q?[]:D.lealtad.filter(c=>c.codigo.toLowerCase().includes(q)||(c.nombre||'').toLowerCase().includes(q)||(c.tel||'').includes(q)).slice(0,6);
+  $('scan-results').innerHTML=res.map(c=>`<button class="prep-chip" style="text-align:left;" onclick="asignarLealtadPorCodigo('${c.codigo}')">🎟 <b>&nbsp;${c.nombre}</b>&nbsp;· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?' · 🎁'+c.premios:''}</button>`).join('');
+};
+window.asignarLealtadPorCodigo=cod=>{
+  const c=D.lealtad.find(x=>x.codigo===cod);
+  if(!c){toast('⚠ Tarjeta no encontrada: '+cod,2600,'warn');return;}
+  lealtadActual=c;
+  if($('op-cliente'))$('op-cliente').value=c.nombre;
+  cerrarScan();renderOpLealtad();
+  toast(`🎟 ${c.nombre} · ${c.sellos||0}/${ltMeta()} sellos${(c.premios||0)>0?' · 🎁 tiene premio':''}`,3000);
+  try{navigator.vibrate&&navigator.vibrate([30,40,30]);}catch(_){}
+};
+window.altaLealtad=async()=>{
+  const n=$('lt-nombre').value.trim(), t=($('lt-tel').value||'').replace(/\D/g,'');
+  if(!n){toast('⚠ Pon el nombre',2200,'warn');return;}
+  let codigo=genCodigoLealtad();
+  while(D.lealtad.find(c=>c.codigo===codigo))codigo=genCodigoLealtad();
+  const c={id:Date.now(),codigo,nombre:n,tel:t,sellos:0,premios:0,totalVisitas:0,ultimaVisita:null,creado:today()};
+  const ok=await fsSet('lealtad',c);
+  if(!ok){toast('❌ Sin conexión — no se creó la tarjeta',3500,'error');return;}
+  if(!D.lealtad.find(x=>x.id===c.id))D.lealtad.push(c);
+  logAudit('lealtad_alta',{nombre:n,codigo});
+  $('lt-nombre').value='';$('lt-tel').value='';
+  asignarLealtadPorCodigo(codigo);
+  if(t){setTimeout(()=>{if(confirm(`¿Enviar su tarjeta a ${n} por WhatsApp ahora?`))compartirTarjeta(c.id);},600);}
+};
+window.compartirTarjeta=id=>{
+  const c=D.lealtad.find(x=>x.id==id);if(!c)return;
+  const msg=`¡Hola ${c.nombre}! 🌱 Tu tarjeta de lealtad de *El Huerto* está lista:\n${tarjetaLink(c)}\n\nJunta ${ltMeta()} sellos y llévate: *${ltPremio()}* 🎁\nPreséntala al pagar para sumar sellos. ¡Te esperamos!`;
+  window.open(`https://wa.me/52${(c.tel||'').replace(/\D/g,'')}?text=${encodeURIComponent(msg)}`,'_blank');
+};
+window.quitarLealtad=()=>{
+  lealtadActual=null;canjeActivo=false;
+  if(_canjeDesc&&$('op-desc-val')){$('op-desc-val').value='';calcDesc();}
+  _canjeDesc=false;renderOpLealtad();
+};
+window.canjearPremio=()=>{
+  if(!lealtadActual||(lealtadActual.premios||0)<1)return;
+  if(order.length===0){toast('⚠ Agrega primero el producto del premio',2600,'warn');return;}
+  const min=Math.min(...order.map(o=>o.precio));
+  $('op-desc-tipo').value='mxn';$('op-desc-val').value=min;calcDesc();
+  canjeActivo=true;_canjeDesc=true;
+  renderOpLealtad();
+  toast(`🎁 Premio aplicado: −${fmt(min)} (${ltPremio()})`,3200);
+};
+function renderOpLealtad(){
+  const el=$('op-lealtad');if(!el)return;
+  if(!lealtadActual){
+    el.innerHTML=`<button class="btn bs bfull bsm" onclick="abrirScanLealtad()" style="border-style:dashed;">🎟 Tarjeta de lealtad — escanear</button>`;
+    return;
+  }
+  const c=lealtadActual;
+  el.innerHTML=`<div style="background:color-mix(in srgb, var(--gold) 12%, var(--surface));border:1.5px solid var(--gold);border-radius:var(--rsm);padding:8px 10px;display:flex;align-items:center;gap:8px;">
+    <span style="font-size:16px;">🎟</span>
+    <div style="flex:1;min-width:0;">
+      <div style="font-weight:800;font-size:12.5px;">${c.nombre}</div>
+      <div style="font-size:10.5px;color:var(--text2);">${c.sellos||0}/${ltMeta()} sellos${(c.premios||0)>0?` · 🎁 ${c.premios}`:''}${canjeActivo?' · <b style="color:var(--accent)">canje aplicado</b>':''}</div>
+    </div>
+    ${(c.premios||0)>0&&!canjeActivo?`<button class="btn bor bxs" onclick="canjearPremio()">🎁 Canjear</button>`:''}
+    <button class="oi-del" onclick="quitarLealtad()">✕</button>
+  </div>`;
+}
+// Sello automático: se llama desde cobrar() SOLO cuando la venta se guardó
+async function registrarSelloLealtad(venta){
+  if(!lealtadActual)return;
+  const c=D.lealtad.find(x=>x.id===lealtadActual.id);if(!c)return;
+  if(canjeActivo)c.premios=Math.max(0,(c.premios||0)-1);
+  c.sellos=(c.sellos||0)+1;
+  c.totalVisitas=(c.totalVisitas||0)+1;
+  c.ultimaVisita=venta.fecha;
+  let completo=false;
+  if(c.sellos>=ltMeta()){c.sellos=0;c.premios=(c.premios||0)+1;completo=true;}
+  await fsSet('lealtad',c);
+  logAudit('lealtad_sello',{nombre:c.nombre,codigo:c.codigo,sellos:c.sellos,premios:c.premios,canje:canjeActivo||undefined,ticket:venta.ticket});
+  if(completo){
+    toast(`🎉 ¡${c.nombre} completó su tarjeta! Ganó: ${ltPremio()}`,5000);
+    if(typeof notifPush==='function')notifPush('🎉 Tarjeta completada',`${c.nombre} ganó ${ltPremio()}`,{tag:'lealtad'});
+  }else toast(`🎟 Sello para ${c.nombre}: ${c.sellos}/${ltMeta()}`,2600);
+  lealtadActual=null;canjeActivo=false;_canjeDesc=false;
+  renderOpLealtad();
+}
+// ── Tarjeta pública (?tarjeta=EH-XXXXXX) — se actualiza EN VIVO ──
+const _tarjetaCode=new URLSearchParams(location.search).get('tarjeta');
+if(_tarjetaCode)document.body.classList.add('modo-tarjeta');
+// ── Panel de lealtad en Clientes: tabla, compartir y campañas ──
+window.altaLealtadPanel=async()=>{
+  const n=$('lp-nombre').value.trim(), t=($('lp-tel').value||'').replace(/\D/g,'');
+  if(!n){toast('⚠ Pon el nombre',2200,'warn');return;}
+  let codigo=genCodigoLealtad();
+  while(D.lealtad.find(c=>c.codigo===codigo))codigo=genCodigoLealtad();
+  const c={id:Date.now(),codigo,nombre:n,tel:t,sellos:0,premios:0,totalVisitas:0,ultimaVisita:null,creado:today()};
+  const ok=await fsSet('lealtad',c);
+  if(!ok){toast('❌ Sin conexión',3000,'error');return;}
+  if(!D.lealtad.find(x=>x.id===c.id))D.lealtad.push(c);
+  logAudit('lealtad_alta',{nombre:n,codigo});
+  $('lp-nombre').value='';$('lp-tel').value='';
+  renderLealtadPanel();
+  toast(`🎟 Tarjeta creada para ${n} (${codigo})`,3000);
+  if(t&&confirm(`¿Enviarle su tarjeta a ${n} por WhatsApp?`))compartirTarjeta(c.id);
+};
+function diasSinVisita(c){
+  if(!c.ultimaVisita)return 999;
+  return Math.round((new Date(today())-new Date(c.ultimaVisita))/86400000);
+}
+window.campanaInactivos=()=>{
+  const inactivos=D.lealtad.filter(c=>c.tel&&diasSinVisita(c)>=14).sort((a,b)=>diasSinVisita(b)-diasSinVisita(a));
+  const el=$('lealtad-campana');if(!el)return;
+  if(!inactivos.length){el.innerHTML='<p style="font-size:12px;color:var(--text3);">🎉 Nadie lleva 14+ días sin venir (o no tienen teléfono registrado)</p>';return;}
+  el.innerHTML=`<div style="background:var(--surface2);border-radius:var(--rsm);padding:12px;">
+    <div class="ct">📣 ${inactivos.length} cliente(s) para reconquistar — un toque por mensaje</div>
+    ${inactivos.map(c=>{
+      const msg=`¡Hola ${c.nombre}! 🌱 Te extrañamos en *El Huerto*. Tienes ${c.sellos||0}/${ltMeta()} sellos en tu tarjeta${(c.premios||0)>0?' y 🎁 UN PREMIO SIN CANJEAR':''} — ven por tu smoothie y sigue sumando: ${tarjetaLink(c)}`;
+      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+        <span style="font-size:12.5px;"><b>${c.nombre}</b> · ${diasSinVisita(c)>900?'nunca ha venido':diasSinVisita(c)+' días sin venir'} · ${c.sellos||0}/${ltMeta()}</span>
+        <a class="btn bsm" style="background:#25D366;color:#fff;text-decoration:none;font-size:11.5px;padding:5px 10px;border-radius:7px;" target="_blank" href="https://wa.me/52${c.tel}?text=${encodeURIComponent(msg)}">📱 Enviar</a>
+      </div>`;
+    }).join('')}
+  </div>`;
+};
+function renderLealtadPanel(){
+  const k=$('lealtad-kpis'), t=$('lealtad-tabla');
+  if(!k||!t)return;
+  const L=D.lealtad;
+  const activos30=L.filter(c=>diasSinVisita(c)<=30).length;
+  const premiosPend=L.reduce((s,c)=>s+(c.premios||0),0);
+  const kchip=(l,v)=>`<div style="background:var(--surface2);border-radius:var(--rsm);padding:8px 14px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:700;">${l}</span><div class="kv" style="font-size:18px;">${v}</div></div>`;
+  k.innerHTML=kchip('Tarjetas',L.length)+kchip('Activos 30 días',activos30)+kchip('🎁 Premios sin canjear',premiosPend)+kchip('Meta · Premio',`${ltMeta()} sellos · ${ltPremio()}`);
+  t.innerHTML=L.length===0?'<p style="font-size:12px;color:var(--text3);">Crea la primera tarjeta arriba — o desde el POS con el botón 🎟</p>':
+    `<table style="width:100%;font-size:12px;"><thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;"><th>Cliente</th><th>Código</th><th>Sellos</th><th>🎁</th><th>Visitas</th><th>Última</th><th></th></tr></thead><tbody>`+
+    [...L].sort((a,b)=>(b.ultimaVisita||'').localeCompare(a.ultimaVisita||'')).map(c=>`<tr style="border-top:1px solid var(--border);">
+      <td style="font-weight:700;padding:6px 0;">${c.nombre}</td>
+      <td class="mono" style="font-size:11px;">${c.codigo}</td>
+      <td class="mono">${c.sellos||0}/${ltMeta()}</td>
+      <td class="mono">${c.premios||0}</td>
+      <td class="mono">${c.totalVisitas||0}</td>
+      <td style="font-size:11px;color:var(--text2);">${c.ultimaVisita||'—'}</td>
+      <td style="display:flex;gap:4px;padding:4px 0;">
+        <a class="btn bs bxs" style="text-decoration:none;" target="_blank" href="${tarjetaLink(c)}" title="Ver tarjeta">👁</a>
+        ${c.tel?`<button class="btn bs bxs" onclick="compartirTarjeta(${c.id})" title="Enviar por WhatsApp">📱</button>`:''}
+      </td></tr>`).join('')+'</tbody></table>';
+}
+
+function renderTarjetaPublica(){
+  if(!_tarjetaCode)return;
+  const el=$('tarjeta-view');if(!el)return;
+  el.style.display='block';
+  const c=D.lealtad.find(x=>x.codigo===_tarjetaCode.toUpperCase());
+  if(!c){el.innerHTML='<div style="padding:70px 20px;text-align:center;font-family:sans-serif;color:#888;">Cargando tu tarjeta… 🌱</div>';return;}
+  const meta=ltMeta();
+  const sellos=[...Array(meta)].map((_,i)=>`<div style="font-size:36px;line-height:1;filter:${i<(c.sellos||0)?'none':'grayscale(1) opacity(.25)'};">🧑‍🌾</div>`).join('');
+  el.innerHTML=`<div style="max-width:430px;margin:26px auto;padding:0 14px;font-family:'DM Sans',sans-serif;">
+    <div style="background:#F7E7C3;border-radius:18px;padding:22px 20px;box-shadow:0 10px 40px rgba(0,0,0,.18);">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+        <div>
+          <div style="font-family:'Playfair Display',serif;font-weight:900;font-size:29px;color:#D9481C;line-height:1;">EL HUERTO</div>
+          <div style="font-size:8.5px;letter-spacing:2.5px;color:#D9481C;font-weight:700;margin-top:4px;">FRUTA · PANINIS · SMOOTHIES · CAFÉ</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:10px;letter-spacing:2px;color:#D9481C;font-weight:800;">SELLOS</div>
+          <div style="font-size:24px;color:#E8875A;font-weight:800;font-family:'DM Mono',monospace;">${c.sellos||0}/${meta}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:8px;justify-items:center;margin:22px 0;">${sellos}</div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:18px;">
+        <div>
+          <div style="font-size:10px;letter-spacing:2px;color:#D9481C;font-weight:800;">HUERTO ✦ LOVER</div>
+          <div style="font-size:21px;color:#E8875A;font-weight:700;">${c.nombre}</div>
+        </div>
+        <div style="text-align:right;">
+          <div style="font-size:10px;letter-spacing:2px;color:#D9481C;font-weight:800;">RECOMPENSAS</div>
+          <div style="font-size:24px;color:#E8875A;font-weight:800;font-family:'DM Mono',monospace;">${c.premios||0}</div>
+        </div>
+      </div>
+      <div style="background:#fff;border-radius:14px;padding:14px;display:flex;justify-content:center;"><canvas id="tarjeta-qr"></canvas></div>
+      <div style="text-align:center;font-size:10.5px;color:#b58a5a;margin-top:10px;">Presenta este código al pagar · ${c.codigo}</div>
+    </div>
+    <div style="text-align:center;margin-top:14px;font-size:12px;color:#8a8a8a;">Junta ${meta} sellos y llévate: <b>${ltPremio()}</b> 🎁<br><span style="font-size:10.5px;">Guárdala: compartir → "Añadir a pantalla de inicio"</span></div>
+  </div>`;
+  if(typeof QRCode!=='undefined'){try{QRCode.toCanvas(document.getElementById('tarjeta-qr'),c.codigo,{width:200,margin:1,color:{dark:'#1a1a1a',light:'#ffffff'}});}catch(e){}}
+}
+
 function getDescuento(){
   const sub=order.reduce((s,o)=>s+o.precio*o.qty,0);
   const tipo=$('op-desc-tipo')?.value||'pct';
@@ -5339,6 +5612,7 @@ function renderOrder(){
   $('op-desc-show').textContent=desc>0?'−'+fmt(desc):'−$0.00';
   $('op-tot').textContent=fmt(total);
   const fab=$('fab-order'); if(fab) fab.textContent=cnt>0?cnt:'🛒';
+  if(typeof renderOpLealtad==='function') renderOpLealtad();
   $('op-items').innerHTML=order.length===0?`<p style="color:var(--text3);font-size:12px;padding:14px 0;text-align:center;">🛒 Toca un producto para agregar</p>`:
     order.map((o,ix)=>`<div class="oi">
       <div style="flex:1;min-width:0;">
@@ -5362,7 +5636,7 @@ window.setNota=(pid,v)=>{const o=order.find(x=>x.id===pid);if(o)o.nota=v;};
 // toppings distintos — el id ya no identifica la línea
 window.chgQtyIdx=(i,d)=>{if(!order[i])return;order[i].qty+=d;if(order[i].qty<=0)order.splice(i,1);renderOrder();};
 window.setNotaIdx=(i,v)=>{if(order[i])order[i].nota=v;};
-window.clearOrder=()=>{order=[];orderStartedAt=null;ventaVendedorOk=false;if($('op-desc-val'))$('op-desc-val').value='';renderOrder();toast('Orden limpiada');};
+window.clearOrder=()=>{order=[];orderStartedAt=null;ventaVendedorOk=false;lealtadActual=null;canjeActivo=false;_canjeDesc=false;if($('op-desc-val'))$('op-desc-val').value='';renderOrder();toast('Orden limpiada');};
 window.toggleOP=()=>{opOpen=!opOpen;$('order-panel').classList.toggle('hidden',!opOpen);$('op-arr').textContent=opOpen?'▲':'▼';};
 
 // ABRIR modal efectivo
@@ -5476,6 +5750,9 @@ async function cobrar(metodo,recibido=0){
       vendedorId:activeVend?.id||null,
       vendedorNombre:activeVend?.nombre||'Sin asignar',
       vendedorConfirmado:true,
+      lealtadId:lealtadActual?.id||null,
+      lealtadCodigo:lealtadActual?.codigo||null,
+      premioCanjeado:canjeActivo||false,
       recibido:metodo==='efectivo'?recibido:total,
       cambio:Math.max(0,cambio)
     };
@@ -5534,6 +5811,8 @@ async function cobrar(metodo,recibido=0){
       }
     }
     // Limpiar SOLO si la venta se guardó (esto solo se ejecuta si no hubo throw)
+    // Sello de lealtad (solo si la venta SÍ se guardó)
+    try{await registrarSelloLealtad(venta);}catch(e){console.warn('lealtad:',e);}
     order=[]; orderStartedAt=null; ventaVendedorOk=false; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
     if($('op-cliente'))$('op-cliente').value='';
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
@@ -10031,6 +10310,7 @@ window.saveConfig=()=>{
     ticketAuto:$('cfg-autoprint')?$('cfg-autoprint').checked:false,
     comandaAuto:$('cfg-comanda-auto')?$('cfg-comanda-auto').checked:true,
     comandaUSB:CFG.comandaUSB===true,
+    lealtad:CFG.lealtad||{meta:10,premio:'Smoothie gratis'},
     waReporte:$('cfg-wa-num')?cleanWANum($('cfg-wa-num').value):'',
     waHora:$('cfg-wa-hora')?$('cfg-wa-hora').value||'21:00':'21:00',
     kpiTargets:prevTargets
@@ -10450,7 +10730,7 @@ const PAGE_RENDERERS={
   reloj: ()=>renderReloj(),
   miperfil: ()=>renderMiPerfil(),
   kpis: ()=>renderKPIs(),
-  clientes: ()=>renderClientes(),
+  clientes: ()=>{renderClientes();renderLealtadPanel();},
 };
 
 // Badges globales ligeros (sin re-dibujar módulos completos)
@@ -10470,6 +10750,8 @@ function updateGlobalBadges(){
     }
     // Campana si llegó una orden nueva (pantalla de cocina / página Órdenes)
     if(typeof checkNuevaOrdenSound==='function') checkNuevaOrdenSound();
+    // Tarjeta pública en vivo: se re-pinta con cada cambio de datos
+    if(typeof renderTarjetaPublica==='function') renderTarjetaPublica();
     if(typeof renderLock==='function') renderLock();
   }catch(e){/* no-op */}
 }
