@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.26'; // Comandera: reconexión BT automática + fallback USB
+const CACHE_NAME = 'el-huerto-v14.27'; // Diagnóstico de impresión en Config
 const ASSETS = [
   '/',
   '/index.html',

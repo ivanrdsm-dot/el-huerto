@@ -2034,6 +2034,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
         <button class="btn bbl bsm" onclick="conectarImpresoraBT()">📡 Conectar impresora</button>
         <button class="btn bs bsm" onclick="testComanda()">🖨 Prueba</button>
+        <button class="btn bor bsm" onclick="diagImpresion()">🩺 Diagnóstico</button>
         <span id="bt-estado" style="font-size:11.5px;color:var(--text3);">Sin conectar</span>
       </div>
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;margin-top:10px;text-transform:none;letter-spacing:0;color:var(--text);">
@@ -5169,6 +5170,22 @@ window.printComanda=async v=>{
   }else if(!window._btAvisado){window._btAvisado=true;toast('🖨 Comandera sin conectar — Config → Conectar impresora',4000,'warn');}
 };
 window.testComanda=()=>printComanda({ticket:'#PRUEBA',hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),cliente:'Prueba',nota:'',vendedorNombre:SESSION?.nombre||'—',items:[{id:1003,qty:1,nombre:'Açaí Bowl 3 Toppings',prep:['Fresa','Mango','Granola'],nota:'sin miel'}]});
+
+// Diagnóstico de impresión: muestra cada interruptor y lanza una prueba
+// que revela si Chrome está o no en modo kiosk-printing
+window.diagImpresion=()=>{
+  alert('🩺 DIAGNÓSTICO DE IMPRESIÓN\n\n'+
+    '• Ticket automático al cobrar: '+(CFG.autoPrint!==false?'✓ ACTIVO':'✗ APAGADO ← enciéndelo abajo y Guardar')+'\n'+
+    '• Comanda automática: '+(CFG.comandaAuto!==false?'✓ ACTIVA':'✗ APAGADA')+'\n'+
+    '• Comanda por USB si no hay BT: '+(CFG.comandaFallback!==false?'✓ ACTIVO':'✗ APAGADO')+'\n'+
+    '• Bluetooth web: '+(navigator.bluetooth?'disponible':'NO disponible en este navegador')+'\n'+
+    '• Comandera Bluetooth: '+(btComandera.ch?('✓ conectada ('+(btComandera.device?.name||'')+')'):'sin conectar → usará la impresora del sistema')+'\n\n'+
+    'Al cerrar este aviso se lanza una impresión de prueba:\n'+
+    '• Si SALE SOLA sin ventana → modo kiosko OK: las ventas imprimirán solas\n'+
+    '• Si APARECE EL DIÁLOGO de imprimir → Chrome NO está en modo kiosk-printing: ciérralo POR COMPLETO (⌘Q, que no quede el puntito en el Dock) y ábrelo con el comando de la caja amarilla de abajo');
+  $('ticket-print').innerHTML='<div class="ticket-thermal"><div class="tk-center"><div class="tk-logo">PRUEBA</div><div class="tk-sub">'+new Date().toLocaleString('es-MX')+'</div></div><hr class="tk-sep"><div style="font-size:11px;">Si esto salio sin dialogo, el modo kiosko esta activo y cada venta imprimira sola (ticket + comanda).</div></div>';
+  setTimeout(()=>window.print(),300);
+};
 window.reprintComanda=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printComanda(v);};
 
 // ═══════════════════════════════════════════════════════════════
