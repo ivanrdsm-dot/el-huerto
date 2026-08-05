@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.23'; // Variantes en todos los cocteles
+const CACHE_NAME = 'el-huerto-v14.24'; // Mejora maestra: pulso de hoy + COGS en reportes + transiciones
 const ASSETS = [
   '/',
   '/index.html',
