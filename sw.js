@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.27'; // Diagnóstico de impresión en Config
+const CACHE_NAME = 'el-huerto-v14.28'; // Impresión 100% Bluetooth: solo comanda automática, ticket opcional
 const ASSETS = [
   '/',
   '/index.html',

@@ -2025,7 +2025,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="fg" style="display:flex;align-items:center;gap:10px;margin:10px 0;">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;color:var(--text);">
         <input type="checkbox" id="cfg-autoprint" style="width:auto;transform:scale(1.3);">
-        <span>🖨 Imprimir ticket automáticamente al cobrar</span>
+        <span>🖨 Imprimir también el ticket del cliente al cobrar (Bluetooth · gasta papel; apagado = solo comanda)</span>
       </label>
     </div>
     <!-- Comandera Bluetooth (Bisofice 58A — ESC/POS directo, sin diálogo) -->
@@ -2047,8 +2047,8 @@ nav{padding-top:env(safe-area-inset-top);}
     <button class="btn bs bsm" onclick="reprintLastTicket()" style="margin-left:6px;">🔁 Reimprimir último ticket</button>
     <!-- Instrucciones Chrome kiosk -->
     <div style="margin-top:14px;background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:12px;font-size:11.5px;color:#5c4e1a;line-height:1.6;">
-      <div style="font-weight:700;margin-bottom:6px;color:var(--goldd);">🖨 Impresión silenciosa (sin diálogo cada venta)</div>
-      Chrome pide confirmación por default. Para que <strong>imprima directo</strong> sin preguntar:
+      <div style="font-weight:700;margin-bottom:6px;color:var(--goldd);">⚠️ Impresión por USB/diálogo — NO recomendada con la Bisofice 58A</div>
+      <strong>La vía correcta es Bluetooth</strong> (botón 📡 arriba): directa, sin drivers y sin diálogos. En Mac, la 58A por USB no tiene driver y el sistema le manda PostScript — la impresora lo imprime como texto (metros de código). Lo de abajo aplica solo a impresoras normales con driver:
       <ol style="margin:6px 0 6px 18px;padding:0;">
         <li>Cierra Chrome completamente (Cmd+Q / Alt+F4)</li>
         <li>Abre Terminal/PowerShell y pega:<br>
@@ -2254,7 +2254,8 @@ async function ensureAuth(){
 }
 
 let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[]};
-let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',autoPrint:true,
+let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
+  ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
   waReporte:'525646665718',waHora:'21:00',
   ordTiempos:{warn:7,urgent:12}, // minutos: verde → ámbar → rojo en Órdenes
   comandaAuto:true, // comanda a cocina al cobrar (Bluetooth ESC/POS)
@@ -5158,16 +5159,18 @@ function printComandaHTML(v){
       <hr class="tk-sep">
       <div class="tk-center" style="font-size:10px;">Atiende: ${v.vendedorNombre||'—'}</div>
     </div>`;
-    if(CFG.autoPrint!==false) window.print();
+    window.print(); // solo llega aquí con CFG.comandaUSB activado a propósito
   },1800);
 }
 window.printComanda=async v=>{
   const ok=await btEnviar(escposComanda(v));
   if(ok){toast('👨‍🍳 Comanda impresa',2000);return;}
-  if(CFG.comandaFallback!==false){
+  // El camino USB/diálogo queda APAGADO por default: en Mac sin driver la
+  // térmica imprimía el trabajo PostScript como texto (metros de código)
+  if(CFG.comandaUSB===true){
     printComandaHTML(v);
     toast('👨‍🍳 Comanda por impresora del sistema',2200);
-  }else if(!window._btAvisado){window._btAvisado=true;toast('🖨 Comandera sin conectar — Config → Conectar impresora',4000,'warn');}
+  }else if(!window._btAvisado){window._btAvisado=true;toast('🖨 Comandera sin conectar — Config → 📡 Conectar impresora (Bluetooth)',4500,'warn');}
 };
 window.testComanda=()=>printComanda({ticket:'#PRUEBA',hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),cliente:'Prueba',nota:'',vendedorNombre:SESSION?.nombre||'—',items:[{id:1003,qty:1,nombre:'Açaí Bowl 3 Toppings',prep:['Fresa','Mango','Granola'],nota:'sin miel'}]});
 
@@ -5175,14 +5178,18 @@ window.testComanda=()=>printComanda({ticket:'#PRUEBA',hora:new Date().toLocaleTi
 // que revela si Chrome está o no en modo kiosk-printing
 window.diagImpresion=()=>{
   alert('🩺 DIAGNÓSTICO DE IMPRESIÓN\n\n'+
-    '• Ticket automático al cobrar: '+(CFG.autoPrint!==false?'✓ ACTIVO':'✗ APAGADO ← enciéndelo abajo y Guardar')+'\n'+
+    '• Ticket del cliente automático (Bluetooth): '+(CFG.ticketAuto===true?'✓ ACTIVO':'✗ apagado (ahorro de papel — solo comanda)')+'\n'+
     '• Comanda automática: '+(CFG.comandaAuto!==false?'✓ ACTIVA':'✗ APAGADA')+'\n'+
-    '• Comanda por USB si no hay BT: '+(CFG.comandaFallback!==false?'✓ ACTIVO':'✗ APAGADO')+'\n'+
+    '• Comanda por USB/diálogo: '+(CFG.comandaUSB===true?'✓ activo':'✗ apagado (recomendado: en Mac sin driver imprime código)')+'\n'+
     '• Bluetooth web: '+(navigator.bluetooth?'disponible':'NO disponible en este navegador')+'\n'+
     '• Comandera Bluetooth: '+(btComandera.ch?('✓ conectada ('+(btComandera.device?.name||'')+')'):'sin conectar → usará la impresora del sistema')+'\n\n'+
-    'Al cerrar este aviso se lanza una impresión de prueba:\n'+
-    '• Si SALE SOLA sin ventana → modo kiosko OK: las ventas imprimirán solas\n'+
-    '• Si APARECE EL DIÁLOGO de imprimir → Chrome NO está en modo kiosk-printing: ciérralo POR COMPLETO (⌘Q, que no quede el puntito en el Dock) y ábrelo con el comando de la caja amarilla de abajo');
+    'La impresión correcta es por BLUETOOTH (directa, sin drivers).\n'+
+    'Si la comandera dice "sin conectar": toca 📡 Conectar impresora,\n'+
+    'con la Bisofice ENCENDIDA y cerca. Al cerrar este aviso se manda\n'+
+    'una comanda de prueba por Bluetooth.');
+  testComanda();
+};
+window._diagLegacy=()=>{
   $('ticket-print').innerHTML='<div class="ticket-thermal"><div class="tk-center"><div class="tk-logo">PRUEBA</div><div class="tk-sub">'+new Date().toLocaleString('es-MX')+'</div></div><hr class="tk-sep"><div style="font-size:11px;">Si esto salio sin dialogo, el modo kiosko esta activo y cada venta imprimira sola (ticket + comanda).</div></div>';
   setTimeout(()=>window.print(),300);
 };
@@ -5507,7 +5514,7 @@ async function cobrar(metodo,recibido=0){
     }
     // Inventario es secundario — si falla no debe bloquear la venta
     try{await descontarInventario(venta.items);}catch(invErr){console.warn('Inv:',invErr);}
-    printTicket(venta);
+    printTicket(venta,true);
     // Comanda a cocina: automática, directa por Bluetooth (sin diálogo)
     if(CFG.comandaAuto!==false) printComanda(venta);
     playSaleSound();
@@ -5544,7 +5551,7 @@ async function cobrar(metodo,recibido=0){
 }
 window.cobrar=cobrar;
 
-function printTicket(v){
+function printTicket(v,auto=false){
   const itemsHTML=v.items.map(i=>{
     const n=i.nombre.length>28?i.nombre.slice(0,28)+'…':i.nombre;
     const prep=(i.prep&&i.prep.length)?i.prep.join(' · '):'';
@@ -5574,20 +5581,46 @@ function printTicket(v){
     <hr class="tk-sep">
     <div class="tk-footer">${CFG.msg}<br>*** Gracias por su compra ***</div>
   </div>`;
-  // Imprimir solo si está activada la impresión automática
-  if(CFG.autoPrint===false){
-    return; // usuario desactivó auto-print
-  }
   // Guardar última venta para reimpresión rápida
   try{localStorage.setItem('h5_last_ticket',v.id);}catch(e){}
-  setTimeout(()=>{
-    try{
-      window.print();
-    }catch(e){
-      console.warn('Print error:',e);
-      toast('⚠ Error al imprimir. Usa el botón de reimprimir.',3500,'warn');
-    }
-  },300);
+  // ══ El ticket del cliente ya NO usa window.print en automático ══
+  // (en Mac sin driver, el diálogo/kiosk mandaba PostScript y la térmica
+  // imprimía metros de código). Ahora:
+  //  - auto=true (al cobrar): solo si CFG.ticketAuto está activado, y
+  //    sale por Bluetooth ESC/POS — silencioso y compacto
+  //  - manual (reimprimir): Bluetooth primero; si no hay, diálogo del sistema
+  if(auto){
+    if(CFG.ticketAuto===true) btEnviar(escposTicket(v));
+    return;
+  }
+  btEnviar(escposTicket(v)).then(ok=>{
+    if(!ok) setTimeout(()=>{try{window.print();}catch(e){toast('⚠ Error al imprimir',3000,'warn');}},250);
+  });
+}
+// Ticket del cliente en ESC/POS (compacto: solo lo necesario)
+function escposTicket(v){
+  const B=[]; const push=(...a)=>B.push(...a); const txt=s=>push(...escposTxt(s));
+  const NL=()=>push(10);
+  push(0x1B,0x40);
+  push(0x1B,0x61,1);
+  push(0x1D,0x21,0x11); txt(CFG.negocio||'El Huerto'); NL();
+  push(0x1D,0x21,0x00);
+  txt(`${v.ticket}  ${v.fecha} ${v.hora}`); NL();
+  txt('----------------------------'); NL();
+  push(0x1B,0x61,0);
+  v.items.forEach(i=>{
+    txt(`${i.qty}x ${i.nombre}`); NL();
+    txt(`      ${fmt(i.precio*i.qty)}`); NL();
+  });
+  push(0x1B,0x61,1);
+  txt('----------------------------'); NL();
+  if(v.descuento>0){txt(`Subtotal ${fmt(v.subtotal)}  Desc -${fmt(v.descuento)}`);NL();}
+  push(0x1D,0x21,0x11); txt(`TOTAL ${fmt(v.total)}`); NL();
+  push(0x1D,0x21,0x00);
+  txt(v.metodo==='efectivo'?`Efectivo ${fmt(v.recibido||v.total)} · Cambio ${fmt(v.cambio||0)}`:'Tarjeta'); NL();
+  txt(CFG.msg||'¡Gracias!'); NL();
+  push(10,10,10,10);
+  return new Uint8Array(B);
 }
 // Imprimir ticket de corte de caja
 function printCorteTicket(corte){
@@ -9950,7 +9983,7 @@ function renderConfig(){
   if($('cfg-neg')&&CFG.negocio)$('cfg-neg').value=CFG.negocio;
   if($('cfg-tel')&&CFG.tel)$('cfg-tel').value=CFG.tel;
   if($('cfg-msg')&&CFG.msg)$('cfg-msg').value=CFG.msg;
-  if($('cfg-autoprint'))$('cfg-autoprint').checked=CFG.autoPrint!==false;
+  if($('cfg-autoprint'))$('cfg-autoprint').checked=CFG.ticketAuto===true;
   if($('cfg-comanda-auto'))$('cfg-comanda-auto').checked=CFG.comandaAuto!==false;
   btEstadoUI();
   if($('cfg-wa-num')&&CFG.waReporte)$('cfg-wa-num').value=CFG.waReporte;
@@ -9995,9 +10028,9 @@ window.saveConfig=()=>{
     negocio:$('cfg-neg').value.trim()||'El Huerto',
     tel:$('cfg-tel').value.trim(),
     msg:$('cfg-msg').value.trim()||'¡Gracias!',
-    autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true,
+    ticketAuto:$('cfg-autoprint')?$('cfg-autoprint').checked:false,
     comandaAuto:$('cfg-comanda-auto')?$('cfg-comanda-auto').checked:true,
-    comandaFallback:CFG.comandaFallback!==false,
+    comandaUSB:CFG.comandaUSB===true,
     waReporte:$('cfg-wa-num')?cleanWANum($('cfg-wa-num').value):'',
     waHora:$('cfg-wa-hora')?$('cfg-wa-hora').value||'21:00':'21:00',
     kpiTargets:prevTargets
@@ -10064,10 +10097,7 @@ window.reprintLastTicket=()=>{
   if(!lastId){toast('⚠ No hay ticket reciente para reimprimir',3000,'warn');return;}
   const v=D.ventas.find(x=>String(x.id)===String(lastId));
   if(!v){toast('⚠ Ticket no encontrado',3000,'warn');return;}
-  const prevAuto=CFG.autoPrint;
-  CFG.autoPrint=true; // forzar impresión
-  printTicket(v);
-  CFG.autoPrint=prevAuto;
+  printTicket(v); // manual: Bluetooth primero, diálogo si no hay
   toast(`🔁 Reimprimiendo ticket ${v.ticket}`,2400);
 };
 
