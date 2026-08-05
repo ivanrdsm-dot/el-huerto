@@ -4863,7 +4863,10 @@ let orderStartedAt=null; // timestamp de cuando se inició la orden actual
 const PREP_LISTAS={
   bowl:['Fresa','Blueberry','Plátano','Mango','Peanut butter','Spread de matcha','Almond butter','Granola','Avena','Miel de abeja'],
   ensalada:['Pollo','Aguacate','Pepino','Jitomate cherry','Zanahoria rallada','Elote','Queso parmesano','Queso panela','Crutones','Almendras','Nuez','Semillas de girasol','Cacahuate','Arándanos','Aceitunas negras','Mango','Fresa'],
-  coctel:['Fresa','Plátano','Mango','Manzana','Sandía','Piña','Melón','Papaya'],
+  coctel:['Fresa','Plátano','Mango','Manzana','Sandía','Piña','Pepino','Jícama','Zanahoria'],
+  smoothies:["Pal'Fresa","Pal'Mamado","Pal'Sediento","Pal'Crudo","Pal'Changuito","Pal'Berry Fuerte","Pal'Matcha Gains","Pal'Chai Lover"],
+  paninis:['Mozzarella','4 Quesos','Pechuga de pavo','Jamón serrano','Chorizo pamplona'],
+  panes:['Queso','Chilaquiles','Pizza','Rajas poblanas'],
 };
 const PROD_PREP={
   1001:{elige:1,de:'bowl',base:'Açaí + granola'},
@@ -4890,42 +4893,82 @@ const PROD_PREP={
   1070:{fijo:'Espresso doble + leche'},
   1071:{fijo:'Lata de té + 30 g perlas explosivas'},
   1015:{fijo:'Susalias + pepino, jícama, zanahoria + chile y limón'},
+  // Combos: variantes por pasos — la cajera elige cada componente
+  1016:{pasos:[{t:'Toppings del Oats (elige 2)',de:'bowl',n:2,pre:'Oats'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},              // Home Run
+  1017:{pasos:[{t:'Frutas del cóctel (elige 2)',de:'coctel',n:2,pre:'Cóctel'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},          // Gym Rat
+  1018:{pasos:[{t:'Toppings del Açaí (elige 2)',de:'bowl',n:2,pre:'Açaí'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},              // El Fresa
+  1048:{pasos:[{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'}]},                       // El OG
+  1049:{base:'+ Capuchino chico',pasos:[{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'}]},                                                       // El Mañanero
+  1050:{base:'+ Capuchino chico',pasos:[{t:'¿Cuál pan de la Tía Renee?',de:'panes',n:1,pre:'Pan'}]},                                               // El de Renee
 };
 // Texto de preparación de un renglón de orden (elegido o fijo)
 function prepTexto(item){
   const pp=PROD_PREP[item.id];
-  if(item.prep&&item.prep.length) return (pp?.base?pp.base+' · ':'')+item.prep.join(', ');
+  if(item.prep&&item.prep.length) return (pp?.base?pp.base+' · ':'')+item.prep.join(' · ');
   return pp?.fijo||'';
 }
+// Líneas de preparación para la comanda (cada componente en su renglón)
+function prepLineas(item){
+  const pp=PROD_PREP[item.id];
+  const l=[];
+  if(item.prep&&item.prep.length){l.push(...item.prep);if(pp?.base)l.push(pp.base);}
+  else if(pp?.fijo)l.push(pp.fijo);
+  return l;
+}
 
-let prepPendiente=null; // {pid, n, lista:[], sel:Set}
+// Variantes por pasos: los productos simples tienen 1 paso (toppings);
+// los combos encadenan varios (toppings del componente + cuál smoothie/panini/pan)
+let prepPendiente=null; // {pid, pasos:[], idx, sel:Set, resultado:[]}
+function prepPasosDe(pid){
+  const pp=PROD_PREP[pid];
+  if(pp?.pasos) return pp.pasos;
+  if(pp?.elige) return [{t:`Elige ${pp.elige} topping${pp.elige>1?'s':''}`,de:pp.de,n:pp.elige}];
+  return null;
+}
 window.abrirPrepModal=pid=>{
-  const p=D.productos.find(x=>x.id===pid); const pp=PROD_PREP[pid];
-  if(!p||!pp?.elige) return;
-  prepPendiente={pid,n:pp.elige,sel:new Set()};
-  $('prep-title').textContent=`🧩 ${p.nombre}`;
-  $('prep-chips').innerHTML=PREP_LISTAS[pp.de].map(t=>`<button class="prep-chip" data-t="${t}" onclick="togglePrepChip(this)">${t}</button>`).join('');
-  actualizarPrepUI();
+  const p=D.productos.find(x=>x.id===pid); const pasos=prepPasosDe(pid);
+  if(!p||!pasos) return;
+  prepPendiente={pid,pasos,idx:0,sel:new Set(),resultado:[]};
+  pintarPasoPrep();
   $('prep-modal').style.display='flex';
 };
+function pintarPasoPrep(){
+  const{pid,pasos,idx,sel}=prepPendiente;
+  const p=D.productos.find(x=>x.id===pid);
+  $('prep-title').textContent=`🧩 ${p?.nombre||''}`;
+  $('prep-chips').innerHTML=PREP_LISTAS[pasos[idx].de].map(t=>`<button class="prep-chip ${sel.has(t)?'on':''}" data-t="${t}" onclick="togglePrepChip(this)">${t}</button>`).join('');
+  actualizarPrepUI();
+}
 window.togglePrepChip=btn=>{
-  const t=btn.dataset.t;
+  const t=btn.dataset.t; const paso=prepPendiente.pasos[prepPendiente.idx];
   if(prepPendiente.sel.has(t)){prepPendiente.sel.delete(t);btn.classList.remove('on');}
-  else if(prepPendiente.sel.size<prepPendiente.n){prepPendiente.sel.add(t);btn.classList.add('on');}
-  else{toast(`Máximo ${prepPendiente.n} — quita uno para cambiar`,1800,'warn');return;}
+  else if(paso.n===1){
+    // Selección única: un toque cambia la elección directamente
+    prepPendiente.sel.clear();
+    document.querySelectorAll('#prep-chips .prep-chip.on').forEach(b=>b.classList.remove('on'));
+    prepPendiente.sel.add(t); btn.classList.add('on');
+  }
+  else if(prepPendiente.sel.size<paso.n){prepPendiente.sel.add(t);btn.classList.add('on');}
+  else{toast(`Máximo ${paso.n} — quita uno para cambiar`,1800,'warn');return;}
   actualizarPrepUI();
 };
 function actualizarPrepUI(){
-  const{n,sel}=prepPendiente;
-  $('prep-contador').textContent=`Elige ${n} · llevas ${sel.size}/${n}`;
+  const{pasos,idx,sel}=prepPendiente; const paso=pasos[idx];
+  $('prep-contador').textContent=`${pasos.length>1?`Paso ${idx+1} de ${pasos.length} · `:''}${paso.t} — llevas ${sel.size}/${paso.n}`;
   const ok=$('prep-ok');
-  ok.disabled=sel.size!==n; ok.style.opacity=sel.size===n?'1':'.4';
+  ok.textContent=idx<pasos.length-1?'Siguiente ▸':'Agregar';
+  ok.disabled=sel.size!==paso.n; ok.style.opacity=sel.size===paso.n?'1':'.4';
 }
 window.cancelarPrep=()=>{prepPendiente=null;$('prep-modal').style.display='none';};
 window.confirmarPrep=()=>{
-  if(!prepPendiente||prepPendiente.sel.size!==prepPendiente.n) return;
-  const{pid,sel}=prepPendiente;
-  pushItemOrden(pid,[...sel]);
+  const pp=prepPendiente; if(!pp) return;
+  const paso=pp.pasos[pp.idx];
+  if(pp.sel.size!==paso.n) return;
+  const vals=[...pp.sel];
+  pp.resultado.push(paso.pre?`${paso.pre}: ${vals.join(', ')}`:vals.join(', '));
+  pp.sel=new Set();
+  if(pp.idx<pp.pasos.length-1){pp.idx++;pintarPasoPrep();return;}
+  pushItemOrden(pp.pid,pp.resultado);
   cancelarPrep();
 };
 
@@ -4944,8 +4987,8 @@ function pushItemOrden(pid,prep){
 }
 
 function addItem(pid){
-  // Productos con toppings a elegir → modal primero; el resto directo
-  if(PROD_PREP[pid]?.elige){abrirPrepModal(pid);return;}
+  // Productos con variantes (toppings o pasos de combo) → modal primero
+  if(PROD_PREP[pid]?.elige||PROD_PREP[pid]?.pasos){abrirPrepModal(pid);return;}
   pushItemOrden(pid,null);
 }
 window.addItem=addItem;
@@ -5017,8 +5060,7 @@ function escposComanda(v){
     push(0x1D,0x21,0x11);     // producto GRANDE
     txt(`${i.qty}x ${i.nombre.toUpperCase()}`); NL();
     push(0x1D,0x21,0x00);
-    const prep=prepTexto(i);
-    if(prep){txt(`  > ${prep}`);NL();}
+    prepLineas(i).forEach(l=>{txt(`  > ${l}`);NL();});
     if(i.nota){push(0x1B,0x45,1);txt(`  ** ${i.nota} **`);push(0x1B,0x45,0);NL();}
     NL();
   });
@@ -5408,7 +5450,7 @@ window.cobrar=cobrar;
 function printTicket(v){
   const itemsHTML=v.items.map(i=>{
     const n=i.nombre.length>28?i.nombre.slice(0,28)+'…':i.nombre;
-    const prep=(i.prep&&i.prep.length)?i.prep.join(', '):'';
+    const prep=(i.prep&&i.prep.length)?i.prep.join(' · '):'';
     return `<div class="tk-item">${n}${i.nota?' <span style="font-size:9px;color:#666;">('+i.nota+')</span>':''}</div>
     ${prep?`<div style="font-size:9px;padding-left:8px;">+ ${prep}</div>`:''}
     <div class="tk-row"><span style="padding-left:8px;">x${i.qty} @ ${fmt(i.precio)}</span><span>${fmt(i.precio*i.qty)}</span></div>`;

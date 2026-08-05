@@ -37,7 +37,7 @@ const FNS = ['cobrar', 'renderOrder', 'renderPOS', 'realizarCorte', 'calcDia',
   'pedirVendedorVenta', 'confVendedor', 'enviarResumenCorteWA', 'checkAutoBackup',
   'fsSetCritical', 'empsActivos', 'renderOrdenes', 'entregarOrden', 'avanzarOrden', 'reabrirOrden', 'setEstadoOrden',
   'toggleKDS', 'playNewOrderSound', 'checkNuevaOrdenSound',
-  'printComanda', 'conectarImpresoraBT', 'escposComanda', 'abrirPrepModal', 'pushItemOrden', 'prepTexto',
+  'printComanda', 'conectarImpresoraBT', 'escposComanda', 'abrirPrepModal', 'pushItemOrden', 'prepTexto', 'prepLineas', 'prepPasosDe',
   'renderMercado', 'registrarCompra', 'mcAddInv', 'renderPosOrdenes'];
 FNS.forEach(fn => {
   const re = new RegExp(`(function ${fn}\\b|window\\.${fn}\\s*=|const ${fn}\\s*=)`);

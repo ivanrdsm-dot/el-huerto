@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.21'; // Costco 04-ago + apertura de caja al abrir turno + letra grande
+const CACHE_NAME = 'el-huerto-v14.22'; // Variantes en combos: pasos por componente
 const ASSETS = [
   '/',
   '/index.html',
