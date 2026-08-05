@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.29'; // Lealtad Paso 1: tarjetas de sellos digitales in-house
+const CACHE_NAME = 'el-huerto-v14.30'; // Fix tarjeta pública: CDN QR correcto + render independiente
 const ASSETS = [
   '/',
   '/index.html',

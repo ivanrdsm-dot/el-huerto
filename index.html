@@ -2274,7 +2274,7 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- QR para tarjetas de lealtad (genera el código que escanea el POS) -->
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
@@ -5577,12 +5577,30 @@ function renderTarjetaPublica(){
           <div style="font-size:24px;color:#E8875A;font-weight:800;font-family:'DM Mono',monospace;">${c.premios||0}</div>
         </div>
       </div>
-      <div style="background:#fff;border-radius:14px;padding:14px;display:flex;justify-content:center;"><canvas id="tarjeta-qr"></canvas></div>
+      <div style="background:#fff;border-radius:14px;padding:14px;display:flex;justify-content:center;"><div id="tarjeta-qr"></div></div>
       <div style="text-align:center;font-size:10.5px;color:#b58a5a;margin-top:10px;">Presenta este código al pagar · ${c.codigo}</div>
     </div>
     <div style="text-align:center;margin-top:14px;font-size:12px;color:#8a8a8a;">Junta ${meta} sellos y llévate: <b>${ltPremio()}</b> 🎁<br><span style="font-size:10.5px;">Guárdala: compartir → "Añadir a pantalla de inicio"</span></div>
   </div>`;
-  if(typeof QRCode!=='undefined'){try{QRCode.toCanvas(document.getElementById('tarjeta-qr'),c.codigo,{width:200,margin:1,color:{dark:'#1a1a1a',light:'#ffffff'}});}catch(e){}}
+  if(typeof QRCode!=='undefined'){
+    try{new QRCode(document.getElementById('tarjeta-qr'),{text:c.codigo,width:200,height:200,colorDark:'#1a1a1a',colorLight:'#ffffff',correctLevel:QRCode.CorrectLevel.M});}
+    catch(e){document.getElementById('tarjeta-qr').innerHTML=`<div style="font-family:monospace;font-size:24px;font-weight:800;padding:30px 10px;letter-spacing:2px;">${c.codigo}</div>`;}
+  }else{
+    // Sin librería QR: el código legible sirve igual (la cajera lo teclea)
+    document.getElementById('tarjeta-qr').innerHTML=`<div style="font-family:monospace;font-size:24px;font-weight:800;padding:30px 10px;letter-spacing:2px;">${c.codigo}</div>`;
+  }
+}
+// La tarjeta pública se pinta sola: no depende de la app ni del login
+if(_tarjetaCode){
+  const _pintar=()=>{try{renderTarjetaPublica();}catch(e){}};
+  document.addEventListener('DOMContentLoaded',_pintar);
+  setTimeout(_pintar,300); setTimeout(_pintar,1200);
+  let _last='';
+  setInterval(()=>{
+    const c=D.lealtad.find(x=>x.codigo===_tarjetaCode.toUpperCase());
+    const firma=c?`${c.sellos}|${c.premios}|${c.nombre}`:'';
+    if(firma!==_last){_last=firma;_pintar();}
+  },1500);
 }
 
 function getDescuento(){
