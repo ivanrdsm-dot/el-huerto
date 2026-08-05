@@ -5057,6 +5057,7 @@ window.conectarImpresoraBT=async()=>{
     }
     if(!ch){toast('❌ La impresora no expone canal de escritura',4000,'error');return;}
     btComandera={device,ch};
+    try{localStorage.setItem('h5btid',device.id);}catch(e){}
     device.addEventListener('gattserverdisconnected',()=>{btComandera.ch=null;btEstadoUI();});
     btEstadoUI();
     toast('✓ Comandera conectada: '+(device.name||'impresora'),3000);
@@ -5122,10 +5123,50 @@ async function btEnviar(bytes){
     return true;
   }catch(e){console.warn('BT print:',e);btComandera.ch=null;btEstadoUI();return false;}
 }
+// Reconexión automática al arrancar: Chrome recuerda la impresora
+// emparejada (getDevices); si no está anunciando aún, el primer print
+// reintenta solo. Ya no hay que tocar 'Conectar' cada día.
+async function btAutoConectar(){
+  try{
+    if(!navigator.bluetooth?.getDevices) return;
+    const id=localStorage.getItem('h5btid'); if(!id) return;
+    const devs=await navigator.bluetooth.getDevices();
+    const d=devs.find(x=>x.id===id); if(!d) return;
+    btComandera.device=d;
+    d.addEventListener('gattserverdisconnected',()=>{btComandera.ch=null;btEstadoUI();});
+    await btReconectar();
+    btEstadoUI();
+    if(btComandera.ch) console.log('✓ Comandera reconectada automáticamente');
+  }catch(e){}
+}
+setTimeout(btAutoConectar,4000);
+
+// Fallback USB/diálogo: si no hay Bluetooth, la comanda sale por la
+// impresora del sistema (window.print) — SILENCIOSA con Chrome en modo
+// kiosk-printing. Espera a que el ticket del cliente termine de imprimir.
+function printComandaHTML(v){
+  setTimeout(()=>{
+    $('ticket-print').innerHTML=`<div class="ticket-thermal">
+      <div class="tk-center"><div class="tk-logo">COMANDA</div><div class="tk-sub">${v.ticket} · ${v.hora}</div></div>
+      ${v.cliente?`<div style="font-size:11px;">Cliente: <b>${v.cliente}</b></div>`:''}
+      ${v.nota?`<div style="font-size:11px;font-weight:700;">** ${v.nota} **</div>`:''}
+      <hr class="tk-sep">
+      ${v.items.map(i=>`<div style="font-size:15px;font-weight:900;margin:6px 0 2px;">${i.qty}× ${i.nombre.toUpperCase()}</div>
+        ${prepLineas(i).map(l=>`<div style="font-size:11px;padding-left:8px;">&gt; ${l}</div>`).join('')}
+        ${i.nota?`<div style="font-size:11px;font-weight:700;padding-left:8px;">** ${i.nota} **</div>`:''}`).join('')}
+      <hr class="tk-sep">
+      <div class="tk-center" style="font-size:10px;">Atiende: ${v.vendedorNombre||'—'}</div>
+    </div>`;
+    if(CFG.autoPrint!==false) window.print();
+  },1800);
+}
 window.printComanda=async v=>{
   const ok=await btEnviar(escposComanda(v));
-  if(ok) toast('👨‍🍳 Comanda impresa',2000);
-  else if(!window._btAvisado){window._btAvisado=true;toast('🖨 Comandera sin conectar — Config → Conectar impresora',4000,'warn');}
+  if(ok){toast('👨‍🍳 Comanda impresa',2000);return;}
+  if(CFG.comandaFallback!==false){
+    printComandaHTML(v);
+    toast('👨‍🍳 Comanda por impresora del sistema',2200);
+  }else if(!window._btAvisado){window._btAvisado=true;toast('🖨 Comandera sin conectar — Config → Conectar impresora',4000,'warn');}
 };
 window.testComanda=()=>printComanda({ticket:'#PRUEBA',hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),cliente:'Prueba',nota:'',vendedorNombre:SESSION?.nombre||'—',items:[{id:1003,qty:1,nombre:'Açaí Bowl 3 Toppings',prep:['Fresa','Mango','Granola'],nota:'sin miel'}]});
 window.reprintComanda=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printComanda(v);};
@@ -9939,6 +9980,7 @@ window.saveConfig=()=>{
     msg:$('cfg-msg').value.trim()||'¡Gracias!',
     autoPrint:$('cfg-autoprint')?$('cfg-autoprint').checked:true,
     comandaAuto:$('cfg-comanda-auto')?$('cfg-comanda-auto').checked:true,
+    comandaFallback:CFG.comandaFallback!==false,
     waReporte:$('cfg-wa-num')?cleanWANum($('cfg-wa-num').value):'',
     waHora:$('cfg-wa-hora')?$('cfg-wa-hora').value||'21:00':'21:00',
     kpiTargets:prevTargets

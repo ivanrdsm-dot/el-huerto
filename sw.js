@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.25'; // HOTFIX: pulso usaba calcDia (local de Caja) y colgaba el inicio
+const CACHE_NAME = 'el-huerto-v14.26'; // Comandera: reconexión BT automática + fallback USB
 const ASSETS = [
   '/',
   '/index.html',
