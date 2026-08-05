@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.22'; // Variantes en combos: pasos por componente
+const CACHE_NAME = 'el-huerto-v14.23'; // Variantes en todos los cocteles
 const ASSETS = [
   '/',
   '/index.html',
