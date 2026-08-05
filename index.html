@@ -9305,10 +9305,14 @@ function renderDashboard(){
   const td=today(); const cm=curM();
 
   // ══ PULSO DE HOY: dinero + servicio + estado de caja en una fila ══
+  // Blindado con try/catch: el pulso jamás debe impedir que cargue el sistema
+  try{
   if($('db-pulso')){
-    const dd=calcDia(td);
+    // Total de hoy: registro de caja manda; si no hay, ventas POS
+    const cjHoy=D.caja.find(c=>c.fecha===td);
     const vHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
-    const prom=vHoy.length?dd.total/vHoy.length:0;
+    const totHoy=cjHoy?(cjHoy.total||0):vHoy.reduce((s,v)=>s+v.total,0);
+    const prom=vHoy.length?totHoy/vHoy.length:0;
     const fondo=D.retiros.find(r=>r.fecha===td&&r.tipo==='fondo');
     const corteHoy=D.cortes.find(c=>c.fecha===td);
     const ordsDone=vHoy.filter(v=>v.prep?.estado==='entregada'&&v.prep.tsEntrega);
@@ -9319,12 +9323,13 @@ function renderDashboard(){
       <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:700;">${label}</div>
       <div class="mono" style="font-size:14.5px;font-weight:900;color:${color};">${val}</div></div></div>`;
     $('db-pulso').innerHTML=
-      chip('💰','Ventas hoy',fmt(dd.total),'var(--accent)')+
+      chip('💰','Ventas hoy',fmt(totHoy),'var(--accent)')+
       chip('🧾','Tickets · prom',`${vHoy.length} · ${fmt(prom)}`,'var(--text)')+
       chip('⏱','Cocina',cocinaProm!=null?cocinaProm.toFixed(1)+' min'+(abiertas?` · ${abiertas} viva${abiertas>1?'s':''}`:''):(abiertas?abiertas+' en curso':'—'),cocinaProm!=null&&cocinaProm>(CFG.ordTiempos?.urgent||12)?'var(--red)':'var(--teal)',`go('ordenes')`)+
       chip('💵','Apertura',fondo?`${fmt(fondo.monto)}${fondo.por?' · '+fondo.por:''}`:'FALTA',fondo?'var(--accent)':'var(--red)',fondo?'':`$('apertura-modal').style.display='flex'`)+
       chip('🌙','Corte',corteHoy?`✓ ${corteHoy.hora}`:'Pendiente',corteHoy?'var(--accent)':'var(--gold)',`go('caja')`);
   }
+  }catch(e){console.warn('pulso:',e);}
 
   // ══ FUNCIÓN UNIFICADA: caja tiene prioridad, fallback ventas POS ══
   const calcDiaDB=(fecha)=>{

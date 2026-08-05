@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.24'; // Mejora maestra: pulso de hoy + COGS en reportes + transiciones
+const CACHE_NAME = 'el-huerto-v14.25'; // HOTFIX: pulso usaba calcDia (local de Caja) y colgaba el inicio
 const ASSETS = [
   '/',
   '/index.html',
