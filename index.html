@@ -1554,18 +1554,25 @@ nav{padding-top:env(safe-area-inset-top);}
   <!-- Programa de lealtad: tarjetas, sellos y campañas -->
   <div class="card" style="margin-bottom:12px;padding:14px;">
     <div class="sh" style="margin-bottom:10px;"><span class="ct" style="margin-bottom:0;">🎟 Programa de Lealtad</span>
-      <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <button class="btn bor bsm" onclick="campanaInactivos()">📣 Campaña: inactivos 14+ días</button>
-      </div>
+      <button class="btn bs bsm" onclick="abrirCfgLealtad()">⚙️ Meta y premio</button>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:8px;margin-bottom:12px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr 130px auto;gap:8px;margin-bottom:12px;">
       <input id="lp-nombre" placeholder="Nombre del cliente">
       <input id="lp-tel" placeholder="WhatsApp (10 dígitos)" inputmode="numeric">
+      <input id="lp-cumple" type="date" title="Cumpleaños (opcional)">
       <button class="btn bp bsm" onclick="altaLealtadPanel()">➕ Crear tarjeta</button>
     </div>
-    <div id="lealtad-kpis" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;"></div>
+    <div id="lealtad-kpis" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
+    <!-- Campañas por segmento -->
+    <div style="background:var(--surface2);border-radius:var(--rsm);padding:12px;margin-bottom:12px;">
+      <div class="ct">📣 Campañas — elige a quién le hablas</div>
+      <div id="lealtad-segmentos" class="pos-cats" style="margin-bottom:8px;"></div>
+      <div class="fg" style="margin:0 0 8px;"><label>Mensaje (usa {nombre}, {sellos}, {faltan}, {premio}, {link})</label>
+        <textarea id="lp-msg" rows="3" style="width:100%;font-size:12.5px;padding:8px;border-radius:8px;background:var(--surface);border:1px solid var(--border);color:var(--text);resize:vertical;"></textarea>
+      </div>
+      <div id="lealtad-campana"></div>
+    </div>
     <div id="lealtad-tabla" style="overflow-x:auto;"></div>
-    <div id="lealtad-campana" style="margin-top:10px;"></div>
   </div>
   <div class="g4" style="margin-bottom:12px;" id="cl-kpis"></div>
   <div class="card">
@@ -5494,35 +5501,84 @@ window.altaLealtadPanel=async()=>{
   if(!n){toast('⚠ Pon el nombre',2200,'warn');return;}
   let codigo=genCodigoLealtad();
   while(D.lealtad.find(c=>c.codigo===codigo))codigo=genCodigoLealtad();
-  const c={id:Date.now(),codigo,nombre:n,tel:t,sellos:0,premios:0,totalVisitas:0,ultimaVisita:null,creado:today()};
+  const c={id:Date.now(),codigo,nombre:n,tel:t,cumple:$('lp-cumple')?.value||null,sellos:0,premios:0,totalVisitas:0,ultimaVisita:null,creado:today()};
   const ok=await fsSet('lealtad',c);
   if(!ok){toast('❌ Sin conexión',3000,'error');return;}
   if(!D.lealtad.find(x=>x.id===c.id))D.lealtad.push(c);
   logAudit('lealtad_alta',{nombre:n,codigo});
-  $('lp-nombre').value='';$('lp-tel').value='';
+  $('lp-nombre').value='';$('lp-tel').value='';if($('lp-cumple'))$('lp-cumple').value='';
   renderLealtadPanel();
   toast(`🎟 Tarjeta creada para ${n} (${codigo})`,3000);
   if(t&&confirm(`¿Enviarle su tarjeta a ${n} por WhatsApp?`))compartirTarjeta(c.id);
+};
+window.abrirCfgLealtad=async()=>{
+  const m=prompt('¿Cuántos sellos para ganar el premio?',ltMeta());
+  if(m===null)return;
+  const p=prompt('¿Cuál es el premio?',ltPremio());
+  if(p===null)return;
+  const meta=Math.max(2,parseInt(m)||10);
+  CFG.lealtad={meta,premio:p.trim()||'Smoothie gratis'};
+  try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}
+  logAudit('lealtad_config',{meta,premio:CFG.lealtad.premio});
+  toast(`✓ Programa: ${meta} sellos → ${CFG.lealtad.premio}`,3200);
+  renderLealtadPanel();
 };
 function diasSinVisita(c){
   if(!c.ultimaVisita)return 999;
   return Math.round((new Date(today())-new Date(c.ultimaVisita))/86400000);
 }
-window.campanaInactivos=()=>{
-  const inactivos=D.lealtad.filter(c=>c.tel&&diasSinVisita(c)>=14).sort((a,b)=>diasSinVisita(b)-diasSinVisita(a));
-  const el=$('lealtad-campana');if(!el)return;
-  if(!inactivos.length){el.innerHTML='<p style="font-size:12px;color:var(--text3);">🎉 Nadie lleva 14+ días sin venir (o no tienen teléfono registrado)</p>';return;}
-  el.innerHTML=`<div style="background:var(--surface2);border-radius:var(--rsm);padding:12px;">
-    <div class="ct">📣 ${inactivos.length} cliente(s) para reconquistar — un toque por mensaje</div>
-    ${inactivos.map(c=>{
-      const msg=`¡Hola ${c.nombre}! 🌱 Te extrañamos en *El Huerto*. Tienes ${c.sellos||0}/${ltMeta()} sellos en tu tarjeta${(c.premios||0)>0?' y 🎁 UN PREMIO SIN CANJEAR':''} — ven por tu smoothie y sigue sumando: ${tarjetaLink(c)}`;
-      return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-        <span style="font-size:12.5px;"><b>${c.nombre}</b> · ${diasSinVisita(c)>900?'nunca ha venido':diasSinVisita(c)+' días sin venir'} · ${c.sellos||0}/${ltMeta()}</span>
-        <a class="btn bsm" style="background:#25D366;color:#fff;text-decoration:none;font-size:11.5px;padding:5px 10px;border-radius:7px;" target="_blank" href="https://wa.me/52${c.tel}?text=${encodeURIComponent(msg)}">📱 Enviar</a>
-      </div>`;
-    }).join('')}
-  </div>`;
+// ── Segmentos de campaña: cada uno con su plantilla sugerida ──
+const LT_SEGMENTOS={
+  casi:{label:'🔥 A punto de premio',
+    filtro:c=>(c.premios||0)===0&&(c.sellos||0)>0&&(ltMeta()-(c.sellos||0))<=2,
+    msg:'¡Hola {nombre}! 🌱 Te faltan solo *{faltan} sellos* para tu {premio} en El Huerto. ¡Pásate hoy y complétala! {link}'},
+  premio:{label:'🎁 Con premio sin canjear',
+    filtro:c=>(c.premios||0)>0,
+    msg:'¡{nombre}, tienes un *{premio}* esperándote en El Huerto! 🎁 Ven a canjearlo cuando quieras: {link}'},
+  inactivos:{label:'😴 Inactivos 14+ días',
+    filtro:c=>diasSinVisita(c)>=14,
+    msg:'¡Hola {nombre}! 🌱 Te extrañamos en El Huerto. Tienes {sellos} sellos guardados — ven por tu smoothie y sigue sumando: {link}'},
+  cumple:{label:'🎂 Cumple este mes',
+    filtro:c=>c.cumple&&c.cumple.slice(5,7)===today().slice(5,7),
+    msg:'¡Feliz cumpleaños {nombre}! 🎂🌱 En El Huerto te invitamos tu smoothie favorito este mes. Muestra tu tarjeta: {link}'},
+  vip:{label:'⭐ VIP (5+ visitas)',
+    filtro:c=>(c.totalVisitas||0)>=5,
+    msg:'{nombre}, eres de la familia El Huerto 🌱 Gracias por tus {visitas} visitas. Esta semana tenemos algo especial para ti — muestra tu tarjeta: {link}'},
+  todos:{label:'👥 Todos',
+    filtro:()=>true,
+    msg:'¡Hola {nombre}! 🌱 Novedades en El Huerto — pásate esta semana. Tu tarjeta: {link}'},
 };
+let ltSegActivo='casi';
+window.setLtSegmento=k=>{
+  ltSegActivo=k;
+  const el=$('lp-msg'); if(el) el.value=LT_SEGMENTOS[k].msg;
+  renderLealtadPanel();
+};
+function ltMensajeFinal(c){
+  const plantilla=$('lp-msg')?.value||LT_SEGMENTOS[ltSegActivo].msg;
+  return plantilla
+    .replace(/{nombre}/g,c.nombre)
+    .replace(/{sellos}/g,`${c.sellos||0}/${ltMeta()}`)
+    .replace(/{faltan}/g,String(Math.max(0,ltMeta()-(c.sellos||0))))
+    .replace(/{premio}/g,ltPremio())
+    .replace(/{visitas}/g,String(c.totalVisitas||0))
+    .replace(/{link}/g,tarjetaLink(c));
+}
+function renderCampana(){
+  const el=$('lealtad-campana'); if(!el) return;
+  const seg=LT_SEGMENTOS[ltSegActivo];
+  const lista=D.lealtad.filter(c=>seg.filtro(c));
+  const conTel=lista.filter(c=>c.tel&&c.tel.length>=10);
+  const sinTel=lista.length-conTel.length;
+  if(!lista.length){el.innerHTML=`<p style="font-size:12px;color:var(--text3);">Nadie cae en «${seg.label}» ahora mismo.</p>`;return;}
+  el.innerHTML=`<div style="font-size:11.5px;color:var(--text2);margin-bottom:6px;">
+      <b>${conTel.length}</b> cliente(s) en «${seg.label}»${sinTel?` · ${sinTel} sin WhatsApp registrado`:''} — un toque por mensaje
+    </div>
+    ${conTel.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:12.5px;min-width:0;"><b>${c.nombre}</b> <span style="color:var(--text3);">· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?` · 🎁${c.premios}`:''} · ${diasSinVisita(c)>900?'sin visitas':diasSinVisita(c)+'d'}</span></span>
+      <a class="btn bsm" style="background:#25D366;color:#fff;text-decoration:none;font-size:11.5px;padding:5px 10px;border-radius:7px;white-space:nowrap;" target="_blank" href="https://wa.me/52${c.tel}?text=${encodeURIComponent(ltMensajeFinal(c))}" onclick="logAudit('lealtad_campana',{segmento:'${ltSegActivo}',cliente:'${c.nombre.replace(/'/g,"")}'})">📱 Enviar</a>
+    </div>`).join('')}`;
+}
 function renderLealtadPanel(){
   const k=$('lealtad-kpis'), t=$('lealtad-tabla');
   if(!k||!t)return;
@@ -5531,6 +5587,15 @@ function renderLealtadPanel(){
   const premiosPend=L.reduce((s,c)=>s+(c.premios||0),0);
   const kchip=(l,v)=>`<div style="background:var(--surface2);border-radius:var(--rsm);padding:8px 14px;"><span style="font-size:9.5px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:700;">${l}</span><div class="kv" style="font-size:18px;">${v}</div></div>`;
   k.innerHTML=kchip('Tarjetas',L.length)+kchip('Activos 30 días',activos30)+kchip('🎁 Premios sin canjear',premiosPend)+kchip('Meta · Premio',`${ltMeta()} sellos · ${ltPremio()}`);
+  // Segmentos con su conteo en vivo
+  const sg=$('lealtad-segmentos');
+  if(sg) sg.innerHTML=Object.entries(LT_SEGMENTOS).map(([kk,s])=>{
+    const n=L.filter(c=>s.filtro(c)).length;
+    return `<button class="pcat ${ltSegActivo===kk?'on':''}" onclick="setLtSegmento('${kk}')">${s.label} (${n})</button>`;
+  }).join('');
+  const msgEl=$('lp-msg');
+  if(msgEl&&!msgEl.value) msgEl.value=LT_SEGMENTOS[ltSegActivo].msg;
+  renderCampana();
   t.innerHTML=L.length===0?'<p style="font-size:12px;color:var(--text3);">Crea la primera tarjeta arriba — o desde el POS con el botón 🎟</p>':
     `<table style="width:100%;font-size:12px;"><thead><tr style="text-align:left;color:var(--text3);font-size:10px;text-transform:uppercase;"><th>Cliente</th><th>Código</th><th>Sellos</th><th>🎁</th><th>Visitas</th><th>Última</th><th></th></tr></thead><tbody>`+
     [...L].sort((a,b)=>(b.ultimaVisita||'').localeCompare(a.ultimaVisita||'')).map(c=>`<tr style="border-top:1px solid var(--border);">
