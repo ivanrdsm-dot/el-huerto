@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.42'; // Costo del açaí (Vega Life $215/L) + proveedor
+const CACHE_NAME = 'el-huerto-v14.43'; // Costo Philadelphia: barra 190g a $50
 const ASSETS = [
   '/',
   '/index.html',
