@@ -972,7 +972,9 @@ nav{padding-top:env(safe-area-inset-top);}
 
 <!-- ══ RELOJ CHECADOR ══ -->
 <div id="page-reloj" class="page">
-  <div class="sh"><span class="st">Reloj Checador</span></div>
+  <div class="sh"><span class="st">Reloj Checador</span>
+    <button class="btn bor bsm" id="btn-reg-asist" onclick="registroAsistenciaPDF()" style="display:none;">📄 Registro de asistencia (contador)</button>
+  </div>
   <!-- Reloj en tiempo real -->
   <div class="card" style="text-align:center;margin-bottom:12px;padding:18px;">
     <div class="reloj-clock" id="reloj-live">--:--:--</div>
@@ -2094,6 +2096,7 @@ nav{padding-top:env(safe-area-inset-top);}
   <div class="card">
     <div class="ct">Ticket / Impresora</div>
     <div class="ii"><div class="fg"><label>Nombre en ticket</label><input type="text" id="cfg-neg" placeholder="El Huerto"></div><div class="fg"><label>Teléfono</label><input type="text" id="cfg-tel" placeholder="+52 56 4666 5718"></div></div>
+    <div class="fg"><label>RFC del patrón (sale en el registro de asistencia del contador)</label><input type="text" id="cfg-rfc" placeholder="Ej: CARI0209052V0" style="text-transform:uppercase;"></div>
     <div class="fg"><label>Pie de ticket</label><input type="text" id="cfg-msg" placeholder="¡Gracias por tu visita!"></div>
     <div class="fg" style="display:flex;align-items:center;gap:10px;margin:10px 0;">
       <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;text-transform:none;letter-spacing:0;color:var(--text);">
@@ -2475,6 +2478,7 @@ async function completeInit(){
   await migBobaAgo2026();
   await migCostco04Ago2026();
   await migDedupeInvAgo2026();
+  await migFixAgo06_2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3104,6 +3108,33 @@ async function migDedupeInvAgo2026(){
   await markMig(migKey);
   logAudit('inventario_dedupe',{eliminados:eliminados.length,detalle:eliminados.slice(0,50)});
   if(eliminados.length) toast(`🧹 Inventario limpio: ${eliminados.length} duplicado(s) en cero eliminados`,4500);
+}
+
+// ══ CORRECCIONES 06-AGO (instrucción de Iván) ══
+// 1. Claudia olvidó su salida el martes 04-ago: salió a las 16:00
+//    (quedó registrada 18:48). Se corrige el checkin con nota de ajuste.
+// 2. Aguacate: la captura decía 430 kg — eran 430 g = 0.43 kg.
+async function migFixAgo06_2026(){
+  const migKey='h5fix_ago06';
+  if(await migDone(migKey)) return;
+  // Claudia (2002), martes 2026-08-04
+  const cis=D.checkins.filter(c=>c.empId===2002&&c.fecha==='2026-08-04');
+  for(const c of cis){
+    if(!c.horaSalida||c.horaSalida>'16:30'){
+      await fsSet('checkins',{...c,horaSalida:'16:00',ajuste:'Corrección admin 06-ago: olvidó registrar salida — salida real 16:00'});
+    }
+  }
+  if(cis.length) logAudit('checkin_corregido',{empleada:'Claudia',fecha:'2026-08-04',salida:'16:00',motivo:'Olvidó registrar su salida; salida real 4:00 pm'});
+  // Aguacate 430 → 0.43 kg (inventario + captura del día)
+  const agu=D.inventario.find(i=>normInvNombre(i.nombre)==='aguacate');
+  if(agu){
+    if((agu.qty||0)>100){agu.qty=0.43;await fsSet('inventario',agu);}
+    const caps=D.invDiario.filter(r=>r.productoId===agu.id&&(r.qty||0)>100);
+    for(const r of caps){await fsSet('invDiario',{...r,qty:0.43});}
+    if(caps.length||agu.qty===0.43) logAudit('inventario_correccion',{articulo:'Aguacate',de:'430',a:'0.43 kg (430 g)'});
+  }
+  await markMig(migKey);
+  toast('✓ Correcciones: salida de Claudia (mar 16:00) y Aguacate 0.43 kg',4500);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -8877,6 +8908,77 @@ function fmtMins(mins){
   return `${Math.floor(mins/60)}h ${String(mins%60).padStart(2,'0')}m`;
 }
 
+// ══ REGISTRO DE CONTROL DE ASISTENCIA (formato para el contador) ══
+// Documento que el patrón debe conservar conforme a los Arts. 784
+// fracc. VII y 804 fracc. III de la Ley Federal del Trabajo: días
+// laborados, hora de entrada y salida, jornada y tiempo extraordinario
+// (Art. 66-68 LFT: máx. 3 hrs/día, 3 veces/semana; dobles las primeras
+// 9 hrs extra de la semana, triples las siguientes). Con firmas.
+window.registroAsistenciaPDF=()=>{
+  if(SESSION?.tipo!=='admin'){toast('⚠ Solo administrador',2400,'warn');return;}
+  const J=window.jspdf?.jsPDF; if(!J){toast('⚠ Cargando librería PDF, reintenta',2500,'warn');return;}
+  const mon=$('reloj-sem')?.value||getMonday(today());
+  const wd7=[];for(let i=0;i<7;i++){const d=new Date(mon+'T12:00:00');d.setDate(d.getDate()+i);wd7.push(localDate(d));}
+  const doc=new J(); const W=doc.internal.pageSize.getWidth();
+  const JORNADA_MIN=8*60; // jornada diurna máxima (Art. 61 LFT)
+  empsActivos().forEach((e,ix)=>{
+    if(ix>0) doc.addPage();
+    // Encabezado
+    doc.setFont('helvetica','bold');doc.setFontSize(14);doc.setTextColor(26,46,24);
+    doc.text('REGISTRO DE CONTROL DE ASISTENCIA',W/2,18,{align:'center'});
+    doc.setFontSize(8);doc.setFont('helvetica','normal');doc.setTextColor(110);
+    doc.text('Documento conservado por el patrón conforme a los Arts. 784 fracc. VII y 804 fracc. III de la Ley Federal del Trabajo',W/2,24,{align:'center'});
+    doc.setDrawColor(126,200,80);doc.setLineWidth(.7);doc.line(14,28,W-14,28);
+    doc.setFontSize(9.5);doc.setTextColor(40);
+    doc.setFont('helvetica','bold');doc.text('Patrón:',14,36);doc.setFont('helvetica','normal');doc.text(`${CFG.negocio||'El Huerto'}${CFG.rfc?'  ·  RFC: '+CFG.rfc:''}`,32,36);
+    doc.setFont('helvetica','bold');doc.text('Centro de trabajo:',14,42);doc.setFont('helvetica','normal');doc.text('Universidad Panamericana — Ciudad UP',48,42);
+    doc.setFont('helvetica','bold');doc.text('Trabajador(a):',14,48);doc.setFont('helvetica','normal');doc.text(`${e.nombre}  ·  ${e.rol||''}`,42,48);
+    doc.setFont('helvetica','bold');doc.text('Periodo:',14,54);doc.setFont('helvetica','normal');doc.text(`Semana del ${wd7[0]} al ${wd7[6]}`,32,54);
+    // Tabla de días
+    const hs=getHorasSemana(e.id,mon);
+    let extraSemMin=0;
+    const body=hs.days.map(d=>{
+      const extra=Math.max(0,(d.mins||0)-JORNADA_MIN);
+      extraSemMin+=extra;
+      return [d.fecha,d.dayName.toUpperCase(),d.entrada||'—',d.salida||(d.entrada?'SIN REGISTRO':'—'),d.mins?fmtMins(d.mins):'—',extra?fmtMins(extra):'—'];
+    });
+    doc.autoTable({startY:60,
+      head:[['Fecha','Día','Entrada','Salida','Jornada','Tiempo extra (>8h)']],
+      body,
+      theme:'grid',
+      headStyles:{fillColor:[26,46,24],textColor:[126,200,80],fontStyle:'bold',fontSize:8.5,halign:'center'},
+      bodyStyles:{fontSize:9,halign:'center',textColor:[40,40,40]},
+      alternateRowStyles:{fillColor:[245,248,243]},
+      margin:{left:14,right:14}});
+    let y=doc.lastAutoTable.finalY+8;
+    // Totales
+    const dobles=Math.min(extraSemMin,9*60), triples=Math.max(0,extraSemMin-9*60);
+    doc.setFontSize(9.5);doc.setFont('helvetica','bold');doc.setTextColor(26,46,24);
+    doc.text(`Total jornada semanal: ${fmtMins(hs.totalMins)}`,14,y);
+    doc.text(`Tiempo extraordinario: ${fmtMins(extraSemMin)}`,90,y);
+    y+=6;doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(110);
+    if(extraSemMin>0) doc.text(`Desglose LFT Art. 67-68: ${fmtMins(dobles)} al doble${triples?` · ${fmtMins(triples)} al triple`:''}`,14,y);
+    else doc.text('Sin tiempo extraordinario en el periodo.',14,y);
+    y+=6;doc.text('Los días sin registro corresponden a descanso o inasistencia. Ajustes manuales constan en la bitácora inmutable del sistema.',14,y);
+    // Firmas
+    y+=26;
+    doc.setDrawColor(120);doc.setLineWidth(.3);
+    doc.line(20,y,90,y);doc.line(W-90,y,W-20,y);
+    doc.setFontSize(8.5);doc.setTextColor(60);
+    doc.text('Firma del trabajador(a)',55,y+5,{align:'center'});
+    doc.text('Firma del patrón o representante',W-55,y+5,{align:'center'});
+    doc.setFontSize(7.5);doc.setTextColor(130);
+    doc.text(`${e.nombre}`,55,y+10,{align:'center'});
+    doc.text(`${CFG.negocio||'El Huerto'}`,W-55,y+10,{align:'center'});
+    // Pie
+    doc.setFontSize(7);doc.setTextColor(150);
+    doc.text(`Generado por el sistema El Huerto el ${today()} · registros del reloj checador digital · página ${ix+1}`,W/2,doc.internal.pageSize.getHeight()-8,{align:'center'});
+  });
+  doc.save(`Registro_Asistencia_${mon}.pdf`);
+  logAudit('registro_asistencia_pdf',{semana:mon,empleados:empsActivos().map(e=>e.nombre)});
+  toast('📄 Registro de asistencia descargado — listo para el contador',3500);
+};
+
 function getHorasSemana(empId,monday){
   const days=[];
   for(let i=0;i<7;i++){
@@ -8926,6 +9028,7 @@ function renderReloj(){
   const td=today();
   const isAdmin=SESSION&&SESSION.tipo==='admin';
   const isEmp=SESSION&&SESSION.tipo==='emp';
+  if($('btn-reg-asist'))$('btn-reg-asist').style.display=isAdmin?'':'none';
 
   // Tarjetas de empleadas
   if($('reloj-cards')){
@@ -10590,6 +10693,7 @@ function renderConfig(){
   if($('cfg-neg')&&CFG.negocio)$('cfg-neg').value=CFG.negocio;
   if($('cfg-tel')&&CFG.tel)$('cfg-tel').value=CFG.tel;
   if($('cfg-msg')&&CFG.msg)$('cfg-msg').value=CFG.msg;
+  if($('cfg-rfc'))$('cfg-rfc').value=CFG.rfc||'';
   if($('cfg-autoprint'))$('cfg-autoprint').checked=CFG.ticketAuto===true;
   if($('cfg-comanda-auto'))$('cfg-comanda-auto').checked=CFG.comandaAuto!==false;
   btEstadoUI();
@@ -10635,6 +10739,7 @@ window.saveConfig=()=>{
     negocio:$('cfg-neg').value.trim()||'El Huerto',
     tel:$('cfg-tel').value.trim(),
     msg:$('cfg-msg').value.trim()||'¡Gracias!',
+    rfc:$('cfg-rfc')?$('cfg-rfc').value.trim().toUpperCase():(CFG.rfc||''),
     ticketAuto:$('cfg-autoprint')?$('cfg-autoprint').checked:false,
     comandaAuto:$('cfg-comanda-auto')?$('cfg-comanda-auto').checked:true,
     comandaUSB:CFG.comandaUSB===true,
@@ -10759,6 +10864,7 @@ const AUD_META={
   orden_estado:['🔔','#6d4c41'], orden_entregada:['📦','#2e7d32'], orden_reabierta:['↩','#e65100'],
   apertura_caja:['💰','#2e7d32'], compra_mercado:['🧺','#6d4c41'], compras_registradas:['🧾','#6d4c41'],
   propinas_repartidas:['💁','#f9a825'], lealtad_alta:['🎟','#7b1fa2'], lealtad_sello:['🎟','#2e7d32'], lealtad_campana:['📣','#1565c0'],
+  checkin_corregido:['🕐','#e65100'], inventario_correccion:['📦','#e65100'], registro_asistencia_pdf:['📄','#1565c0'], inventario_dedupe:['🧹','#00695c'],
   orden_compra_creada:['📝','#f57f17'], orden_compra_recibida:['📦','#2e7d32']
 };
 function renderBitacora(){

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.35'; // Inventario: dedupe en cero + KPIs clicables con filtro
+const CACHE_NAME = 'el-huerto-v14.36'; // Fix salida Claudia + aguacate 430g + registro asistencia LFT
 const ASSETS = [
   '/',
   '/index.html',
