@@ -2483,6 +2483,7 @@ async function completeInit(){
   await migResaneoFoodCostAgo2026();
   await migRestauraGastosAgo2026();
   await migComprasAgo0506_2026();
+  await migCostoAcaiAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3266,6 +3267,31 @@ async function migComprasAgo0506_2026(){
   await markMig(migKey);
   logAudit('compras_registradas',{lote:'05-06 ago 2026',gastos:nuevos});
   toast(`✓ Compras 05-06 ago registradas: ${nuevos.length} gasto(s)`,4500);
+}
+
+// ══ COSTO DEL AÇAÍ — Vega Life \$215 por litro (dato de Iván) ══
+// La pulpa se mide en gramos en recetas (150 g por bowl). Supuesto
+// documentado: 1 L de pulpa ≈ 1000 g (densidad ~1 g/ml) → \$0.215/g.
+// Si el envase real trae otro gramaje, se corrige con una línea.
+async function migCostoAcaiAgo2026(){
+  const migKey='h5acai_ago26';
+  if(await migDone(migKey)) return;
+  const acai=D.inventario.find(i=>normInvNombre(i.nombre)==='acaipulpa')
+          ||D.inventario.find(i=>/a[çc]a[íi]/i.test(i.nombre));
+  if(acai){
+    const gramosPorLitro=1000;
+    if(acai.unit!=='g'&&acai.unit!=='kg'){acai.unit='g';}
+    acai.precio=acai.unit==='kg'?215:Math.round(215/gramosPorLitro*10000)/10000; // 0.215 $/g
+    acai.proveedor='Vega Life';
+    await fsSet('inventario',acai);
+    logAudit('costo_insumo',{insumo:acai.nombre,proveedor:'Vega Life',precio:'\$215/L → \$0.215/g',
+      impacto:'Açaí Bowl (150 g) = \$32.25 de pulpa'});
+  }
+  if(!D.provDir.find(p=>normInvNombre(p.nombre)==='vegalife')){
+    await fsSet('provDir',{id:Date.now(),nombre:'Vega Life',contacto:'',tel:'',entrega:'',notas:'Pulpa de açaí — \$215 por litro'});
+  }
+  await markMig(migKey);
+  toast('✓ Açaí costeado: \$215/L (\$32.25 por bowl) — Vega Life dado de alta',4500);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026

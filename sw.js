@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.41'; // FIX: gastos de sábado/domingo eran invisibles en reportes
+const CACHE_NAME = 'el-huerto-v14.42'; // Costo del açaí (Vega Life $215/L) + proveedor
 const ASSETS = [
   '/',
   '/index.html',
