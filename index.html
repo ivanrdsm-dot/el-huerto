@@ -354,6 +354,46 @@ body.kds-mode .ord-seg button{min-height:58px;font-size:13.5px;}
 body.kds-mode .ord-btns .btn{min-height:58px;font-size:15px;}
 body.kds-mode .pcat{font-size:13.5px;padding:9px 15px;}
 body.kds-mode .st{font-size:20px;}
+/* ── Corte de Caja: wizard de 3 pasos ── */
+.corte-card{border:2px solid var(--accent)!important;}
+.corte-prog{display:flex;align-items:center;gap:0;margin-bottom:16px;padding:0 6px;}
+.cp-dot{width:38px;height:38px;border-radius:50%;background:var(--surface2);border:2px solid var(--border);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;transition:all .35s cubic-bezier(.25,.8,.35,1);filter:grayscale(1) opacity(.55);}
+.cp-dot.done{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 15%, var(--surface));filter:none;transform:scale(1.1);box-shadow:0 2px 10px color-mix(in srgb, var(--accent) 30%, transparent);}
+.cp-line{flex:1;height:3px;background:var(--border);border-radius:2px;margin:0 6px;overflow:hidden;position:relative;}
+.cp-line::after{content:'';position:absolute;inset:0;background:var(--accent);transform:scaleX(0);transform-origin:left;transition:transform .5s cubic-bezier(.25,.8,.35,1);}
+.cp-line.done::after{transform:scaleX(1);}
+.corte-step{position:relative;border-radius:14px;padding:14px 14px 14px 52px;margin-bottom:10px;border:1.5px solid var(--border);background:var(--surface);transition:border-color .25s ease, box-shadow .25s ease;}
+.corte-step:focus-within{box-shadow:0 4px 18px rgba(0,0,0,.08);}
+.cs-num{position:absolute;left:12px;top:13px;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:14px;color:#fff;}
+.cs-verde{border-left:4px solid var(--accent);}.cs-verde .cs-num{background:var(--accent);}
+.cs-verde:focus-within{border-color:var(--accent);}
+.cs-oro{border-left:4px solid var(--gold);}.cs-oro .cs-num{background:var(--gold);}
+.cs-oro:focus-within{border-color:var(--gold);}
+.cs-cafe{border-left:4px solid #8d6e63;}.cs-cafe .cs-num{background:#8d6e63;}
+.cs-cafe:focus-within{border-color:#8d6e63;}
+.cs-title{font-weight:800;font-size:13.5px;}
+.cs-hint{font-size:10.5px;color:var(--text3);margin:2px 0 10px;}
+.corte-bills{display:grid;grid-template-columns:repeat(auto-fit,minmax(56px,1fr));gap:6px;margin-bottom:10px;}
+.cb label{font-size:9px;color:var(--text3);font-weight:800;display:block;text-align:center;margin-bottom:2px;}
+.cb input{width:100%;padding:8px 4px;font-size:14px;text-align:center;font-weight:800;border-radius:9px;transition:border-color .2s,transform .15s;}
+.cb input:focus{transform:scale(1.06);}
+.cs-grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+.cs-big-input{font-size:17px!important;font-weight:800!important;text-align:center;padding:11px!important;}
+.cs-big-out{font-family:'DM Mono',monospace;font-size:19px;font-weight:900;padding:11px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);transition:color .3s ease;}
+.cs-desglose{font-size:11px;font-weight:700;padding:11px 8px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text2);line-height:1.4;}
+.cs-check{display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px;color:var(--text);text-transform:none;letter-spacing:0;font-weight:700;}
+.cs-check input{width:auto;transform:scale(1.25);}
+.corte-resumen{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px;}
+@media(max-width:520px){.corte-resumen{grid-template-columns:1fr;}}
+.cr-col{background:var(--surface2);border-radius:12px;padding:12px;}
+.cr-col .sr span:first-child{font-size:11.5px;}
+.cr-real{background:color-mix(in srgb, var(--orange) 8%, var(--surface));border:1.5px solid var(--orange);}
+.cr-title{font-size:9.5px;text-transform:uppercase;letter-spacing:1.4px;font-weight:800;color:var(--text3);margin-bottom:8px;}
+.cr-real .cr-title{color:var(--orange);}
+.cr-total{display:flex;justify-content:space-between;align-items:center;border-top:2px solid var(--accent);margin-top:8px;padding-top:8px;font-weight:900;font-size:12px;}
+.cr-total .mono{font-size:19px;font-weight:900;color:var(--accent);}
+.cr-total.naranja{border-top-color:var(--orange);}
+.cr-total.naranja .mono{color:var(--orange);}
 /* Modo tarjeta pública: solo se ve la tarjeta del cliente */
 body.modo-tarjeta nav,body.modo-tarjeta .mnav,body.modo-tarjeta #lock-screen,body.modo-tarjeta #loader,body.modo-tarjeta .fab,body.modo-tarjeta main{display:none!important;}
 /* Chips de toppings (selector de preparación) */
@@ -1079,6 +1119,8 @@ nav{padding-top:env(safe-area-inset-top);}
         <div id="apertura-banner" style="display:none;margin-top:8px;background:color-mix(in srgb, var(--gold) 14%, var(--surface));border:1.5px solid var(--gold);border-radius:var(--rsm);padding:9px 12px;font-size:12.5px;font-weight:700;color:var(--goldd);cursor:pointer;" onclick="$('apertura-modal').style.display='flex';setTimeout(()=>$('apertura-monto')?.focus(),150);">
           ⚠ Caja sin apertura — toca aquí para registrar con cuánto efectivo inicia el día
         </div>
+        <!-- Comandera: estado siempre visible para TODOS los perfiles; un toque vincula -->
+        <div id="bt-pos-chip" onclick="btChipTap()" style="display:none;margin-top:8px;border-radius:var(--rsm);padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;align-items:center;gap:8px;transition:all .25s ease;"></div>
         <!-- Órdenes vivas sin salir de Ventas: toca = avanza etapa, 📦 = entregada -->
         <div id="pos-ord-strip" class="pos-ord-strip" style="display:none;"></div>
       </div>
@@ -1232,105 +1274,101 @@ nav{padding-top:env(safe-area-inset-top);}
   <div class="g2" style="gap:12px;">
     <!-- COLUMNA IZQUIERDA: Corte de Caja + Movimientos -->
     <div>
-      <!-- ══ CORTE DE CAJA ══ -->
-      <div class="card" style="margin-bottom:12px;border:2px solid var(--accent);">
-        <div class="sh">
-          <span class="ct" style="margin-bottom:0;">🧾 Corte de Caja</span>
-          <button class="btn bs bxs" onclick="printUltimoCorte()" title="Imprimir último corte">🖨 Imprimir</button>
-        </div>
-        <!-- Resumen automático del sistema -->
-        <div style="background:var(--surface2);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:10px;">📊 Referencia — lo que el sistema espera (POS)</div>
-          <div class="sr"><span style="font-size:12.5px;">💰 Fondo inicial</span><span class="mono ab fw7" id="corte-fondo">$0.00</span></div>
-          <div class="sr"><span style="font-size:12.5px;">💵 Ventas efectivo</span><span class="mono ag fw7" id="corte-vef">$0.00</span></div>
-          <div class="sr"><span style="font-size:12.5px;">📥 Depósitos</span><span class="mono ab" id="corte-dep">$0.00</span></div>
-          <div class="sr"><span style="font-size:12.5px;">💸 Retiros</span><span class="mono ar" id="corte-ret">$0.00</span></div>
-          <div style="border-top:2px solid var(--accent);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:900;font-size:13px;">EFECTIVO ESPERADO</span>
-            <span class="mono" style="font-size:20px;font-weight:900;color:var(--accent);" id="corte-esperado">$0.00</span>
+      <!-- ══ CORTE DE CAJA — wizard de 3 pasos ══ -->
+      <div class="card corte-card" style="margin-bottom:12px;">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:14px;">
+          <div>
+            <div style="font-family:'Playfair Display',serif;font-size:19px;font-weight:800;">🧾 Corte de Caja</div>
+            <div style="font-size:11px;color:var(--text3);">Tres pasos — el semáforo te dice si cuadraste</div>
           </div>
-          <div class="div" style="margin:10px 0;"></div>
-          <div class="sr"><span style="font-size:12.5px;">💳 Ventas tarjeta</span><span class="mono ay fw7" id="corte-vtc">$0.00</span></div>
-          <div class="sr"><span style="font-size:12.5px;">📊 Total ventas día</span><span class="mono ag fw7" id="corte-vtot">$0.00</span></div>
-          <div class="sr"><span style="font-size:12.5px;">🧾 Número de ventas</span><span class="mono fw7" id="corte-nventas">0</span></div>
+          <button class="btn bs bxs" onclick="printUltimoCorte()" title="Imprimir último corte">🖨</button>
+        </div>
+        <!-- Progreso -->
+        <div class="corte-prog">
+          <div class="cp-dot" id="cp-1">💵</div><div class="cp-line" id="cpl-1"></div>
+          <div class="cp-dot" id="cp-2">💳</div><div class="cp-line" id="cpl-2"></div>
+          <div class="cp-dot" id="cp-3">✍️</div>
         </div>
 
-        <!-- Resumen de VENTAS REALES calculadas en vivo -->
-        <div style="background:#fff3e0;border:2px solid var(--orange);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--orange);font-weight:700;margin-bottom:10px;">💰 Ventas reales del día — se calcula solo con los pasos 1 y 2</div>
-          <div class="sr"><span style="font-size:12.5px;">💵 Ventas efectivo real</span><span class="mono ag fw7" id="corte-ef-real">$0.00</span></div>
-          <div class="sr"><span style="font-size:12.5px;">💳 Ventas tarjeta real</span><span class="mono ay fw7" id="corte-tc-real-lbl">$0.00</span></div>
-          <div style="border-top:2px solid var(--orange);margin-top:6px;padding-top:6px;display:flex;justify-content:space-between;align-items:center;">
-            <span style="font-weight:900;font-size:13px;">💰 TOTAL VENTAS REALES</span>
-            <span class="mono" style="font-size:20px;font-weight:900;color:var(--orange);" id="corte-total-real">$0.00</span>
+        <!-- PASO 1: Efectivo -->
+        <div class="corte-step cs-verde">
+          <div class="cs-num">1</div>
+          <div class="cs-title">Cuenta tu efectivo</div>
+          <div class="cs-hint">Cuántos billetes de cada uno — el total se suma solo</div>
+          <div class="corte-bills">
+            <div class="cb"><label>$1000</label><input type="number" class="corte-bill" data-val="1000" placeholder="0" inputmode="numeric" oninput="calcBilletes()"></div>
+            <div class="cb"><label>$500</label><input type="number" class="corte-bill" data-val="500" placeholder="0" inputmode="numeric" oninput="calcBilletes()"></div>
+            <div class="cb"><label>$200</label><input type="number" class="corte-bill" data-val="200" placeholder="0" inputmode="numeric" oninput="calcBilletes()"></div>
+            <div class="cb"><label>$100</label><input type="number" class="corte-bill" data-val="100" placeholder="0" inputmode="numeric" oninput="calcBilletes()"></div>
+            <div class="cb"><label>$50</label><input type="number" class="corte-bill" data-val="50" placeholder="0" inputmode="numeric" oninput="calcBilletes()"></div>
+            <div class="cb"><label>$20</label><input type="number" class="corte-bill" data-val="20" placeholder="0" inputmode="numeric" oninput="calcBilletes()"></div>
+            <div class="cb"><label>Monedas</label><input type="number" id="corte-monedas" placeholder="0" step="0.5" inputmode="decimal" oninput="calcBilletes()"></div>
           </div>
-          <div style="font-size:10.5px;color:var(--text2);margin-top:6px;">
-            📊 Diferencia vs POS: <span class="mono fw7" id="corte-dif-pos">—</span>
-          </div>
-        </div>
-        <!-- Conteo de efectivo -->
-        <div style="background:#f0faf0;border:1px solid var(--accent);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--accent);font-weight:700;margin-bottom:10px;">1️⃣ Cuenta tu efectivo — pon cuántos billetes de cada uno y el total se suma solo</div>
-          <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:10px;">
-            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$1000</label><input type="number" class="corte-bill" data-val="1000" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
-            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$500</label><input type="number" class="corte-bill" data-val="500" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
-            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$200</label><input type="number" class="corte-bill" data-val="200" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
-            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$100</label><input type="number" class="corte-bill" data-val="100" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
-            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$50</label><input type="number" class="corte-bill" data-val="50" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
-            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">$20</label><input type="number" class="corte-bill" data-val="20" placeholder="0" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
-            <div style="flex:1;min-width:55px;"><label style="font-size:8px;color:var(--accent);">Monedas</label><input type="number" id="corte-monedas" placeholder="0" step="0.5" oninput="calcBilletes()" style="padding:6px;font-size:13px;text-align:center;font-weight:700;"></div>
-          </div>
-          <div class="ii" style="gap:10px;">
-            <div class="fg" style="margin-bottom:0;">
-              <label>💵 Efectivo contado</label>
-              <input type="number" id="corte-contado" placeholder="$0.00" step="0.01" oninput="calcCorte()" style="font-size:16px;font-weight:700;text-align:center;padding:10px;">
-            </div>
-            <div class="fg" style="margin-bottom:0;">
-              <label>Diferencia efectivo</label>
-              <div id="corte-diff" style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;padding:10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
-            </div>
+          <div class="cs-grid2">
+            <div class="fg" style="margin:0;"><label>💵 Efectivo contado</label>
+              <input type="number" id="corte-contado" placeholder="$0.00" step="0.01" inputmode="decimal" oninput="calcCorte()" class="cs-big-input"></div>
+            <div class="fg" style="margin:0;"><label>Diferencia</label>
+              <div id="corte-diff" class="cs-big-out">—</div></div>
           </div>
         </div>
-        <!-- Ajuste tarjeta -->
-        <div style="background:#fff8e1;border:1px solid var(--gold);border-radius:var(--rsm);padding:14px;margin-bottom:12px;">
-          <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--goldd);font-weight:700;margin-bottom:10px;">2️⃣ Captura el total de la terminal (tarjetas)</div>
-          <div class="ii" style="gap:10px;">
-            <div class="fg" style="margin-bottom:0;">
-              <label>Total tarjeta terminal</label>
-              <input type="number" id="corte-tc-real" placeholder="$0.00" step="0.01" oninput="calcCorteTC()" style="font-size:16px;font-weight:700;text-align:center;padding:10px;">
-              <div style="font-size:10px;color:var(--text3);margin-top:3px;">Del corte de la terminal</div>
-            </div>
-            <div class="fg" style="margin-bottom:0;">
-              <label>Diferencia tarjeta</label>
-              <div id="corte-diff-tc" style="font-family:'DM Mono',monospace;font-size:20px;font-weight:900;padding:10px;background:var(--surface2);border-radius:var(--rsm);text-align:center;color:var(--text3);">—</div>
-            </div>
+
+        <!-- PASO 2: Tarjeta + propinas -->
+        <div class="corte-step cs-oro">
+          <div class="cs-num">2</div>
+          <div class="cs-title">Terminal de tarjeta y propinas</div>
+          <div class="cs-hint">El total de la terminal INCLUYE propinas — sepáralas aquí y el sistema desglosa</div>
+          <div class="cs-grid2" style="margin-bottom:8px;">
+            <div class="fg" style="margin:0;"><label>💳 Total de la terminal</label>
+              <input type="number" id="corte-tc-real" placeholder="$0.00" step="0.01" inputmode="decimal" oninput="calcCorteTC()" class="cs-big-input"></div>
+            <div class="fg" style="margin:0;"><label>💁 De eso, propinas</label>
+              <input type="number" id="corte-tc-propina" placeholder="$0.00" step="0.01" inputmode="decimal" oninput="calcCorteTC()" class="cs-big-input"></div>
+          </div>
+          <div class="cs-grid2">
+            <div class="fg" style="margin:0;"><label>Diferencia vs POS</label>
+              <div id="corte-diff-tc" class="cs-big-out">—</div></div>
+            <div class="fg" style="margin:0;"><label>Desglose</label>
+              <div id="corte-tc-desglose" class="cs-desglose">—</div></div>
           </div>
         </div>
-        <!-- Quién cerró + nota -->
-        <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:8px;">3️⃣ Quién cerró, nota y confirmar</div>
-        <div class="ii" style="margin-bottom:10px;">
-          <div style="display:flex;gap:14px;flex-wrap:wrap;">
-            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="cdc" style="width:auto;"> <span id="lbl-e1">Adilene</span> cerró</label>
-            <label style="display:flex;align-items:center;gap:5px;cursor:pointer;font-size:12.5px;color:var(--text);text-transform:none;letter-spacing:0;"><input type="checkbox" id="ccc" style="width:auto;"> <span id="lbl-e2">Clau</span> cerró</label>
+
+        <!-- PASO 3: Cierre -->
+        <div class="corte-step cs-cafe">
+          <div class="cs-num">3</div>
+          <div class="cs-title">Quién cerró y confirmar</div>
+          <div style="display:flex;gap:16px;flex-wrap:wrap;margin:8px 0 10px;">
+            <label class="cs-check"><input type="checkbox" id="cdc" onchange="actualizarProgresoCorte()"> <span id="lbl-e1">—</span> cerró</label>
+            <label class="cs-check"><input type="checkbox" id="ccc" onchange="actualizarProgresoCorte()"> <span id="lbl-e2">—</span> cerró</label>
           </div>
-          <div class="fg" style="margin-bottom:0;"><label>Nota</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
-        </div>
-        <div class="ii" style="margin-bottom:10px;">
-          <div class="fg" style="margin-bottom:0;"><label>🍂 Mermas del día (MXN)</label>
-            <input type="number" id="corte-mermas" placeholder="$0" step="0.01" min="0">
-            <div style="font-size:10px;color:var(--text3);margin-top:3px;">Producto descompuesto, derramado, etc.</div>
+          <div class="cs-grid2">
+            <div class="fg" style="margin:0;"><label>Nota / motivo de descuadre</label><input type="text" id="corte-nota" placeholder="Observaciones del cierre"></div>
+            <div class="fg" style="margin:0;"><label>🍂 Mermas del día (MXN)</label><input type="number" id="corte-mermas" placeholder="$0" step="0.01" min="0" inputmode="decimal"></div>
           </div>
         </div>
-        <div style="background:#fff3e0;border:1px solid var(--orange);border-radius:var(--rsm);padding:10px;margin-bottom:10px;font-size:11.5px;color:var(--orange);line-height:1.5;">
-          💡 <strong>Cómo funciona el corte:</strong><br>
-          • Cuentas el efectivo físico y pones el total<br>
-          • Pones el total de la terminal (tarjetas)<br>
-          • El sistema calcula tus <strong>VENTAS REALES</strong> del día (aunque no coincidan con el POS)<br>
-          • Esas ventas reales son las que aparecen en la semana y reportes
+
+        <!-- Resumen en vivo: referencia vs realidad, lado a lado -->
+        <div class="corte-resumen">
+          <div class="cr-col">
+            <div class="cr-title">📊 El sistema espera</div>
+            <div class="sr"><span>💰 Fondo inicial</span><span class="mono ab fw7" id="corte-fondo">$0.00</span></div>
+            <div class="sr"><span>💵 Ventas efectivo</span><span class="mono ag fw7" id="corte-vef">$0.00</span></div>
+            <div class="sr"><span>📥 Depósitos</span><span class="mono ab" id="corte-dep">$0.00</span></div>
+            <div class="sr"><span>💸 Retiros</span><span class="mono ar" id="corte-ret">$0.00</span></div>
+            <div class="cr-total"><span>EFECTIVO ESPERADO</span><span class="mono" id="corte-esperado">$0.00</span></div>
+            <div class="sr" style="margin-top:6px;"><span>💳 Tarjeta POS</span><span class="mono ay fw7" id="corte-vtc">$0.00</span></div>
+            <div class="sr"><span>🧾 Ventas · total</span><span class="mono fw7"><span id="corte-nventas">0</span> · <span id="corte-vtot">$0.00</span></span></div>
+          </div>
+          <div class="cr-col cr-real">
+            <div class="cr-title">💰 Ventas reales (pasos 1 y 2)</div>
+            <div class="sr"><span>💵 Efectivo real</span><span class="mono ag fw7" id="corte-ef-real">$0.00</span></div>
+            <div class="sr"><span>💳 Tarjeta real (sin propina)</span><span class="mono ay fw7" id="corte-tc-real-lbl">$0.00</span></div>
+            <div class="cr-total naranja"><span>TOTAL REAL</span><span class="mono" id="corte-total-real">$0.00</span></div>
+            <div style="font-size:10.5px;color:var(--text2);margin-top:6px;">vs POS: <span class="mono fw7" id="corte-dif-pos">—</span></div>
+          </div>
         </div>
-        <!-- Semáforo de descuadre: veredicto en vivo al escribir el contado -->
+
+        <!-- Semáforo de descuadre: veredicto en vivo -->
         <div id="corte-semaforo" style="display:none;border-radius:var(--rsm);padding:12px 14px;margin-bottom:10px;font-weight:800;font-size:14.5px;text-align:center;"></div>
-        <button class="btn bp bfull" onclick="realizarCorte()" style="padding:14px;font-size:15px;font-weight:700;">🧾 Realizar Corte de Caja</button>
+        <button class="btn bp bfull" onclick="realizarCorte()" style="padding:15px;font-size:15px;font-weight:800;">🧾 Realizar Corte de Caja</button>
       </div>
 
       <!-- ══ MOVIMIENTOS DE EFECTIVO ══ -->
@@ -4901,6 +4939,8 @@ function renderPOS(){
   // Aviso hasta que exista el fondo de apertura del día
   const ab=$('apertura-banner');
   if(ab) ab.style.display=D.retiros.find(r=>r.fecha===today()&&r.tipo==='fondo')?'none':'';
+  // Estado de la comandera siempre a la vista
+  if(typeof btEstadoUI==='function') btEstadoUI();
   const q=($('pos-q')?.value||'').toLowerCase();
   const ventasCnt=ventasRecientesPorProducto(21);
   const activos=D.productos.filter(p=>p.activo);
@@ -5095,10 +5135,30 @@ window.addItem=addItem;
 const BT_SERVICIOS=[0x18f0,'e7810a71-73ae-499d-8c15-faa9aef0c3f2',0xffe0,0xff00];
 let btComandera={device:null,ch:null};
 function btEstadoUI(){
-  const el=$('bt-estado'); if(!el) return;
-  el.textContent=btComandera.ch?`✓ Conectada: ${btComandera.device?.name||'impresora'}`:'Sin conectar';
-  el.style.color=btComandera.ch?'var(--accent)':'var(--text3)';
+  const el=$('bt-estado');
+  if(el){
+    el.textContent=btComandera.ch?`✓ Conectada: ${btComandera.device?.name||'impresora'}`:'Sin conectar';
+    el.style.color=btComandera.ch?'var(--accent)':'var(--text3)';
+  }
+  // Chip en el POS: visible para cajeras y admin por igual
+  const chip=$('bt-pos-chip');
+  if(chip){
+    const ok=!!btComandera.ch;
+    chip.style.display='flex';
+    chip.style.background=ok?'color-mix(in srgb, var(--accent) 10%, var(--surface))':'color-mix(in srgb, var(--red) 10%, var(--surface))';
+    chip.style.border=ok?'1.5px solid var(--accent)':'1.5px solid var(--red)';
+    chip.style.color=ok?'var(--accent)':'var(--red)';
+    chip.innerHTML=ok
+      ?`🖨 Comandera conectada <span style="font-weight:400;color:var(--text3);">· ${btComandera.device?.name||''} · toca para probar</span>`
+      :`🖨 Comandera SIN CONECTAR — toca aquí para vincularla (enciéndela y tenla cerca)`;
+  }
 }
+// Toque en el chip: conecta si falta, imprime prueba si ya está
+window.btChipTap=async()=>{
+  if(btComandera.ch){testComanda();return;}
+  if(await btReconectar()){toast('✓ Comandera reconectada',2200);return;}
+  conectarImpresoraBT();
+};
 window.conectarImpresoraBT=async()=>{
   if(!navigator.bluetooth){toast('⚠ Este navegador no tiene Bluetooth web — usa Chrome',4000,'warn');return;}
   try{
@@ -6800,6 +6860,7 @@ window.calcCorte=()=>{
   pintarSemaforoCorte(contado,diff);
   // Actualizar panel de ventas reales
   actualizarVentasReales();
+  if(typeof actualizarProgresoCorte==='function')actualizarProgresoCorte();
 };
 
 // Calcula ventas reales y actualiza panel
@@ -6815,8 +6876,9 @@ function actualizarVentasReales(){
   const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
   const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
 
+  const propAVR=parseFloat($('corte-tc-propina')?.value)||0;
   const ventasEfReal = contado>0 ? Math.max(0, contado - fondos - deps + retiros) : 0;
-  const ventasTcReal = tcReal>0 ? tcReal : vTc;
+  const ventasTcReal = tcReal>0 ? Math.max(0,tcReal-propAVR) : vTc; // sin propinas
   const totalReal = ventasEfReal + ventasTcReal;
   const totalPOS = vEf + vTc;
   const difPOS = totalReal - totalPOS;
@@ -6848,21 +6910,36 @@ window.calcBilletes=()=>{
 };
 
 window.calcCorteTC=()=>{
-  const tcReal=parseFloat($('corte-tc-real')?.value)||0;
+  const tcTerm=parseFloat($('corte-tc-real')?.value)||0;
+  const prop=parseFloat($('corte-tc-propina')?.value)||0;
+  // La terminal reporta ventas+propinas juntas: las VENTAS reales son la resta
+  const tcVentas=Math.max(0,tcTerm-prop);
   const td=today();
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
   const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
-  const diff=tcReal-vTc;
+  const diff=tcVentas-vTc;
   const el=$('corte-diff-tc');
   if(el){
-    if(tcReal<=0){el.textContent='—';el.style.color='var(--text3)';}
+    if(tcTerm<=0){el.textContent='—';el.style.color='var(--text3)';}
     else{
       el.textContent=(diff>=0?'+':'')+fmt(diff);
       el.style.color=diff>0?'var(--accent)':diff<0?'var(--red)':'var(--teal)';
     }
   }
-  // Actualizar panel de ventas reales
+  const dg=$('corte-tc-desglose');
+  if(dg) dg.innerHTML=tcTerm>0
+    ?`Terminal ${fmt(tcTerm)}<br>= Ventas ${fmt(tcVentas)} + 💁 ${fmt(prop)}`
+    :'—';
   actualizarVentasReales();
+  actualizarProgresoCorte();
+};
+// Progreso visual del wizard: cada paso se ilumina al completarse
+window.actualizarProgresoCorte=()=>{
+  const p1=(parseFloat($('corte-contado')?.value)||0)>0;
+  const p2=(parseFloat($('corte-tc-real')?.value)||0)>0;
+  const p3=$('cdc')?.checked||$('ccc')?.checked;
+  const set=(id,on)=>{const e=$(id);if(e)e.classList.toggle('done',!!on);};
+  set('cp-1',p1);set('cpl-1',p1);set('cp-2',p2);set('cpl-2',p2);set('cp-3',p3);
 };
 
 window.realizarCorte=async()=>{
@@ -6895,10 +6972,11 @@ window.realizarCorte=async()=>{
   // Ventas efectivo REAL = Efectivo en caja al cierre - Fondo inicial - Depósitos + Retiros
   // (lo que quedó en caja descontando lo que no es venta)
   const ventasEfReal = Math.max(0, contado - fondos - deps + retiros);
-  // Ventas tarjeta REAL = lo que reporta la terminal (si no se ingresó, usa POS)
+  // Ventas tarjeta REAL = terminal MENOS propinas (Mercado Pago las suma)
   const tcReal=parseFloat($('corte-tc-real')?.value)||0;
-  const ventasTcReal = tcReal>0 ? tcReal : vTc;
-  const tcDiff = tcReal>0 ? tcReal-vTc : 0;
+  const propinas=parseFloat($('corte-tc-propina')?.value)||0;
+  const ventasTcReal = tcReal>0 ? Math.max(0,tcReal-propinas) : vTc;
+  const tcDiff = tcReal>0 ? ventasTcReal-vTc : 0;
   const ventasTotalReal = ventasEfReal + ventasTcReal;
 
   const corte={
@@ -6912,8 +6990,8 @@ window.realizarCorte=async()=>{
     // Movimientos efectivo
     fondoInicial:fondos, depositos:deps, retiros,
     esperado, contado, diferencia,
-    // Tarjeta
-    tcReal, tcDiff,
+    // Tarjeta (tcReal = total terminal; propinas se desglosan aparte)
+    tcReal, tcDiff, propinas,
     numVentas:ventasHoy.length,
     cerroE1:$('cdc')?.checked||false,
     cerroE2:$('ccc')?.checked||false,
@@ -6960,6 +7038,8 @@ window.realizarCorte=async()=>{
 
   if($('corte-contado'))$('corte-contado').value='';
   if($('corte-tc-real'))$('corte-tc-real').value='';
+  if($('corte-tc-propina'))$('corte-tc-propina').value='';
+  if(typeof actualizarProgresoCorte==='function')actualizarProgresoCorte();
   if($('corte-nota'))$('corte-nota').value='';
   if($('cdc'))$('cdc').checked=false;
   if($('ccc'))$('ccc').checked=false;
@@ -7002,7 +7082,7 @@ window.enviarResumenCorteWA=corte=>{
     if(abiertas) s+=`\n  ⚠ ${abiertas} orden(es) quedaron SIN entregar`;
     return s;
   })();
-  const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}${cocina}\n\n🏆 Top del día:\n${top||'  —'}`;
+  const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${(corte.propinas||0)>0?`\n  💁 Propinas tarjeta: ${fmt(corte.propinas)} (aparte de ventas)`:''}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}${cocina}\n\n🏆 Top del día:\n${top||'  —'}`;
   window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
   toast('📲 Resumen del corte listo en WhatsApp — solo toca enviar',3500);
 };

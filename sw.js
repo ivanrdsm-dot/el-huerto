@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.32'; // Lealtad Paso 3: campañas por segmento
+const CACHE_NAME = 'el-huerto-v14.33'; // Corte v2: wizard + propinas + comandera visible
 const ASSETS = [
   '/',
   '/index.html',
