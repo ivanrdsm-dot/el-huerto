@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.33'; // Corte v2: wizard + propinas + comandera visible
+const CACHE_NAME = 'el-huerto-v14.34'; // Propinas semanales repartidas a nómina
 const ASSETS = [
   '/',
   '/index.html',

@@ -1525,6 +1525,8 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
   </div>
   <div id="nom-kpis" class="g4" style="margin-bottom:12px;"></div>
+  <!-- Propinas de tarjeta acumuladas en la semana (de los cortes) -->
+  <div id="nom-propinas" style="margin-bottom:12px;"></div>
   <div id="emp-nom-cards"></div>
   <!-- EXTRAS / DEDUCCIONES -->
   <div class="card" style="margin-top:10px;margin-bottom:10px;">
@@ -7327,9 +7329,69 @@ function populateWeekSel(){
   sel.innerHTML=weeks.map(w=>{const wd=getWDays(w);return `<option value="${w}" ${w===curMon?'selected':''}>${wd[0]} → ${wd[4]}</option>`;}).join('');
 }
 
+// ── Propinas de la semana (de los cortes) → reparto a nómina ──
+// Proporcional a horas checadas; si nadie checó, partes iguales.
+const PROP_CONCEPTO='💁 Propinas de la semana';
+function propinasSemana(mon){
+  const wd=getWDays(mon);
+  return D.cortes.filter(c=>wd.includes(c.fecha)&&(c.propinas||0)>0)
+    .reduce((s,c)=>s+c.propinas,0);
+}
+function repartoPropinas(mon){
+  const total=Math.round(propinasSemana(mon)*100)/100;
+  const emps=empsActivos();
+  if(!total||!emps.length) return {total,partes:[]};
+  const horas=emps.map(e=>({e,mins:getHorasSemana(e.id,mon).totalMins||0}));
+  const totMins=horas.reduce((s,h)=>s+h.mins,0);
+  let partes=horas.map(h=>({e:h.e,mins:h.mins,
+    monto:totMins>0?Math.round(total*h.mins/totMins*100)/100:Math.round(total/emps.length*100)/100}));
+  // Ajustar centavos para que la suma cuadre exacto
+  const dif=Math.round((total-partes.reduce((s,p)=>s+p.monto,0))*100)/100;
+  if(partes.length&&Math.abs(dif)>0.001) partes[0].monto=Math.round((partes[0].monto+dif)*100)/100;
+  return {total,partes};
+}
+function renderPropinasNomina(mon){
+  const el=$('nom-propinas'); if(!el) return;
+  const {total,partes}=repartoPropinas(mon);
+  if(!total){el.innerHTML='';return;}
+  const yaRepartidas=D.extras.some(x=>x.semana===mon&&x.concepto===PROP_CONCEPTO);
+  el.innerHTML=`<div class="card" style="padding:14px;border:1.5px solid var(--gold);">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+      <div>
+        <div style="font-weight:800;font-size:14px;">💁 Propinas de la semana: <span class="mono" style="color:var(--gold);font-size:17px;">${fmt(total)}</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px;">De los cortes de tarjeta · reparto proporcional a horas checadas</div>
+      </div>
+      ${yaRepartidas
+        ?'<span class="badge xg" style="font-size:11px;">✓ Ya repartidas en esta nómina</span>'
+        :`<button class="btn bp bsm" onclick="repartirPropinas('${mon}')">➕ Repartir a nómina</button>`}
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;">
+      ${partes.map(p=>`<div style="background:var(--surface2);border-radius:var(--rsm);padding:8px 14px;">
+        <div style="font-size:10px;color:var(--text3);font-weight:700;">${p.e.nombre} · ${fmtMins(p.mins)}</div>
+        <div class="mono" style="font-size:16px;font-weight:900;color:var(--gold);">${fmt(p.monto)}</div>
+      </div>`).join('')}
+    </div>
+  </div>`;
+}
+window.repartirPropinas=async mon=>{
+  if(D.extras.some(x=>x.semana===mon&&x.concepto===PROP_CONCEPTO)){toast('⚠ Ya están repartidas esta semana',2600,'warn');return;}
+  const {total,partes}=repartoPropinas(mon);
+  if(!total){toast('Sin propinas esta semana',2200);return;}
+  if(!confirm(`Repartir ${fmt(total)} de propinas:\n${partes.map(p=>`· ${p.e.nombre}: ${fmt(p.monto)}`).join('\n')}\n\nSe agregan como EXTRA a la nómina de esta semana.`))return;
+  let nid=Date.now();
+  for(const p of partes){
+    if(p.monto<=0)continue;
+    await fsSet('extras',{id:++nid,semana:mon,empId:p.e.id,tipo:'extra',monto:p.monto,concepto:PROP_CONCEPTO});
+  }
+  logAudit('propinas_repartidas',{semana:mon,total,desglose:partes.map(p=>({n:p.e.nombre,m:p.monto}))});
+  toast(`✓ ${fmt(total)} de propinas repartidas a la nómina`,3500);
+  renderNomina();
+};
+
 function renderNomina(){
   populateWeekSel();
   const mon=$('nom-sem')?.value||getMonday(today());
+  renderPropinasNomina(mon);
   const nom=getNominaSemanal(mon);
   const totSem=nom.reduce((s,e)=>s+e.totalSem,0);
   const pagada=D.nomPagos.find(p=>p.semana===mon);
@@ -10605,6 +10667,7 @@ const AUD_META={
   merma_registrada:['🍂','#e65100'], respaldo_descargado:['💾','#00695c'], sesion_iniciada:['🔑','#1565c0'],
   orden_estado:['🔔','#6d4c41'], orden_entregada:['📦','#2e7d32'], orden_reabierta:['↩','#e65100'],
   apertura_caja:['💰','#2e7d32'], compra_mercado:['🧺','#6d4c41'], compras_registradas:['🧾','#6d4c41'],
+  propinas_repartidas:['💁','#f9a825'], lealtad_alta:['🎟','#7b1fa2'], lealtad_sello:['🎟','#2e7d32'], lealtad_campana:['📣','#1565c0'],
   orden_compra_creada:['📝','#f57f17'], orden_compra_recibida:['📦','#2e7d32']
 };
 function renderBitacora(){
