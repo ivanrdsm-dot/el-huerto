@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.37'; // Seguridad: nueva clave admin + bloqueo anti fuerza bruta
+const CACHE_NAME = 'el-huerto-v14.38'; // Food cost saneado + candado anti costos imposibles
 const ASSETS = [
   '/',
   '/index.html',

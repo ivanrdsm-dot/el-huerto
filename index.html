@@ -2480,6 +2480,7 @@ async function completeInit(){
   await migCostco04Ago2026();
   await migDedupeInvAgo2026();
   await migFixAgo06_2026();
+  await migResaneoFoodCostAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3136,6 +3137,41 @@ async function migFixAgo06_2026(){
   }
   await markMig(migKey);
   toast('✓ Correcciones: salida de Claudia (mar 16:00) y Aguacate 0.43 kg',4500);
+}
+
+// ══ RE-SANEO DE FOOD COST AGO-2026 ══
+// Las ventas de agosto quedaron congeladas con costos inflados (insumos
+// con precio mal escalado hacían que un panini "costara" miles). Se
+// recalcula el snapshot con recetas/costos actuales; si aun así el costo
+// supera el precio de venta, se anula el dato (mejor 'pend.' que basura)
+// y el producto culpable queda en bitácora para corregir su insumo.
+async function migResaneoFoodCostAgo2026(){
+  const migKey='h5fixfc_ago26';
+  if(await migDone(migKey)) return;
+  const desde='2026-08-01';
+  const ventas=D.ventas.filter(v=>v.fecha>=desde&&!v.anulada);
+  let corregidas=0, anuladas=0; const culpables={};
+  for(const v of ventas){
+    let fc=0, fcOk=true;
+    v.items.forEach(i=>{
+      const r=foodCostProducto(i.id);
+      if(r.costo!=null) fc+=r.costo*i.qty;
+      if(!r.completo) fcOk=false;
+      if(r.costo!=null&&r.costo>i.precio) culpables[i.nombre]=Math.round(r.costo);
+    });
+    let nuevo, nuevoOk;
+    if(fc>v.total&&v.total>0){nuevo=null;nuevoOk=false;anuladas++;}
+    else{nuevo=Math.round(fc*100)/100;nuevoOk=fcOk;}
+    if(nuevo!==v.foodCost||nuevoOk!==v.foodCostCompleto){
+      v.foodCost=nuevo; v.foodCostCompleto=nuevoOk;
+      await fsSet('ventas',v);
+      corregidas++;
+    }
+  }
+  await markMig(migKey);
+  logAudit('foodcost_resaneado',{desde,ventasRevisadas:ventas.length,corregidas,anuladas,
+    productosConCostoImposible:Object.entries(culpables).map(([n,c])=>`${n} ($${c})`).slice(0,15)});
+  toast(`✓ Food cost re-saneado: ${corregidas} ventas corregidas${anuladas?`, ${anuladas} marcadas pendientes`:''}`,4500);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -6042,8 +6078,16 @@ async function cobrar(metodo,recibido=0){
         if(r.costo!=null) fc+=r.costo*i.qty;
         if(!r.completo) fcOk=false;
       });
-      venta.foodCost=Math.round(fc*100)/100;
-      venta.foodCostCompleto=fcOk;
+      // CANDADO: si el costo supera el precio de venta, hay un precio de
+      // insumo mal escalado (ej. $/kg guardado en artículo en gramos).
+      // Mejor sin dato que con dato podrido — y queda en bitácora para arreglarlo.
+      if(fc>venta.total&&venta.total>0){
+        logAudit('foodcost_anomalo',{ticket:venta.ticket,costo:Math.round(fc),venta:venta.total,productos:venta.items.map(i=>i.nombre)});
+        venta.foodCost=null; venta.foodCostCompleto=false;
+      }else{
+        venta.foodCost=Math.round(fc*100)/100;
+        venta.foodCostCompleto=fcOk;
+      }
     }catch(e){/* costeo no bloquea el cobro */}
     await fsSetCritical('ventas',venta);
     // Caja también es crítica — si falla, la venta queda guardada pero hay que reintentar caja
