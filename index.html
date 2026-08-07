@@ -2357,6 +2357,7 @@ async function ensureAuth(){
 
 let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
+  rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
   waReporte:'525646665718',waHora:'21:00',
   ordTiempos:{warn:7,urgent:12}, // minutos: verde → ámbar → rojo en Órdenes
@@ -4628,7 +4629,7 @@ function playSaleSound(){
 // ─── AUTH ───
 // A0-SEGURIDAD: PINs almacenados como hash SHA-256 (ya no en texto plano).
 // Los PINs NO cambiaron para las usuarias — solo su almacenamiento.
-const ADMIN_PASS_HASH = 'ca20cffd89c01dd095d145f54aa6a2bdb4aead6eaefc1f32d573568659ae8278';
+const ADMIN_PASS_HASH = 'bfb2ca8244bbe280b98df043a537394ac05e690f1fc8463ec7601b804d854960';
 const EMP_PASS_HASH = {
   2001:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
   2002:'8bb0cf6eb9b17d0f7d22b456f121257dc1254e1f01665370476383ea776df414',
@@ -4813,7 +4814,34 @@ window.closePIN = closePIN;
 
 window.pinClear=()=>$('pin-input').classList.remove('err');
 
+// ── Anti fuerza bruta: 5 intentos fallidos → bloqueo 1 min (se duplica
+// en cada bloqueo hasta 16 min). Persiste aunque recarguen la página. ──
+function pinBloqueado(){
+  try{const b=JSON.parse(localStorage.getItem('h5pinlock')||'{}');
+    if(b.hasta&&Date.now()<b.hasta) return Math.ceil((b.hasta-Date.now())/1000);
+  }catch(e){}
+  return 0;
+}
+function pinFallo(perfil){
+  try{
+    const b=JSON.parse(localStorage.getItem('h5pinlock')||'{}');
+    b.fallos=(b.fallos||0)+1;
+    logAudit('login_fallido',{perfil,intento:b.fallos});
+    if(b.fallos>=5){
+      b.mult=Math.min((b.mult||1)*2,16);
+      b.hasta=Date.now()+(b.mult/2)*60000;
+      b.fallos=0;
+      logAudit('login_bloqueado',{perfil,minutos:b.mult/2});
+      toast(`🔒 Demasiados intentos. Bloqueado ${b.mult/2} minuto(s).`,4000,'error');
+    }
+    localStorage.setItem('h5pinlock',JSON.stringify(b));
+  }catch(e){}
+}
+function pinExito(){try{localStorage.removeItem('h5pinlock');}catch(e){}}
+
 async function checkPIN(){
+  const seg=pinBloqueado();
+  if(seg){toast(`🔒 Bloqueado por intentos fallidos — espera ${seg} segundos`,3000,'error');return;}
   const val=$('pin-input').value;
   const valHash=await sha256Hex(val);
   // Employee PIN check (hash comparison; fallback to legacy plaintext pin field)
@@ -4822,11 +4850,13 @@ async function checkPIN(){
     const legacyPin = D.empleados.find(e=>e.id===pinTargetEmpId)?.pin || null;
     const ok = (empHash && valHash===empHash) || (legacyPin && val===legacyPin);
     if(ok){
+      pinExito();
       $('pin-modal').style.display='none';
       loginEmp(pinTargetEmpId);
       pinTargetEmpId=null; pinTarget=null;
       return;
     }
+    pinFallo(D.empleados.find(e=>e.id===pinTargetEmpId)?.nombre||'empleada');
     $('pin-input').classList.add('err');
     $('pin-input').value='';
     setTimeout(()=>$('pin-input').classList.remove('err'),400);
@@ -4835,6 +4865,7 @@ async function checkPIN(){
   }
   // Admin PIN check (hash comparison)
   if(valHash===ADMIN_PASS_HASH){
+    pinExito();
     SESSION={tipo:'admin',nombre:'Admin',color:'#e8c96a'};
     try{ localStorage.setItem('h5session',JSON.stringify(SESSION)); }catch(e){}
     $('pin-modal').style.display='none';
@@ -4847,6 +4878,7 @@ async function checkPIN(){
     toast('✓ Acceso admin desbloqueado 🔓');
     setTimeout(()=>checkApertura(),600);
   } else {
+    pinFallo('Admin');
     $('pin-input').classList.add('err');
     $('pin-input').value='';
     setTimeout(()=>$('pin-input').classList.remove('err'),400);
@@ -10865,6 +10897,7 @@ const AUD_META={
   apertura_caja:['💰','#2e7d32'], compra_mercado:['🧺','#6d4c41'], compras_registradas:['🧾','#6d4c41'],
   propinas_repartidas:['💁','#f9a825'], lealtad_alta:['🎟','#7b1fa2'], lealtad_sello:['🎟','#2e7d32'], lealtad_campana:['📣','#1565c0'],
   checkin_corregido:['🕐','#e65100'], inventario_correccion:['📦','#e65100'], registro_asistencia_pdf:['📄','#1565c0'], inventario_dedupe:['🧹','#00695c'],
+  login_fallido:['🚫','#c62828'], login_bloqueado:['🔒','#c62828'],
   orden_compra_creada:['📝','#f57f17'], orden_compra_recibida:['📦','#2e7d32']
 };
 function renderBitacora(){

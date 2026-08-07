@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.36'; // Fix salida Claudia + aguacate 430g + registro asistencia LFT
+const CACHE_NAME = 'el-huerto-v14.37'; // Seguridad: nueva clave admin + bloqueo anti fuerza bruta
 const ASSETS = [
   '/',
   '/index.html',
