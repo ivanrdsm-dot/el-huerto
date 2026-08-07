@@ -1790,11 +1790,14 @@ nav{padding-top:env(safe-area-inset-top);}
 <div id="page-reportes" class="page">
   <div class="sh">
     <span class="st">Reportes</span>
-    <select id="rp-periodo" onchange="renderReportes()" style="width:auto;padding:5px 8px;font-size:12px;">
-      <option value="hoy">📅 Hoy</option>
-      <option value="semana" selected>📅 Esta semana</option>
-      <option value="mes">📆 Este mes</option>
-    </select>
+    <div style="display:flex;gap:8px;align-items:center;">
+      <select id="rp-periodo" onchange="renderReportes()" style="width:auto;padding:5px 8px;font-size:12px;">
+        <option value="hoy">📅 Hoy</option>
+        <option value="semana" selected>📅 Esta semana</option>
+        <option value="mes">📆 Este mes</option>
+      </select>
+      <button class="btn bor bsm" onclick="plPDF()">📄 P&L (PDF)</button>
+    </div>
   </div>
   <div class="g4" style="margin-bottom:10px;">
     <div class="card" style="text-align:center;"><div class="ct">Ingresos</div><div class="kv" id="rp-ing">$0</div><div style="font-size:10px;color:var(--text2);margin-top:2px;" id="rp-ing-sub"></div></div>
@@ -1804,8 +1807,10 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
   <!-- Finanzas de cocina: costo de insumos y margen bruto del período -->
   <div class="g4" style="margin-bottom:10px;" id="rp-fin2"></div>
+  <!-- KPIs de dirección: los números que un inversionista pide primero -->
+  <div class="g4" style="margin-bottom:10px;" id="rp-dir"></div>
   <div class="g2" style="gap:10px;margin-bottom:10px;">
-    <div class="card"><div class="ct">Estado de Resultados</div><div id="rp-est"></div></div>
+    <div class="card"><div class="ct">Estado de Resultados (P&L)</div><div id="rp-est"></div><div id="rp-waterfall" style="margin-top:12px;"></div></div>
     <div class="card"><div class="ct">Top Productos del Período</div><div id="rp-top-prods"></div></div>
   </div>
   <div class="g2" style="gap:10px;margin-bottom:10px;">
@@ -10959,6 +10964,87 @@ window.pdfDashboard=()=>{
   toast('📄 Dashboard PDF descargado');
 };
 
+// ══ P&L EN PDF — entregable formal del período ══
+// Estado de resultados devengado con % sobre ingresos, KPIs con
+// benchmarks de industria y nota metodológica. Para contador,
+// socios o inversionistas.
+window.plPDF=()=>{
+  if(SESSION?.tipo!=='admin'){toast('⚠ Solo administrador',2400,'warn');return;}
+  const J=window.jspdf?.jsPDF; if(!J){toast('⚠ Cargando librería PDF, reintenta',2500,'warn');return;}
+  const {p,fechas,label}=getReportePeriodo();
+  const ventas=getVentasFiltradas(fechas);
+  const gastos=getGastosFiltrados(fechas);
+  const ing=ventas.reduce((s,v)=>s+v.total,0);
+  const conCosto=ventas.filter(v=>v.foodCost!=null);
+  const cogs=Math.round(conCosto.reduce((s,v)=>s+v.foodCost,0)*100)/100;
+  const cobert=ventas.length?Math.round(conCosto.length/ventas.length*100):0;
+  const bruta=ing-cogs;
+  const gcat=c=>gastos.filter(g=>g.cat===c).reduce((s,g)=>s+g.monto,0);
+  const renta=gcat('renta'), serv=gcat('servicios'), insumosCash=gcat('proveedor')+gcat('costco');
+  const nomPagada=gcat('nomina');
+  const nomSemT=getNominaSemanal(getMonday(today())).reduce((s,e)=>s+e.totalSem,0);
+  const semPag=!!D.nomPagos.find(x=>x.semana===getMonday(today()));
+  const nomPend=(p==='hoy')?Math.round(nomSemT/5):((!semPag)?nomSemT:0);
+  const nom=nomPagada+nomPend;
+  const oper=bruta-nom-renta-serv;
+  const pc=v=>ing>0?(v/ing*100).toFixed(1)+'%':'—';
+  const dias=new Set(ventas.map(v=>v.fecha)).size||1;
+  const ticket=ventas.length?ing/ventas.length:0;
+  const primePct=ing>0?Math.round((cogs+nom)/ing*100):0;
+  const laborPct=ing>0?Math.round(nom/ing*100):0;
+  const mBruta=ing>0?Math.round(bruta/ing*100):0;
+  const breakEven=mBruta>0?((nom+renta+serv)/dias)/(mBruta/100):null;
+
+  const doc=new J(); const W=doc.internal.pageSize.getWidth();
+  doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(26,46,24);
+  doc.text('EL HUERTO',W/2,17,{align:'center'});
+  doc.setFontSize(10);doc.setTextColor(217,72,28);
+  doc.text('ESTADO DE RESULTADOS (P&L)',W/2,23,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(110);
+  doc.text(`Período: ${label}  ·  ${CFG.rfc?'RFC '+CFG.rfc+'  ·  ':''}Generado ${today()}  ·  Método devengado (COGS por consumo)`,W/2,29,{align:'center'});
+  doc.setDrawColor(126,200,80);doc.setLineWidth(.7);doc.line(14,33,W-14,33);
+  doc.autoTable({startY:38,
+    head:[['Concepto','Importe','% Ingresos']],
+    body:[
+      ['Ventas',fmt(ing),'100%'],
+      ['(−) Costo de insumos — COGS'+(cobert<100?` (cobertura ${cobert}%)`:''),'−'+fmt(cogs),pc(cogs)],
+      [{content:'= UTILIDAD BRUTA',styles:{fontStyle:'bold'}},{content:fmt(bruta),styles:{fontStyle:'bold'}},{content:pc(bruta),styles:{fontStyle:'bold'}}],
+      ['(−) Nómina'+(nomPend>0?' (incluye pendiente estimada)':''),'−'+fmt(nom),pc(nom)],
+      ...(renta>0?[['(−) Renta','−'+fmt(renta),pc(renta)]]:[]),
+      ...(serv>0?[['(−) Servicios','−'+fmt(serv),pc(serv)]]:[]),
+      [{content:'= UTILIDAD OPERATIVA',styles:{fontStyle:'bold',fontSize:11}},{content:fmt(oper),styles:{fontStyle:'bold',fontSize:11,textColor:oper>=0?[46,125,50]:[198,40,40]}},{content:pc(oper),styles:{fontStyle:'bold'}}],
+    ],
+    theme:'grid',headStyles:{fillColor:[26,46,24],textColor:[126,200,80],fontStyle:'bold',fontSize:9},
+    bodyStyles:{fontSize:9.5,textColor:[40,40,40]},columnStyles:{1:{halign:'right'},2:{halign:'right'}},
+    margin:{left:14,right:14}});
+  let y=doc.lastAutoTable.finalY+8;
+  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(26,46,24);
+  doc.text('KPIs de dirección',14,y);y+=3;
+  doc.autoTable({startY:y,
+    head:[['Indicador','Valor','Benchmark','Estado']],
+    body:[
+      ['Prime Cost (insumos + nómina)',ing>0?primePct+'%':'—','≤ 60%',ing>0?(primePct<=60?'Sano':'Alto'):'—'],
+      ['Food Cost',ing>0?pc(cogs):'—','28 – 35%',ing>0?((cogs/ing*100)<=35?'Sano':'Alto'):'—'],
+      ['Labor Cost',ing>0?laborPct+'%':'—','≤ 30%',ing>0?(laborPct<=30?'Sano':'Alto'):'—'],
+      ['Margen bruto',mBruta+'%','≥ 60%',mBruta>=60?'Sano':'Revisar'],
+      ['Ticket promedio',fmt(ticket),'—',ventas.length+' tickets'],
+      ['Ventas por día',fmt(ing/dias),'—',dias+' día(s) operados'],
+      ['Punto de equilibrio diario',breakEven!=null?fmt(breakEven):'—','< ventas/día',breakEven!=null?((ing/dias)>=breakEven?'Superado':'Por debajo'):'—'],
+    ],
+    theme:'grid',headStyles:{fillColor:[26,46,24],textColor:[126,200,80],fontStyle:'bold',fontSize:8.5},
+    bodyStyles:{fontSize:9},columnStyles:{1:{halign:'right'},2:{halign:'center'},3:{halign:'center'}},
+    margin:{left:14,right:14}});
+  y=doc.lastAutoTable.finalY+8;
+  doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(120);
+  doc.text(`Notas: COGS por consumo real (costo congelado al momento de cada venta; cobertura de costeo ${cobert}%). Las compras de`,14,y);
+  doc.text(`inventario del período (${fmt(insumosCash)}) son salida de caja, no costo devengado. Registros auditables en bitácora inmutable.`,14,y+4);
+  doc.setFontSize(7);doc.setTextColor(150);
+  doc.text(`El Huerto · Universidad Panamericana Ciudad UP · sistema el-huerto.vercel.app`,W/2,doc.internal.pageSize.getHeight()-8,{align:'center'});
+  doc.save(`ElHuerto_PL_${p}_${today()}.pdf`);
+  logAudit('pl_pdf',{periodo:label,ingresos:ing,utilidadOperativa:Math.round(oper)});
+  toast('📄 P&L descargado — listo para compartir',3000);
+};
+
 function renderReportes(){
   const {p,fechas,label}=getReportePeriodo();
   const cm=curM(); const td=today();
@@ -10982,16 +11068,81 @@ function renderReportes(){
   if($('rp-label'))$('rp-label').textContent=label;
   // Estado de resultados
   const ingSubs=p==='mes'?D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0):0;
+  // ══ P&L PROFESIONAL (devengado) ══
+  // El consumo real de insumos (COGS, del snapshot por venta) sustituye a
+  // las compras: comprar inventario no es un costo hasta que se consume.
+  // Las compras del período se muestran aparte como salida de caja.
+  const _ing=ingVentas+ingSubs;
+  const _conCosto=ventas.filter(v=>v.foodCost!=null);
+  const _cogs=Math.round(_conCosto.reduce((s,v)=>s+v.foodCost,0)*100)/100;
+  const _cobert=ventas.length?Math.round(_conCosto.length/ventas.length*100):0;
+  const _bruta=_ing-_cogs;
+  const _gcat=c=>gastos.filter(g=>g.cat===c).reduce((s,g)=>s+g.monto,0);
+  const _renta=_gcat('renta'), _serv=_gcat('servicios');
+  const _insumosCash=_gcat('proveedor')+_gcat('costco');
+  const _nomPagada=_gcat('nomina');
+  const _nomPend=(p==='hoy')?Math.round(nomSemAct/5):((!semPagada)?nomSemAct:0);
+  const _nom=_nomPagada+_nomPend;
+  const _opex=_renta+_serv;
+  const _oper=_bruta-_nom-_opex;
+  const _mBruta=_ing>0?Math.round(_bruta/_ing*100):0;
+  const _mOper=_ing>0?Math.round(_oper/_ing*100):0;
+  const _flujo=_ing-gasT-_nomPend;
+  const _pct=v=>_ing>0?(v/_ing*100).toFixed(1)+'%':'—';
   if($('rp-est'))$('rp-est').innerHTML=`
     <div class="sr"><span style="font-size:12px;">🛒 Ventas POS</span><span class="mono ag">${fmt(ingVentas)}</span></div>
     ${ingSubs>0?`<div class="sr"><span style="font-size:12px;">🌱 Suscripciones</span><span class="mono ab">+${fmt(ingSubs)}</span></div>`:''}
-    <div class="sr fw7"><span style="font-size:12px;">= Ingresos</span><span class="mono ag">${fmt(ingVentas+ingSubs)}</span></div>
+    <div class="sr fw7"><span style="font-size:12px;">= INGRESOS</span><span class="mono ag" style="font-size:14px;">${fmt(_ing)}</span></div>
     <div class="div"></div>
-    <div class="sr"><span style="font-size:12px;">📉 Gastos</span><span class="mono ar">−${fmt(gasT)}</span></div>
-    ${nomEst>0?`<div class="sr"><span style="font-size:12px;">👩 Nómina</span><span class="mono ay">−${fmt(nomEst)}</span></div>`:''}
+    <div class="sr"><span style="font-size:12px;">🥑 Costo de insumos (COGS)</span><span class="mono ar">−${fmt(_cogs)} <span style="color:var(--text3);font-size:10px;">${_pct(_cogs)}</span></span></div>
+    ${_cobert<100?`<div class="sr"><span style="font-size:10px;color:var(--text3);padding-left:14px;">cobertura de costeo: ${_cobert}% de las ventas</span><span></span></div>`:''}
+    <div class="sr fw7"><span style="font-size:12px;">= UTILIDAD BRUTA</span><span class="mono ${_bruta>=0?'ag':'ar'}" style="font-size:14px;">${fmt(_bruta)} <span style="font-size:10px;color:var(--text2);">${_mBruta}%</span></span></div>
     <div class="div"></div>
-    <div class="sr fw7"><span>UTILIDAD</span><span class="mono ${util>=0?'at':'ar'}" style="font-size:16px;">${fmt(util)}</span></div>
-    <div class="sr"><span style="font-size:11px;color:var(--text2);">Margen</span><span class="mono ${margen>=0?'ay':'ar'}">${margen}%</span></div>`;
+    <div class="sr"><span style="font-size:12px;">👩 Nómina${_nomPend>0?' (incl. pendiente est.)':''}</span><span class="mono ay">−${fmt(_nom)} <span style="color:var(--text3);font-size:10px;">${_pct(_nom)}</span></span></div>
+    ${_renta>0?`<div class="sr"><span style="font-size:12px;">🏢 Renta</span><span class="mono ar">−${fmt(_renta)}</span></div>`:''}
+    ${_serv>0?`<div class="sr"><span style="font-size:12px;">💡 Servicios</span><span class="mono ar">−${fmt(_serv)}</span></div>`:''}
+    <div class="div"></div>
+    <div class="sr fw7" style="font-size:14px;"><span>UTILIDAD OPERATIVA</span><span class="mono ${_oper>=0?'at':'ar'}" style="font-size:17px;">${fmt(_oper)}</span></div>
+    <div class="sr"><span style="font-size:11px;color:var(--text2);">Margen operativo</span><span class="mono ${_mOper>=0?'ay':'ar'}">${_mOper}%</span></div>
+    <div style="border-top:1px dashed var(--border);margin-top:8px;padding-top:7px;font-size:10.5px;color:var(--text3);line-height:1.6;">
+      🛒 Compras de inventario del período (caja): <b>${fmt(_insumosCash)}</b> — no se restan aquí: el consumo real ya está en COGS<br>
+      💵 Flujo de caja del período (todo lo pagado): <b class="${_flujo>=0?'ag':'ar'}">${fmt(_flujo)}</b>
+    </div>`;
+  // Cascada visual del P&L (barras horizontales animadas)
+  if($('rp-waterfall')){
+    const filas=[
+      ['Ingresos',_ing,'var(--accent)'],
+      ['− COGS',-_cogs,'var(--red)'],
+      ['Utilidad bruta',_bruta,'#2e7d32'],
+      ['− Nómina',-_nom,'var(--red)'],
+      ..._opex>0?[['− Renta y servicios',-_opex,'var(--red)']]:[],
+      ['UTILIDAD OPERATIVA',_oper,_oper>=0?'var(--orange)':'var(--red)'],
+    ];
+    const maxAbs=Math.max(_ing,1);
+    $('rp-waterfall').innerHTML=`<div class="ct" style="margin-bottom:6px;">Cascada del período</div>`+
+      filas.map(([l,v,c])=>`<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px;">
+        <span style="font-size:10.5px;width:118px;flex-shrink:0;font-weight:${l===l.toUpperCase()?'800':'600'};">${l}</span>
+        <div class="prog" style="flex:1;height:14px;"><div class="pf" style="background:${c};width:${Math.min(100,Math.abs(v)/maxAbs*100).toFixed(1)}%;"></div></div>
+        <span class="mono" style="font-size:11px;font-weight:700;width:82px;text-align:right;color:${v<0?'var(--red)':'var(--text)'};">${v<0?'−':''}${fmt(Math.abs(v))}</span>
+      </div>`).join('');
+  }
+  // ══ KPIs DE DIRECCIÓN (benchmarks de industria restaurantera) ══
+  if($('rp-dir')){
+    const _dias=new Set(ventas.map(v=>v.fecha)).size||1;
+    const _ticket=ventas.length?_ing/ventas.length:0;
+    const _primePct=_ing>0?Math.round((_cogs+_nom)/_ing*100):0;
+    const _laborPct=_ing>0?Math.round(_nom/_ing*100):0;
+    const _fijosDia=(_nom+_opex)/_dias;
+    const _breakEven=_mBruta>0?_fijosDia/(_mBruta/100):null;
+    const kk=(icon,l,v,ok,sub)=>`<div class="card" style="text-align:center;">
+      <div class="ct">${icon} ${l}</div><div class="kv ${ok===null?'':ok?'ag':'red'}">${v}</div>
+      <div style="font-size:9.5px;color:var(--text3);margin-top:2px;">${sub}</div></div>`;
+    $('rp-dir').innerHTML=
+      kk('🔥','Prime Cost',_ing>0?_primePct+'%':'—',_ing>0?_primePct<=60:null,'insumos + nómina · sano ≤ 60%')+
+      kk('👩','Labor Cost',_ing>0?_laborPct+'%':'—',_ing>0?_laborPct<=30:null,'nómina / ventas · sano ≤ 30%')+
+      kk('🎯','Punto de equilibrio',_breakEven!=null?fmt(_breakEven)+'/día':'—',_breakEven!=null?(_ing/_dias)>=_breakEven:null,`vendes ${fmt(_ing/_dias)}/día en ${_dias} día(s)`)+
+      kk('🧾','Ticket promedio',fmt(_ticket),null,ventas.length+' tickets · '+Math.round(ventas.length/_dias)+'/día');
+  }
   // Top productos
   const topProds=getTopProductos(ventas);
   const maxP=topProds[0]?.total||1;
