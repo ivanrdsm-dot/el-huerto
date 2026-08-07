@@ -2481,6 +2481,7 @@ async function completeInit(){
   await migDedupeInvAgo2026();
   await migFixAgo06_2026();
   await migResaneoFoodCostAgo2026();
+  await migRestauraGastosAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3172,6 +3173,32 @@ async function migResaneoFoodCostAgo2026(){
   logAudit('foodcost_resaneado',{desde,ventasRevisadas:ventas.length,corregidas,anuladas,
     productosConCostoImposible:Object.entries(culpables).map(([n,c])=>`${n} ($${c})`).slice(0,15)});
   toast(`✓ Food cost re-saneado: ${corregidas} ventas corregidas${anuladas?`, ${anuladas} marcadas pendientes`:''}`,4500);
+}
+
+// ══ RESTAURAR GASTOS COSTCO (Iván los borró sin querer) ══
+// Idempotente por ticket: solo repone el que falte. Evidencia en
+// 'tickets por semana/'.
+async function migRestauraGastosAgo2026(){
+  const migKey='h5regasto_ago06';
+  if(await migDone(migKey)) return;
+  let nid=Date.now(); const repuestos=[];
+  const gastos=[
+    {fecha:'2026-07-29',cat:'costco',prov:'Costco',monto:2160.70,ticket:'ARG-5824731',metodo:'tarjeta',
+     notas:'Factura CFD: insumos ensaladas (lechuga, pollo, elote, crutones, aceitunas, tomate), leches, 4 quesos, jamón serrano, salami, moras'},
+    {fecha:'2026-08-04',cat:'costco',prov:'Costco',monto:2965.10,ticket:'ARG-5832696',metodo:'efectivo',
+     notas:'Proteína whey 2.48kg, leche deslactosada 12L, matcha 800g, chai 700g, tomate racimo, jamón serrano 2paq, crema almendras 765g'},
+  ];
+  for(const g of gastos){
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      await fsSet('gastos',{id:++nid,tipoEstrategico:'general',...g});
+      repuestos.push(g.ticket+' '+fmt(g.monto));
+    }
+  }
+  await markMig(migKey);
+  if(repuestos.length){
+    logAudit('gasto_restaurado',{motivo:'Borrado accidental',repuestos});
+    toast(`✓ Gasto(s) Costco restaurado(s): ${repuestos.join(' · ')}`,4500);
+  }
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
