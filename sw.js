@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.43'; // Costo Philadelphia: barra 190g a $50
+const CACHE_NAME = 'el-huerto-v14.44'; // Combos descuentan inventario + recetas de extras
 const ASSETS = [
   '/',
   '/index.html',

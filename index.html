@@ -2485,6 +2485,7 @@ async function completeInit(){
   await migComprasAgo0506_2026();
   await migCostoAcaiAgo2026();
   await migCostoPhillyAgo2026();
+  await migRecetasExtrasAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3158,7 +3159,7 @@ async function migResaneoFoodCostAgo2026(){
   for(const v of ventas){
     let fc=0, fcOk=true;
     v.items.forEach(i=>{
-      const r=foodCostProducto(i.id);
+      const r=foodCostProducto(i.id,i.prep);
       if(r.costo!=null) fc+=r.costo*i.qty;
       if(!r.completo) fcOk=false;
       if(r.costo!=null&&r.costo>i.precio) culpables[i.nombre]=Math.round(r.costo);
@@ -3312,6 +3313,41 @@ async function migCostoPhillyAgo2026(){
   }
   await markMig(migKey);
   toast('✓ Philadelphia costeado: \$50 la barra de 190 g',4000);
+}
+
+// ══ RECETAS DE EXTRAS (antes no descontaban nada) ══
+// Los extras vendidos aparte sí consumen insumo real. Gramajes iguales
+// a los que ya usan las recetas base (aprobados por Iván).
+async function migRecetasExtrasAgo2026(){
+  const migKey='h5extras_ago26';
+  if(await migDone(migKey)) return;
+  const I=async(n,c,u)=>await ensureInvItem(n,c,u);
+  const setRec=async(prodId,ings)=>{
+    const ex=D.recetas.find(r=>r.prodId===prodId);
+    await fsSet('recetas',{id:ex?.id||Date.now()+prodId,prodId,ings});
+  };
+  const ing=(inv,qty,unit)=>({invId:inv.id,nombre:inv.nombre,qty:String(qty),unit:unit||inv.unit});
+  const proteina=await I('Proteína','abarrotes','g');
+  const cafe=await I('Café molido','bebidas','g');
+  const aguacate=await I('Aguacate','frutas_verduras','kg');
+  const granola=await I('Granola','abarrotes','g');
+  const lechuga=await I('Lechuga','verduras','g');
+  const quesoMoz=await I('Queso mozzarella','lacteos_proteinas','g');
+  // 1052 Proteína Extra: 30 g de whey
+  await setRec(1052,[ing(proteina,30,'g')]);
+  // 1056 Shot Espresso Extra: 9 g de café
+  await setRec(1056,[ing(cafe,9,'g')]);
+  // 1054 Aguacate (Pan Renee): ~1/4 de pieza ≈ 50 g
+  await setRec(1054,[ing(aguacate,50,'g')]);
+  // 1051 Topping extra Bowl/Oats: 30 g de granola como referencia
+  await setRec(1051,[ing(granola,30,'g')]);
+  // 1053 Topping extra Panini: 25 g de queso como referencia
+  await setRec(1053,[ing(quesoMoz,25,'g')]);
+  // 1074 Topping extra Ensalada: 40 g de base
+  await setRec(1074,[ing(lechuga,40,'g')]);
+  await markMig(migKey);
+  logAudit('recetas_actualizadas',{lote:'extras ago-26',productos:['Proteína Extra','Shot Espresso','Aguacate','Toppings extra']});
+  toast('✓ Recetas de extras creadas — ya descuentan inventario',4000);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -6139,7 +6175,18 @@ window.cobrarEfectivo=async()=>{
 window.resetFechaVenta=()=>{if($('op-fecha-venta'))$('op-fecha-venta').value=today();};
 
 // ─── DESCUENTO AUTOMÁTICO DE INVENTARIO POR RECETAS ───
-async function descontarInventario(ventaItems){
+// Expande combos a sus componentes reales para que descuenten inventario
+function expandirItems(ventaItems){
+  const out=[];
+  (ventaItems||[]).forEach(it=>{
+    const comps=(typeof comboComponentes==='function')?comboComponentes(it):null;
+    if(comps&&comps.length) comps.forEach(id=>out.push({id,qty:it.qty,nombre:'(combo) '+it.nombre}));
+    else out.push(it);
+  });
+  return out;
+}
+async function descontarInventario(ventaItemsRaw){
+  const ventaItems=expandirItems(ventaItemsRaw);
   let alertas=[];
   let descontados=0;
   for(const item of ventaItems){
@@ -6223,7 +6270,7 @@ async function cobrar(metodo,recibido=0){
     try{
       let fc=0, fcOk=true;
       venta.items.forEach(i=>{
-        const r=foodCostProducto(i.id);
+        const r=foodCostProducto(i.id,i.prep);
         if(r.costo!=null) fc+=r.costo*i.qty;
         if(!r.completo) fcOk=false;
       });
@@ -6464,7 +6511,8 @@ window.anularVenta=async id=>{
   logAudit('venta_anulada',{ticket:v.ticket,total:v.total,metodo:v.metodo,fecha:v.fecha,motivo:motivo.trim(),vendedora:v.vendedorNombre||'—'});
   toast('✓ Venta anulada — inventario repuesto y registrado en bitácora');
 };
-async function reponerInventario(ventaItems){
+async function reponerInventario(ventaItemsRaw){
+  const ventaItems=expandirItems(ventaItemsRaw); // simetría exacta con el descuento
   for(const item of ventaItems){
     const rec=D.recetas.find(r=>r.prodId===item.id);
     if(!rec||!rec.ings) continue;
@@ -9989,8 +10037,57 @@ function costoPorUnidadReceta(inv, unitReceta){
   return null; // no convertible (ej. paq vs pz sin piezas/paquete)
 }
 
+// ═══════════════════════════════════════════════════════════════
+// COMBOS: se descomponen en sus productos componentes
+// Un combo no tiene receta propia; hereda las recetas de lo que la
+// cajera eligió (guardado en item.prep) más sus componentes fijos.
+// Así descuenta inventario y cuesta EXACTO según la variante vendida.
+// ═══════════════════════════════════════════════════════════════
+const COMBO_FIJOS={
+  1016:[1005],       // Home Run: Overnight Oats 2 Toppings (+ smoothie elegido)
+  1017:[1013],       // Gym Rat: Coctel de Fruta (+ smoothie elegido)
+  1018:[1002],       // El Fresa: Açaí Bowl 2 Toppings (+ smoothie elegido)
+  1048:[],           // El OG: smoothie + panini (ambos elegidos)
+  1049:[1030],       // El Mañanero: Capuchino Chico (+ panini elegido)
+  1050:[1030],       // El de Renee: Capuchino Chico (+ pan elegido)
+};
+// Traduce la etiqueta elegida ("Smoothie: Pal'Fresa") al producto real
+function comboProductoDeEtiqueta(linea){
+  const m=String(linea).split(':');
+  if(m.length<2) return null;
+  const tipo=m[0].trim().toLowerCase(), val=m.slice(1).join(':').trim();
+  const buscar=n=>D.productos.find(p=>normInvNombre(p.nombre)===normInvNombre(n));
+  if(tipo==='smoothie') return buscar(val);
+  if(tipo==='panini') return buscar('Panini '+val)||buscar('Panini Queso '+val);
+  if(tipo==='pan') return buscar('Pan tía Renee - '+val)||buscar('Pan tia Renee - '+val);
+  return null;
+}
+// Ids de productos que componen realmente este renglón de venta
+function comboComponentes(item){
+  const fijos=COMBO_FIJOS[item.id]; if(!fijos) return null;
+  const ids=[...fijos];
+  (item.prep||[]).forEach(l=>{const p=comboProductoDeEtiqueta(l);if(p)ids.push(p.id);});
+  return ids;
+}
+
 // Food cost de un producto según su receta y precios de inventario
-function foodCostProducto(prodId){
+// (prep: variantes elegidas — necesarias para costear combos)
+function foodCostProducto(prodId,prep){
+  // Combo: suma el costo de sus componentes
+  if(COMBO_FIJOS[prodId]){
+    const ids=comboComponentes({id:prodId,prep});
+    if(!ids||!ids.length) return {costo:null,completo:false,faltantes:['combo sin variante registrada']};
+    let costo=0; const faltantes=[]; let alguno=false;
+    ids.forEach(id=>{
+      const r=foodCostProducto(id);
+      if(r.costo!=null){costo+=r.costo;alguno=true;}
+      if(!r.completo) faltantes.push(...r.faltantes);
+    });
+    return {costo:alguno?Math.round(costo*100)/100:null,completo:faltantes.length===0,faltantes};
+  }
+  return foodCostSimple(prodId);
+}
+function foodCostSimple(prodId){
   const rec=D.recetas.find(r=>r.prodId===prodId);
   if(!rec||!rec.ings||rec.ings.length===0) return {costo:null,completo:false,faltantes:['sin receta']};
   let costo=0; const faltantes=[];
