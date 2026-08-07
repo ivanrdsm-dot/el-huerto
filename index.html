@@ -2486,6 +2486,7 @@ async function completeInit(){
   await migCostoAcaiAgo2026();
   await migCostoPhillyAgo2026();
   await migRecetasExtrasAgo2026();
+  await migRecategorizaInvAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3348,6 +3349,30 @@ async function migRecetasExtrasAgo2026(){
   await markMig(migKey);
   logAudit('recetas_actualizadas',{lote:'extras ago-26',productos:['Proteína Extra','Shot Espresso','Aguacate','Toppings extra']});
   toast('✓ Recetas de extras creadas — ya descuentan inventario',4000);
+}
+
+// ══ RE-CATEGORIZACIÓN CANÓNICA DEL INVENTARIO ══
+// Problema: artículos sin catOf (creados desde recetas) caían en una
+// pestaña genérica 'Otros', y otros arrastraban una categoría heredada
+// equivocada (chile en polvo en Frutas y Verduras). Resultado: la misma
+// clase de producto aparecía en varias pestañas y la captura del día no
+// cuadraba. Ahora TODOS pasan por el clasificador canónico.
+async function migRecategorizaInvAgo2026(){
+  const migKey='h5recat_ago26';
+  if(await migDone(migKey)) return;
+  // Respetos: el equipo cargado del conteo físico ya está bien clasificado
+  const cambios=[];
+  for(const inv of [...D.inventario]){
+    const correcta=clasificarCatOf(inv.nombre);
+    if(inv.catOf!==correcta){
+      cambios.push(`${inv.nombre}: ${inv.catOf||'(sin categoría)'} → ${correcta}`);
+      inv.catOf=correcta;
+      await fsSet('inventario',inv);
+    }
+  }
+  await markMig(migKey);
+  logAudit('inventario_recategorizado',{total:D.inventario.length,movidos:cambios.length,detalle:cambios.slice(0,60)});
+  if(cambios.length) toast(`🗂 Inventario reordenado: ${cambios.length} artículo(s) a su categoría correcta`,5000);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -10256,12 +10281,50 @@ window.addIng=async prodId=>{
 window.delIng=async(prodId,invId)=>{const rec=D.recetas.find(r=>r.prodId===prodId);if(!rec)return;rec.ings=rec.ings.filter(i=>i.invId!=invId);await fsSet('recetas',rec);toast('✓ Eliminado');};
 
 // ─── RECETAS PREDEFINIDAS ───
-async function ensureInvItem(nombre,cat,unit){
+// ═══════════════════════════════════════════════════════════════
+// CLASIFICADOR CANÓNICO DE CATEGORÍAS
+// Una sola fuente de verdad: cada artículo pertenece a UNA de las 6
+// categorías oficiales. Reglas ordenadas — la primera que coincide
+// gana, por eso las excepciones van ANTES que los patrones generales
+// (ej. 'bolsa para basura' antes que 'bolsa').
+// ═══════════════════════════════════════════════════════════════
+const REGLAS_CATOF=[
+  // — Excepciones que deben ganar primero —
+  [/bolsa.*basura|basura/,'interna_ivan'],
+  [/servitoalla/,'interna_ivan'],
+  [/charola.*mostrador|servilletero|inserto|mamila|tabla.*picar|cuchillo|playo|film/,'equipo'],
+  // Condimentos: ganan antes que frutas (ej. 'chile piquín con limón')
+  [/chile|chamoy|t[oa]j[íi]n|valentina|salsa|botanera|frutimich|especia/,'abarrotes'],
+  // — Equipo y utensilios —
+  [/licuadora|sandwichera|congelador|refrigerador|lavamanos|tetera|cafetera|b[áa]scula|c[áa]mara|caja fuerte|terminal|computadora|cable|bomba de agua|extintor|horno|microondas|prensa/,'equipo'],
+  // — Limpieza e higiene (lista interna) —
+  [/pinol|cloro|desinfectante|salvo|lavatraste|limpiavidrio|desengrasante|jab[óo]n|antibacterial|escoba|trapeador|cubeta|recogedor|primeros auxilios|limpiador|fibra|jerga|franela/,'interna_ivan'],
+  // — Desechables —
+  [/vaso|tapa|popote|servilleta|plato|cuchara|tenedor|manga|charola|bowl|domo|palita|palito|contenedor|bolsa|guante/,'desechables'],
+  // — Lácteos y proteínas —
+  [/leche|yogur|queso|philadelphia|mozzarella|panela|parmesano|jam[óo]n|chorizo|pavo|pollo|salami|prosciutto|prote[íi]na|whey|crema de (almendra|cacahuate)|mantequilla|huevo/,'lacteos_proteinas'],
+  // — Frutas y verduras (frescos) —
+  [/pl[áa]tano|pi[ñn]a|sand[íi]a|fresa|mango|manzana|aguacate|lim[óo]n|jitomate|tomate|zanahoria|j[íi]cama|pepino|blueberry|mora|lechuga|elote fresco|cherry|papaya|mel[óo]n|espinaca|kale|betabel|naranja|toronja|kiwi|uva|durazno/,'frutas_verduras'],
+  // — Abarrotes (todo lo demás de despensa) —
+  [/avena|granola|az[úu]car|splenda|stevia|miel|chai|matcha|canela|aceite|cacahuate|chile|chamoy|valentina|salsa|aderezo|mayonesa|jarabe|pimienta|achiote|susalia|caf[ée]|pan |pan$|hielo|perla|boba|infusi[óo]n|ar[áa]ndano|nuez|almendra|pistache|crut[óo]n|aceituna|sal$|sal |chocolate|frutimich|botanera|maggi|t[oa]j[íi]n|totopo|cereal|semilla|coco|vainilla|especia|t[ée] /,'abarrotes'],
+];
+function clasificarCatOf(nombre){
+  const n=(nombre||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+  for(const [re,cat] of REGLAS_CATOF) if(re.test(n)) return cat;
+  return 'abarrotes'; // por defecto: despensa (nunca queda sin categoría)
+}
+
+async function ensureInvItem(nombre,cat,unit,catOf){
   let inv=D.inventario.find(i=>i.nombre.toLowerCase()===nombre.toLowerCase());
   if(!inv){
-    inv={id:Date.now()+Math.floor(Math.random()*1000),nombre,cat,qty:0,unit,min:0,precio:0};
+    // catOf SIEMPRE presente: antes se creaba sin categoría y el artículo
+    // no aparecía en su pestaña de captura
+    inv={id:Date.now()+Math.floor(Math.random()*1000),nombre,cat,catOf:catOf||clasificarCatOf(nombre),qty:0,unit,min:0,precio:0};
     await fsSet('inventario',inv);
     D.inventario.push(inv);
+  }else if(!inv.catOf){
+    inv.catOf=catOf||clasificarCatOf(inv.nombre);
+    await fsSet('inventario',inv);
   }
   return inv;
 }

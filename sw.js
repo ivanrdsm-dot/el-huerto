@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.44'; // Combos descuentan inventario + recetas de extras
+const CACHE_NAME = 'el-huerto-v14.45'; // Inventario: categorías canónicas (una sola por artículo)
 const ASSETS = [
   '/',
   '/index.html',
