@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.40'; // Compras 05-06 ago + proveedores + Zorro restaurado
+const CACHE_NAME = 'el-huerto-v14.41'; // FIX: gastos de sábado/domingo eran invisibles en reportes
 const ASSETS = [
   '/',
   '/index.html',

@@ -5076,6 +5076,15 @@ function getWDays(ref){
   const r=[]; for(let i=0;i<5;i++){const dd=new Date(mon);dd.setDate(mon.getDate()+i);r.push(localDate(dd));}
   return r;
 }
+// Semana COMPLETA lunes→domingo. La cafetería vende lun-vie (getWDays),
+// pero las COMPRAS caen en sábado (Costco, El Zorro): con 5 días esos
+// gastos quedaban invisibles en reportes. Todo lo que sea dinero salido
+// debe usar los 7 días.
+function getWDays7(ref){
+  const mon=getMonday(ref||today());
+  const r=[]; for(let i=0;i<7;i++){const dd=new Date(mon+'T12:00:00');dd.setDate(dd.getDate()+i);r.push(localDate(dd));}
+  return r;
+}
 function getMonday(ds){const d=new Date(ds+'T12:00:00');const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return localDate(d);}
 function getRecentWeeks(n=8){const weeks=[];const now=new Date();for(let i=n-1;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i*7);weeks.push(getMonday(localDate(d)));}return[...new Set(weeks)];}
 function closeModal(id,e){if(e.target===$(id))$(id).style.display='none';}
@@ -10426,7 +10435,7 @@ function renderDashboard(){
   const wdata=weeks.map(w=>{
     const wd=getWDays(w);
     const ing=wd.reduce((s,d)=>s+calcDiaDB(d).total,0);
-    const gas=D.gastos.filter(g=>wd.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
+    const gas=D.gastos.filter(g=>getWDays7(w).includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
     const nomW=D.nomPagos.find(p=>p.semana===w);
     const nomWt=nomW?nomW.total:getNominaSemanal(w).reduce((s,e)=>s+e.totalSem,0);
     return {l:w.slice(5),ing,gas,nom:nomWt};
@@ -10458,7 +10467,7 @@ function renderDashboard(){
   const wd=getWDays(td);
   const weekDataDB=wd.map(d=>({fecha:d,...calcDiaDB(d)}));
   const wTot=weekDataDB.reduce((s,d)=>s+d.total,0);
-  const wGastosSem=D.gastos.filter(g=>wd.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
+  const wGastosSem=D.gastos.filter(g=>getWDays7(td).includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
   const wUtilSem=wTot-wGastosSem;
   if($('db-semana'))$('db-semana').innerHTML=`<div class="ct">Semana Actual</div>
     <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--accent);margin-bottom:2px;">${fmt(wTot)}</div>
@@ -10519,7 +10528,11 @@ function getReportePeriodo(){
   const td=today();
   let fechas=null, label='';
   if(p==='hoy'){ fechas=new Set([td]); label=td; }
-  else if(p==='semana'){ const wd=getWDays(td); fechas=new Set(wd); label=`${wd[0]} → ${wd[4]}`; }
+  else if(p==='semana'){
+    const wd=getWDays(td); fechas=new Set(wd);
+    fechas._sem=td; // marca la semana para que los GASTOS usen los 7 días
+    label=`${wd[0]} → ${getWDays7(td)[6]}`;
+  }
   else { const cm=curM(); fechas={_mes:cm}; label=cm; }
   return {p, fechas, label};
 }
@@ -10534,6 +10547,8 @@ function getGastosFiltrados(fechas){
   return D.gastos.filter(g=>{
     if(!g.fecha) return false;
     if(fechas._mes) return mOf(g.fecha)===fechas._mes;
+    // Los gastos usan la semana COMPLETA (incluye sábado y domingo)
+    if(fechas._sem) return getWDays7(fechas._sem).includes(g.fecha);
     return fechas.has(g.fecha);
   });
 }
@@ -10787,7 +10802,7 @@ function renderReportes(){
     Object.entries(bC).sort((a,b)=>b[1]-a[1]).map(([c,v])=>{const pct=gasT?Math.round(v/gasT*100):0;return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:12px;">${catL[c]||c}</span><span class="mono ar" style="font-size:11px;">${pct}% — ${fmt(v)}</span></div><div class="prog"><div class="pf" style="background:var(--red);width:${pct}%;"></div></div></div>`;}).join('');
   // Gráfica 6 semanas
   const weeks=getRecentWeeks(6);
-  const wdata=weeks.map(w=>{const wd=getWDays(w);const vw=D.ventas.filter(v=>wd.includes(v.fecha)&&!v.anulada).reduce((s,v)=>s+v.total,0);const cw=D.caja.filter(c=>wd.includes(c.fecha)).reduce((s,c)=>s+c.total,0);const ing=Math.max(vw,cw);const gas=D.gastos.filter(g=>wd.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);return {l:w.slice(5),ing,gas};});
+  const wdata=weeks.map(w=>{const wd=getWDays(w);const vw=D.ventas.filter(v=>wd.includes(v.fecha)&&!v.anulada).reduce((s,v)=>s+v.total,0);const cw=D.caja.filter(c=>wd.includes(c.fecha)).reduce((s,c)=>s+c.total,0);const ing=Math.max(vw,cw);const gas=D.gastos.filter(g=>getWDays7(w).includes(g.fecha)).reduce((s,g)=>s+g.monto,0);return {l:w.slice(5),ing,gas};});
   const maxV=Math.max(...wdata.map(w=>Math.max(w.ing,w.gas)),1);
   if($('rp-chart'))$('rp-chart').innerHTML=wdata.map(w=>`<div class="bc"><div style="display:flex;gap:3px;align-items:flex-end;height:120px;width:100%;"><div class="bv bi" style="height:${Math.max(Math.round(w.ing/maxV*100),2)}%;flex:1;" title="${fmt(w.ing)}"></div><div class="bv be" style="height:${Math.max(Math.round(w.gas/maxV*100),2)}%;flex:1;" title="${fmt(w.gas)}"></div></div><span class="bl">${w.l}</span></div>`).join('');
 
@@ -10851,7 +10866,7 @@ function renderReportes_OLD(){
     const ingPOS=D.ventas.filter(v=>wd.includes(v.fecha)&&!v.anulada).reduce((s,v)=>s+v.total,0);
     const ingCajaExtra=D.caja.filter(c=>wd.includes(c.fecha)&&!diasConPOS_w.has(c.fecha)).reduce((s,c)=>s+c.total,0);
     const ing=ingPOS+ingCajaExtra;
-    const gas=D.gastos.filter(g=>wd.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
+    const gas=D.gastos.filter(g=>getWDays7(w).includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
     return {l:w.slice(5),ing,gas};
   });
   const maxV=Math.max(...wdata.map(w=>Math.max(w.ing,w.gas)),1);
