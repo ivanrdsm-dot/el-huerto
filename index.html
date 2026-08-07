@@ -354,6 +354,10 @@ body.kds-mode .ord-seg button{min-height:58px;font-size:13.5px;}
 body.kds-mode .ord-btns .btn{min-height:58px;font-size:15px;}
 body.kds-mode .pcat{font-size:13.5px;padding:9px 15px;}
 body.kds-mode .st{font-size:20px;}
+/* Tarjetas KPI de inventario: son botones de filtro */
+.inv-kpi-card{transition:transform .2s ease, box-shadow .2s ease, outline .15s ease;}
+.inv-kpi-card:hover{transform:translateY(-2px);box-shadow:0 6px 18px rgba(0,0,0,.10);}
+.inv-kpi-card:active{transform:scale(.97);}
 /* ── Corte de Caja: wizard de 3 pasos ── */
 .corte-card{border:2px solid var(--accent)!important;}
 .corte-prog{display:flex;align-items:center;gap:0;margin-bottom:16px;padding:0 6px;}
@@ -1704,6 +1708,8 @@ nav{padding-top:env(safe-area-inset-top);}
 
   <!-- KPIs rápidos del inventario -->
   <div class="g4" style="margin-bottom:12px;" id="inv-kpis"></div>
+  <!-- Resultado del filtro por estado (al tocar una tarjeta de arriba) -->
+  <div id="inv-filtro-res" style="margin-bottom:12px;"></div>
 
   <!-- Modo: Captura | Dashboard (admin) -->
   <div id="inv-modo-tabs" style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
@@ -2468,6 +2474,7 @@ async function completeInit(){
   await migComprasAgo2026();
   await migBobaAgo2026();
   await migCostco04Ago2026();
+  await migDedupeInvAgo2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3055,6 +3062,48 @@ async function migCostco04Ago2026(){
   }
   await markMig(migKey);
   logAudit('compras_registradas',{factura:'Costco ARG-5832696',total:2965.10,nota:'proteína/matcha/chai convertidos a gramos con presentación real'});
+}
+
+// ══ DEDUPE INVENTARIO AGO-2026 (instrucción de Iván tras el conteo) ══
+// Regla: si un NOMBRE está repetido, sobreviven los que tienen cantidad;
+// los duplicados en CERO se eliminan. Un artículo en cero pero ÚNICO se
+// queda (es legítimo: simplemente se acabó). Si todos los duplicados
+// están en cero, se conserva el mejor (id oficial 7xxx > con precio >
+// más antiguo). Todo queda en bitácora.
+async function migDedupeInvAgo2026(){
+  const migKey='h5dedupe_ago26';
+  if(await migDone(migKey)) return;
+  const stock=i=>{const s=invStockHoy(i.id);return s!=null?s:(i.qty||0);};
+  const grupos={};
+  D.inventario.forEach(i=>{const k=normInvNombre(i.nombre);(grupos[k]=grupos[k]||[]).push(i);});
+  const eliminados=[];
+  for(const k in grupos){
+    const g=grupos[k];
+    if(g.length<2) continue; // único: se queda aunque esté en cero
+    const conStock=g.filter(i=>stock(i)>0);
+    let aBorrar;
+    if(conStock.length>=1){
+      aBorrar=g.filter(i=>stock(i)<=0);
+    }else{
+      const orden=[...g].sort((a,b)=>{
+        const ofA=(a.id>=7100&&a.id<7600)?0:1, ofB=(b.id>=7100&&b.id<7600)?0:1;
+        if(ofA!==ofB) return ofA-ofB;
+        const pA=(a.precio>0)?0:1, pB=(b.precio>0)?0:1;
+        if(pA!==pB) return pA-pB;
+        return a.id-b.id;
+      });
+      aBorrar=orden.slice(1);
+    }
+    for(const i of aBorrar){
+      await fsDel('inventario',i.id);
+      const ix=D.inventario.findIndex(x=>x.id===i.id);
+      if(ix>=0) D.inventario.splice(ix,1);
+      eliminados.push(i.nombre);
+    }
+  }
+  await markMig(migKey);
+  logAudit('inventario_dedupe',{eliminados:eliminados.length,detalle:eliminados.slice(0,50)});
+  if(eliminados.length) toast(`🧹 Inventario limpio: ${eliminados.length} duplicado(s) en cero eliminados`,4500);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
@@ -8149,6 +8198,44 @@ window.delInv=async id=>{
 };
 
 // ─── Render principal ───
+// ── Filtro por estado de stock: las tarjetas KPI son botones ──
+let invFiltroEstado=null;
+window.setInvEstadoFiltro=k=>{
+  invFiltroEstado=invFiltroEstado===k?null:k; // segundo toque = quitar filtro
+  renderInv();
+  if(invFiltroEstado) setTimeout(()=>$('inv-filtro-res')?.scrollIntoView({behavior:'smooth',block:'nearest'}),100);
+};
+function renderInvFiltroRes(){
+  const el=$('inv-filtro-res'); if(!el) return;
+  if(!invFiltroEstado){el.innerHTML='';return;}
+  const td=today();
+  const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
+  const etiquetas={pendiente:'📝 Sin capturar hoy',bajo:'🔴 Stock bajo o agotado',medio:'🟡 Stock medio',ok:'🟢 Stock OK'};
+  let items;
+  if(invFiltroEstado==='pendiente') items=D.inventario.filter(i=>!capturadosHoy.has(i.id));
+  else items=D.inventario.filter(i=>{
+    const e=invEstadoStock(i).estado;
+    return invFiltroEstado==='bajo'?(e==='bajo'||e==='agotado'):e===invFiltroEstado;
+  });
+  const catL=k=>CAT_OFICIALES.find(c=>c.key===k)?.nombre||'🏷 Sin categoría';
+  el.innerHTML=`<div class="card" style="padding:12px;border:1.5px solid var(--accent2);">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+      <span style="font-weight:800;font-size:13px;">${etiquetas[invFiltroEstado]} — ${items.length} producto(s)</span>
+      <button class="btn bs bxs" onclick="setInvEstadoFiltro('${invFiltroEstado}')">✕ Quitar filtro</button>
+    </div>
+    ${items.length===0?'<p style="font-size:12px;color:var(--text3);">🎉 Ninguno</p>':
+    `<div style="max-height:320px;overflow-y:auto;">`+
+    [...items].sort((a,b)=>a.nombre.localeCompare(b.nombre)).map(i=>{
+      const e=invEstadoStock(i);
+      const s=invStockHoy(i.id); const stockReal=s!=null?s:(i.qty||0);
+      return `<div onclick="setInvCategoria('${i.catOf||'abarrotes'}')" style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 4px;border-bottom:1px solid var(--border);cursor:pointer;" title="Ir a su categoría">
+        <span style="font-size:12.5px;min-width:0;"><b>${i.nombre}</b> <span style="color:var(--text3);font-size:11px;">· ${catL(i.catOf)}</span></span>
+        <span class="mono" style="font-size:12px;font-weight:800;color:${e.color};white-space:nowrap;">${e.icono} ${stockReal} ${i.unit||''}${i.min>0?` <span style="color:var(--text3);font-weight:400;">/ mín ${i.min}</span>`:''}</span>
+      </div>`;
+    }).join('')+'</div>'}
+  </div>`;
+}
+
 function renderInv(){
   const bajos=D.inventario.filter(x=>{
     const e=invEstadoStock(x);
@@ -8168,27 +8255,31 @@ function renderInv(){
     const totalProd=D.inventario.length;
     const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===today()).map(c=>c.productoId)).size;
     const pctCapturado=totalProd>0?Math.round(capturadosHoy/totalProd*100):0;
+    // Tarjetas CLICABLES: tocar una filtra y lista exactamente qué productos
+    const act=k=>invFiltroEstado===k?'outline:3px solid var(--accent2);outline-offset:2px;transform:translateY(-2px);':'';
     $('inv-kpis').innerHTML=`
-      <div class="card" style="text-align:center;border:2px solid ${pctCapturado===100?'var(--accent)':pctCapturado>50?'var(--gold)':'var(--red)'};">
+      <div class="card inv-kpi-card" onclick="setInvEstadoFiltro('pendiente')" style="text-align:center;cursor:pointer;border:2px solid ${pctCapturado===100?'var(--accent)':pctCapturado>50?'var(--gold)':'var(--red)'};${act('pendiente')}">
         <div class="ct">Capturado hoy</div>
         <div class="kv ${pctCapturado===100?'':'gold'}">${capturadosHoy}/${totalProd}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:3px;">${pctCapturado}% completo</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">${pctCapturado===100?'100% completo':`toca para ver los ${totalProd-capturadosHoy} que faltan`}</div>
       </div>
-      <div class="card" style="text-align:center;${bajos.length>0?'border:2px solid var(--red);background:#fff5f5;':''}">
+      <div class="card inv-kpi-card" onclick="setInvEstadoFiltro('bajo')" style="text-align:center;cursor:pointer;${bajos.length>0?'border:2px solid var(--red);background:#fff5f5;':''}${act('bajo')}">
         <div class="ct">🔴 Stock Bajo</div>
         <div class="kv red">${bajos.length}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:3px;">Agotados o bajo mínimo</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">toca para ver cuáles</div>
       </div>
-      <div class="card" style="text-align:center;">
+      <div class="card inv-kpi-card" onclick="setInvEstadoFiltro('medio')" style="text-align:center;cursor:pointer;${act('medio')}">
         <div class="ct">🟡 Stock Medio</div>
         <div class="kv gold">${medios.length}</div>
-        <div style="font-size:10px;color:var(--text3);margin-top:3px;">Cerca del mínimo</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">toca para ver cuáles</div>
       </div>
-      <div class="card" style="text-align:center;">
+      <div class="card inv-kpi-card" onclick="setInvEstadoFiltro('ok')" style="text-align:center;cursor:pointer;${act('ok')}">
         <div class="ct">🟢 Stock OK</div>
         <div class="kv">${D.inventario.length-bajos.length-medios.length}</div>
+        <div style="font-size:10px;color:var(--text3);margin-top:3px;">toca para ver cuáles</div>
       </div>`;
   }
+  renderInvFiltroRes();
 
   // Mostrar/ocultar tabs según permisos
   const isAdmin=SESSION?.tipo==='admin';
