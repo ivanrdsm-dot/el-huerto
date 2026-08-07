@@ -2482,6 +2482,7 @@ async function completeInit(){
   await migFixAgo06_2026();
   await migResaneoFoodCostAgo2026();
   await migRestauraGastosAgo2026();
+  await migComprasAgo0506_2026();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3199,6 +3200,72 @@ async function migRestauraGastosAgo2026(){
     logAudit('gasto_restaurado',{motivo:'Borrado accidental',repuestos});
     toast(`✓ Gasto(s) Costco restaurado(s): ${repuestos.join(' · ')}`,4500);
   }
+}
+
+// ══ COMPRAS 05-06 AGO (facturas en 'tickets por semana/2026-W32') ══
+// Costco 05-ago \$580 · Costco 06-ago \$518 · tablas de madera \$1,100 ·
+// bomba de agua \$1,100 (Mercado Pago) · restaura El Zorro \$820 si
+// falta (Iván lo reportó ausente) · alta de proveedores frecuentes.
+async function migComprasAgo0506_2026(){
+  const migKey='h5compras_ago0506';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const hit=D.inventario.find(i=>normInvNombre(i.nombre)===nn||normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(hit) return hit;
+    }
+    return null;
+  };
+  const addC=async(cands,qty,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qty,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;inv.precio=Math.round(precioUnit*(qty/q)*10000)/10000;}
+      // unidades incompatibles: no tocar qty ni precio (evita otro food cost podrido)
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+  // Costco 05-ago
+  await addC(['Leche de almendra','Leche de almendras'],6,'pz',24.83,'lacteos_proteinas'); // \$149
+  await addC(['Susalias horneadas'],20,'pz',14.95,'abarrotes');                            // 20×50g \$299
+  // (Fresa 907 g: el inventario está en 'domo' — sin equivalencia no se toca; solo va al gasto)
+  // Costco 06-ago
+  await addC(['Jamón prosciutto'],340,'g',0.5853,'lacteos_proteinas');                     // Daniele \$199
+  await addC(['Queso mozzarella','Mozzarella'],2260,'g',0.1412,'lacteos_proteinas');       // Kirkland \$319
+  // Equipo: bomba de agua (activo contable)
+  await addC(['Bomba de agua'],1,'pz',1100,'equipo');
+  // Gastos (idempotentes por ticket)
+  const gastos=[
+    {fecha:'2026-08-05',cat:'costco',prov:'Costco',monto:580.00,ticket:'ARG-5833779',metodo:'tarjeta',
+     notas:'Leche almendra 6×946ml, fresa 907g, totopos Susalia horneados 20×50g'},
+    {fecha:'2026-08-06',cat:'costco',prov:'Costco',monto:518.00,ticket:'ARG-5834983',metodo:'efectivo',
+     notas:'Jamón prosciutto 340g Daniele, mozzarella rallado 2.26kg Kirkland'},
+    {fecha:'2026-08-06',cat:'proveedor',prov:'Carpintería (tablas de madera)',monto:1100.00,ticket:'TABLAS-AGO26',metodo:'efectivo',
+     notas:'Tablas de madera para servicio/picado'},
+    {fecha:'2026-08-06',cat:'servicios',prov:'Bomba de agua',monto:1100.00,ticket:'BOMBA-AGO26',metodo:'tarjeta',
+     notas:'Bomba de agua — pagada por Mercado Pago'},
+    {fecha:'2026-08-01',cat:'proveedor',prov:'Frutería El Zorro',monto:820.00,ticket:'ZORRO-01AGO26',metodo:'efectivo',
+     notas:'Zanahoria 4kg, pepino 4kg, manzana 1kg, piña 3pz, aguacate 1kg, jitomate 2kg, sandía 6kg, plátano 6kg, mango 4kg, fresa 1 domo, jícama 4kg'},
+  ];
+  const nuevos=[];
+  for(const g of gastos){
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      await fsSet('gastos',{id:++nid,tipoEstrategico:'general',...g});
+      nuevos.push(`${g.prov} ${fmt(g.monto)}`);
+    }
+  }
+  // Directorio de proveedores (alta si no existen, por nombre)
+  const provs=['Costco','Frutería El Zorro','Camber Super Abasto','Caza Ofertas','Corporación Rodríguez','City Market','Panadería (pan Tía Renee)'];
+  for(const nombre of provs){
+    if(!D.provDir.find(p=>normInvNombre(p.nombre)===normInvNombre(nombre))){
+      await fsSet('provDir',{id:++nid,nombre,contacto:'',tel:'',entrega:'',notas:'Alta automática desde compras registradas'});
+    }
+  }
+  await markMig(migKey);
+  logAudit('compras_registradas',{lote:'05-06 ago 2026',gastos:nuevos});
+  toast(`✓ Compras 05-06 ago registradas: ${nuevos.length} gasto(s)`,4500);
 }
 
 // Carga de inventario desde tickets Naranjarillo 11-12/abr/2026
