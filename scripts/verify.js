@@ -39,7 +39,7 @@ const FNS = ['cobrar', 'renderOrder', 'renderPOS', 'realizarCorte', 'calcDia',
   'toggleKDS', 'playNewOrderSound', 'checkNuevaOrdenSound',
   'printComanda', 'conectarImpresoraBT', 'escposComanda', 'abrirPrepModal', 'pushItemOrden', 'prepTexto', 'prepLineas', 'prepPasosDe',
   'renderMercado', 'registrarCompra', 'mcAddInv', 'renderPosOrdenes',
-  'abrirScanLealtad', 'altaLealtad', 'registrarSelloLealtad', 'renderTarjetaPublica', 'renderLealtadPanel', 'canjearPremio', 'renderCampana', 'setLtSegmento', 'abrirCfgLealtad', 'actualizarProgresoCorte', 'btChipTap', 'renderPropinasNomina', 'repartirPropinas', 'setInvEstadoFiltro', 'renderInvFiltroRes', 'registroAsistenciaPDF', 'pinBloqueado', 'pinFallo', 'plPDF', 'clasificarCatOf', 'comboComponentes'];
+  'abrirScanLealtad', 'altaLealtad', 'registrarSelloLealtad', 'renderTarjetaPublica', 'renderLealtadPanel', 'canjearPremio', 'renderCampana', 'setLtSegmento', 'abrirCfgLealtad', 'actualizarProgresoCorte', 'btChipTap', 'renderPropinasNomina', 'repartirPropinas', 'setInvEstadoFiltro', 'renderInvFiltroRes', 'registroAsistenciaPDF', 'pinBloqueado', 'pinFallo', 'plPDF', 'clasificarCatOf', 'comboComponentes', 'hojaComprasPDF', 'toggleNavGroup'];
 FNS.forEach(fn => {
   const re = new RegExp(`(function ${fn}\\b|window\\.${fn}\\s*=|const ${fn}\\s*=)`);
   if (re.test(html)) ok(fn); else fail(`función no encontrada: ${fn}`);
@@ -52,7 +52,7 @@ const IDS = ['page-pos', 'order-panel', 'op-items', 'op-tot', 'pcats', 'pin-moda
   'corte-nota', 'lock-emp-btns', 'page-ordenes', 'ord-grid', 'ord-tabs', 'ord-stats',
   'prep-modal', 'prep-chips', 'bt-estado', 'cfg-comanda-auto',
   'page-mercado', 'mc-items', 'mc-sug', 'mc-total-bar', 'pos-ord-strip',
-  'scan-modal', 'op-lealtad', 'tarjeta-view', 'lealtad-tabla', 'lealtad-segmentos', 'lp-msg', 'corte-tc-propina', 'corte-tc-desglose', 'bt-pos-chip', 'cp-1', 'nom-propinas', 'inv-filtro-res', 'btn-reg-asist', 'cfg-rfc', 'rp-dir', 'rp-waterfall', 'rp-fin2'];
+  'scan-modal', 'op-lealtad', 'tarjeta-view', 'lealtad-tabla', 'lealtad-segmentos', 'lp-msg', 'corte-tc-propina', 'corte-tc-desglose', 'bt-pos-chip', 'cp-1', 'nom-propinas', 'inv-filtro-res', 'btn-reg-asist', 'cfg-rfc', 'rp-dir', 'rp-waterfall', 'rp-fin2', 'btn-hoja-compras'];
 IDS.forEach(id => {
   if (html.includes(`id="${id}"`)) ok('#' + id); else fail(`elemento no encontrado: #${id}`);
 });

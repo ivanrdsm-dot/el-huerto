@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.46'; // Área financiera pro: Pconst CACHE_NAME = 'el-huerto-v14.45'; // Inventario: categorías canónicas (una sola por artículo)L devengado + KPIs dirección + PDF
+const CACHE_NAME = 'el-huerto-v14.47'; // Nav agrupado por categorías + hoja de compras imprimible
 const ASSETS = [
   '/',
   '/index.html',
