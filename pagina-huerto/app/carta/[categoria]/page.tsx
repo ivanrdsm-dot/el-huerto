@@ -13,6 +13,7 @@ import { ProductCard } from "@/components/menu/ProductCard";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Boton } from "@/components/ui/Boton";
 import { Reveal } from "@/components/motion/Reveal";
+import { listaCategoriaJsonLd, migasJsonLd, jsonLdProps } from "@/lib/schema";
 import { SITE } from "@/lib/site";
 
 type Params = { categoria: string };
@@ -34,10 +35,22 @@ export async function generateMetadata({
   const { categoria } = await params;
   const cat = categoriaPorSlug(categoria);
   if (!cat) return {};
+
+  const nombres = productosDeCategoria(cat.slug)
+    .slice(0, 4)
+    .map((p) => p.nombre)
+    .join(", ");
+
   return {
-    title: `${cat.nombre} desde $${cat.desde}`,
-    description: `${cat.descripcion} Consulta precios y opciones de ${cat.nombre.toLowerCase()} en El Huerto, Ciudad UP.`,
+    title: `${cat.nombre} desde $${cat.desde} en Ciudad UP`,
+    description: `${cat.descripcion}${nombres ? ` ${nombres}.` : ""} Precios vigentes de El Huerto, el kiosco de Ciudad UP en Bosque Real, Huixquilucan.`,
     alternates: { canonical: `/carta/${cat.slug}` },
+    openGraph: {
+      title: `${cat.nombre} — El Huerto Ciudad UP`,
+      description: cat.descripcion,
+      url: `/carta/${cat.slug}`,
+      ...(cat.imagen ? { images: [{ url: cat.imagen, alt: cat.imagenAlt ?? cat.nombre }] } : {}),
+    },
   };
 }
 
@@ -53,18 +66,30 @@ export default async function CategoriaPage({ params }: { params: Promise<Params
     "@type": "MenuSection",
     name: cat.nombre,
     description: cat.descripcion,
+    url: `${SITE.url}/carta/${cat.slug}`,
     hasMenuItem: productos.map((p) => ({
       "@type": "MenuItem",
       name: p.nombre,
       description: p.descripcionCorta,
+      url: `${SITE.url}/carta/${cat.slug}/${p.slug}`,
+      ...(p.imagen ? { image: `${SITE.url}${p.imagen}` } : {}),
       offers: p.precios.map((precio) => ({
         "@type": "Offer",
         price: precio.valor,
         priceCurrency: "MXN",
+        availability: p.disponible
+          ? "https://schema.org/InStock"
+          : "https://schema.org/OutOfStock",
         ...(precio.etiqueta ? { name: precio.etiqueta } : {}),
       })),
     })),
   };
+
+  const migas = migasJsonLd([
+    { nombre: "Inicio", url: "/" },
+    { nombre: "Carta", url: "/carta" },
+    { nombre: cat.nombre, url: `/carta/${cat.slug}` },
+  ]);
 
   return (
     <div className="bg-cream-100 pb-20 pt-28 sm:pt-36">
@@ -86,6 +111,7 @@ export default async function CategoriaPage({ params }: { params: Promise<Params
 
         <div className="grid items-center gap-8 lg:grid-cols-[1.1fr_0.9fr]">
           <SectionHeading
+          como="h1"
             kicker={`${cat.nombre} · desde $${cat.desde}`}
             titulo={cat.titulo}
             subtitulo={cat.descripcion}
@@ -158,7 +184,12 @@ export default async function CategoriaPage({ params }: { params: Promise<Params
         </div>
       </div>
 
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLdProps(jsonLd)} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={jsonLdProps(migas)} />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={jsonLdProps(listaCategoriaJsonLd(cat.slug))}
+      />
     </div>
   );
 }

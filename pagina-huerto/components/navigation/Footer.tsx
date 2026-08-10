@@ -19,6 +19,7 @@ const COLUMNAS = [
     enlaces: [
       { href: "/ubicacion", label: "Ubicación" },
       { href: "/nosotros", label: "Nosotros" },
+      { href: "/preguntas-frecuentes", label: "Preguntas frecuentes" },
       { href: "/instagram", label: "Instagram" },
       { href: "/contacto", label: "Contacto" },
     ],

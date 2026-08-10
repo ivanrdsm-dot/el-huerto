@@ -13,6 +13,7 @@ export function LocationSection({ completa = false }: { completa?: boolean }) {
     <section className="relative overflow-hidden bg-cream-50 py-16 sm:py-24" id="ubicacion">
       <div className="mx-auto flex max-w-6xl flex-col gap-10 px-6">
         <SectionHeading
+          como={completa ? "h1" : "h2"}
           kicker="Nos vemos en Ciudad UP"
           titulo="Encuéntranos en Ciudad UP."
           subtitulo="Ven a visitarnos entre clases. Te esperamos con todo fresquito."

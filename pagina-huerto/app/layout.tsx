@@ -4,6 +4,7 @@ import "./globals.css";
 import { Header } from "@/components/navigation/Header";
 import { Footer } from "@/components/navigation/Footer";
 import { WhatsAppFab } from "@/components/ui/WhatsAppFab";
+import { negocioJsonLd, sitioJsonLd } from "@/lib/schema";
 import { SITE } from "@/lib/site";
 
 const archivoBlack = Archivo_Black({
@@ -59,23 +60,7 @@ export const viewport: Viewport = {
   themeColor: "#344526",
 };
 
-const orgJsonLd = {
-  "@context": "https://schema.org",
-  "@type": "CafeOrCoffeeShop",
-  name: "El Huerto",
-  slogan: "Natural · Fresco · Saludable",
-  servesCuisine: ["Smoothies", "Café", "Bowls", "Paninis", "Ensaladas"],
-  priceRange: "$30 - $229 MXN",
-  url: SITE.url,
-  sameAs: [SITE.instagramUrl],
-  address: {
-    "@type": "PostalAddress",
-    addressLocality: "Huixquilucan",
-    addressRegion: "Estado de México",
-    addressCountry: "MX",
-    streetAddress: "Ciudad Universitaria Panamericana (Ciudad UP), Bosque Real",
-  },
-};
+const jsonLdGlobal = [negocioJsonLd(), sitioJsonLd()];
 
 export default function RootLayout({
   children,
@@ -97,10 +82,13 @@ export default function RootLayout({
         </main>
         <Footer />
         <WhatsAppFab />
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(orgJsonLd) }}
-        />
+        {jsonLdGlobal.map((bloque, i) => (
+          <script
+            key={i}
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(bloque) }}
+          />
+        ))}
       </body>
     </html>
   );

@@ -28,11 +28,12 @@ const GALERIA = [
   },
 ] as const;
 
-export function InstagramGallery() {
+export function InstagramGallery({ completa = false }: { completa?: boolean }) {
   return (
     <section className="bg-cream-100 py-16 sm:py-24">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-10 px-6">
         <SectionHeading
+          como={completa ? "h1" : "h2"}
           kicker={`@${SITE.instagramUser}`}
           titulo="Lo que se está antojando."
           subtitulo="Un poco de lo que pasa todos los días en el kiosco."

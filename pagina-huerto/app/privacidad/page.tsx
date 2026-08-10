@@ -12,7 +12,8 @@ export default function PrivacidadPage() {
   return (
     <div className="bg-cream-100 pb-20 pt-28 sm:pt-36">
       <div className="mx-auto flex max-w-3xl flex-col gap-8 px-6">
-        <SectionHeading kicker="Legal" titulo="Aviso de privacidad." alinear="izquierda" />
+        <SectionHeading
+          como="h1" kicker="Legal" titulo="Aviso de privacidad." alinear="izquierda" />
         <div className="flex flex-col gap-4 text-sm leading-relaxed text-ink/85">
           <p>
             Este sitio web de El Huerto es informativo: aquí consultas la carta,

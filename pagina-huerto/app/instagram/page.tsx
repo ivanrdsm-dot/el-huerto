@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default function InstagramPage() {
   return (
     <div className="pt-16 sm:pt-20">
-      <InstagramGallery />
+      <InstagramGallery completa />
     </div>
   );
 }

@@ -582,3 +582,27 @@ export function productosDestacados(): Producto[] {
 export function precioDesde(p: Producto): number {
   return Math.min(...p.precios.map((x) => x.valor));
 }
+
+export function productoPorSlug(
+  categoria: string,
+  slug: string
+): Producto | undefined {
+  return PRODUCTOS.find((p) => p.categoria === categoria && p.slug === slug);
+}
+
+/** Sugerencias para enlazado interno: misma categoría primero, luego destacados */
+export function productosRelacionados(p: Producto, limite = 3): Producto[] {
+  const mismos = PRODUCTOS.filter(
+    (x) => x.categoria === p.categoria && x.id !== p.id && x.disponible
+  );
+  if (mismos.length >= limite) return mismos.slice(0, limite);
+  const otros = PRODUCTOS.filter(
+    (x) => x.categoria !== p.categoria && x.destacado && x.disponible
+  );
+  return [...mismos, ...otros].slice(0, limite);
+}
+
+/** Todas las rutas producto para generateStaticParams y sitemap */
+export function rutasDeProductos(): { categoria: string; producto: string }[] {
+  return PRODUCTOS.map((p) => ({ categoria: p.categoria, producto: p.slug }));
+}

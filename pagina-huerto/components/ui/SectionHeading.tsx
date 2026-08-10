@@ -7,6 +7,7 @@ export function SectionHeading({
   subtitulo,
   tono = "oscuro",
   alinear = "centro",
+  como: Titulo = "h2",
 }: {
   kicker?: string;
   titulo: string;
@@ -14,6 +15,8 @@ export function SectionHeading({
   /** oscuro = texto verde sobre crema · claro = texto crema sobre verde */
   tono?: "oscuro" | "claro";
   alinear?: "centro" | "izquierda";
+  /** Cada página necesita exactamente un h1: úsalo en el encabezado principal */
+  como?: "h1" | "h2";
 }) {
   const colorTitulo = tono === "oscuro" ? "text-green-950" : "text-cream-100";
   const colorSub = tono === "oscuro" ? "text-muted" : "text-cream-100/80";
@@ -28,9 +31,9 @@ export function SectionHeading({
           {kicker}
         </p>
       ) : null}
-      <h2 className={`titulo-huerto text-3xl sm:text-4xl lg:text-5xl ${colorTitulo} text-balance`}>
+      <Titulo className={`titulo-huerto text-3xl sm:text-4xl lg:text-5xl ${colorTitulo} text-balance`}>
         {titulo}
-      </h2>
+      </Titulo>
       {subtitulo ? (
         <p className={`max-w-xl text-base sm:text-lg ${colorSub}`}>{subtitulo}</p>
       ) : null}

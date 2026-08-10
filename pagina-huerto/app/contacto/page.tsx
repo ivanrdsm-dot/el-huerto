@@ -17,6 +17,7 @@ export default function ContactoPage() {
       <div className="mx-auto grid max-w-6xl gap-12 px-6 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="flex flex-col gap-6">
           <SectionHeading
+          como="h1"
             kicker="Hablemos"
             titulo="Escríbenos."
             subtitulo="Información, alianzas, eventos o simplemente decirnos qué se te antoja: respondemos rápido por WhatsApp."

@@ -21,6 +21,7 @@ export default function NosotrosPage() {
         <div className="grid items-center gap-10 lg:grid-cols-[1.1fr_0.9fr]">
           <div className="flex flex-col gap-6">
             <SectionHeading
+          como="h1"
               kicker="Nuestra historia"
               titulo="Comer bien en la uni no debería ser un lujo."
               subtitulo="Con esa idea nació El Huerto: un kiosco dentro de Ciudad UP donde lo natural, lo fresco y lo saludable están al alcance de cualquier estudiante."

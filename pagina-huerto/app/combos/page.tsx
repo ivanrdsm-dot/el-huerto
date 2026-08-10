@@ -36,6 +36,7 @@ export default function CombosPage() {
         <div className="flex flex-col items-center gap-4 text-center">
           <Brote className="h-10 w-10 text-cream-100/70" />
           <SectionHeading
+          como="h1"
             kicker="Natural · Fresco · Saludable"
             titulo="Los combos de la casa."
             subtitulo="Como en los laterales del kiosco: dos favoritos, un precio. Del Mañanero al Fresa."

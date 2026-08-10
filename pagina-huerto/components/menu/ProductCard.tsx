@@ -1,4 +1,5 @@
 import Image from "next/image";
+import Link from "next/link";
 import type { Producto } from "@/types/menu";
 import { precioDesde } from "@/data/menu";
 import { PriceBadge } from "@/components/menu/PriceBadge";
@@ -42,7 +43,13 @@ export function ProductCard({ producto }: { producto: Producto }) {
       <div className="flex flex-1 flex-col gap-2 p-5">
         <div className="flex items-start justify-between gap-3">
           <h3 className="font-condensed text-2xl font-bold uppercase leading-none text-green-950">
-            {producto.nombre}
+            {/* El enlace cubre toda la tarjeta (ver ::after) para no anidar interactivos */}
+            <Link
+              href={`/carta/${producto.categoria}/${producto.slug}`}
+              className="transition-colors after:absolute after:inset-0 after:content-[''] group-hover:text-red-600"
+            >
+              {producto.nombre}
+            </Link>
           </h3>
           <PriceBadge valor={desde} prefijo={variosPrecios ? "desde" : undefined} talla="sm" />
         </div>
@@ -73,7 +80,8 @@ export function ProductCard({ producto }: { producto: Producto }) {
 
         {producto.notas ? <p className="text-xs text-moss-500">{producto.notas}</p> : null}
 
-        <div className="mt-auto pt-3">
+        {/* z-10 mantiene el WhatsApp por encima del enlace que cubre la tarjeta */}
+        <div className="relative z-10 mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-3">
           <a
             href={waLink(WA_MENSAJES.producto(producto.nombre), `producto-${producto.slug}`)}
             target="_blank"
@@ -82,6 +90,12 @@ export function ProductCard({ producto }: { producto: Producto }) {
           >
             Pedir por WhatsApp
           </a>
+          <Link
+            href={`/carta/${producto.categoria}/${producto.slug}`}
+            className="font-condensed text-sm font-bold uppercase tracking-[0.1em] text-muted transition-colors hover:text-green-900"
+          >
+            Ver detalle
+          </Link>
         </div>
       </div>
     </article>
