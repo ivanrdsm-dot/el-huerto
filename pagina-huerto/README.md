@@ -45,6 +45,7 @@ docs/           manuales y pendientes (¡léelos!)
 | Documento | Para qué |
 | --- | --- |
 | [docs/manual-actualizacion.md](docs/manual-actualizacion.md) | Cambiar precios, ocultar productos, horarios, avisos |
+| [docs/guia-seo.md](docs/guia-seo.md) | ★ Posicionamiento: qué ya está hecho y qué falta (Google Business Profile) |
 | [docs/pendientes.md](docs/pendientes.md) | Información pendiente de validar antes de producción |
 | [docs/guia-conectores.md](docs/guia-conectores.md) | Integraciones futuras: Instagram, GA4, Maps, CMS |
 | [docs/plan-higgsfield.md](docs/plan-higgsfield.md) | Storyboards de los 5 videos para Higgsfield |

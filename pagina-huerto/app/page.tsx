@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Image from "next/image";
 import { Hero } from "@/components/Hero";
 import { CategoryCarousel } from "@/components/menu/CategoryCarousel";
@@ -12,6 +13,10 @@ import { VideoLoop } from "@/components/motion/VideoLoop";
 import { HojaRama, Brote } from "@/components/brand/BotanicalPattern";
 import { PriceBadge } from "@/components/menu/PriceBadge";
 import { COMBOS, PRODUCTOS } from "@/data/menu";
+
+export const metadata: Metadata = {
+  alternates: { canonical: "/" },
+};
 
 const SMOOTHIES_HOME = PRODUCTOS.filter((p) => p.categoria === "smoothies").slice(0, 4);
 

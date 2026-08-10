@@ -9,7 +9,7 @@ nada de lo que aparece aquí.
 | Dato | Estado | Dónde se usa |
 | --- | --- | --- |
 | Número de WhatsApp `56 4666 5718` | ⚠️ A confirmar | `lib/site.ts` → todos los botones de WhatsApp |
-| Coordenadas exactas del kiosco en Ciudad UP | ❌ Faltan | `lib/site.ts` (hoy se abre una búsqueda genérica de Maps) |
+| Coordenadas exactas del kiosco en Ciudad UP | ❌ Faltan | `lib/site.ts`, schema `geo`, Google Business Profile — **es lo que más frena el SEO local** |
 | Referencia interna del campus ("junto a…") | ❌ Falta | `/ubicacion` |
 | Horario oficial de servicio | ❌ Falta | `/ubicacion`, schema `OpeningHoursSpecification` (no publicado aún) |
 | Estatus Kosher / No Kosher por producto | ❌ Falta | `data/menu.ts` (`kosherStatus` previsto, sin publicar) |
@@ -35,7 +35,7 @@ nada de lo que aparece aquí.
 - Google Analytics 4 + Search Console
 - Google Maps embebido con pin exacto
 - CMS headless (hoy: `data/menu.ts` editable)
-- Dominio definitivo en Vercel
+- ~~Dominio definitivo en Vercel~~ ✅ https://www.elhuertomx.com conectado (10-ago-2026)
 
 ## Analizado vs. no analizado
 
