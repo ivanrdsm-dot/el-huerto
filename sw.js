@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.47'; // Nav agrupado por categorías + hoja de compras imprimible
+const CACHE_NAME = 'el-huerto-v14.48'; // Comandera desde Mi Perfil: conexión de un solo toque
 const ASSETS = [
   '/',
   '/index.html',

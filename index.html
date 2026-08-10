@@ -1040,6 +1040,15 @@ nav{padding-top:env(safe-area-inset-top);}
   <!-- KPIs personales -->
   <div class="g4" style="margin-bottom:12px;" id="mp-kpis"></div>
 
+  <!-- Comandera Bluetooth: conectar desde el perfil con un solo toque -->
+  <div class="card" id="mp-impresora" style="margin-bottom:12px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+    <button class="btn bbl" id="mp-bt-btn" onclick="btChipTap()" style="font-size:15px;padding:12px 20px;">📡 Conectar comandera</button>
+    <div style="flex:1;min-width:200px;">
+      <div id="mp-bt-estado" style="font-weight:700;font-size:13px;color:var(--text3);">Sin conectar</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px;">Enciende la impresora, tenla cerca y toca el botón. Un solo toque.</div>
+    </div>
+  </div>
+
   <!-- Reloj y estado actual -->
   <div class="g2" style="gap:12px;margin-bottom:12px;">
     <div class="card" id="mp-reloj-card" style="text-align:center;"></div>
@@ -2145,7 +2154,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div style="background:var(--surface2);border:1px solid var(--border);border-radius:var(--rsm);padding:12px;margin:10px 0;">
       <div style="font-size:10px;text-transform:uppercase;letter-spacing:1.5px;color:var(--text3);font-weight:700;margin-bottom:8px;">👨‍🍳 Comandera de cocina (Bluetooth)</div>
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <button class="btn bbl bsm" onclick="conectarImpresoraBT()">📡 Conectar impresora</button>
+        <button class="btn bbl bsm" onclick="btConectarUnClic()">📡 Conectar impresora</button>
         <button class="btn bs bsm" onclick="testComanda()">🖨 Prueba</button>
         <button class="btn bor bsm" onclick="diagImpresion()">🩺 Diagnóstico</button>
         <span id="bt-estado" style="font-size:11.5px;color:var(--text3);">Sin conectar</span>
@@ -5567,12 +5576,50 @@ function btEstadoUI(){
       ?`🖨 Comandera conectada <span style="font-weight:400;color:var(--text3);">· ${btComandera.device?.name||''} · toca para probar</span>`
       :`🖨 Comandera SIN CONECTAR — toca aquí para vincularla (enciéndela y tenla cerca)`;
   }
+  // Tarjeta en Mi Perfil
+  const mpEst=$('mp-bt-estado'), mpBtn=$('mp-bt-btn');
+  if(mpEst){
+    mpEst.textContent=btComandera.ch?`✓ Conectada: ${btComandera.device?.name||'impresora'}`:'Sin conectar';
+    mpEst.style.color=btComandera.ch?'var(--accent)':'var(--red)';
+  }
+  if(mpBtn) mpBtn.textContent=btComandera.ch?'🖨 Imprimir prueba':'📡 Conectar comandera';
 }
-// Toque en el chip: conecta si falta, imprime prueba si ya está
+function btEstadoTexto(t){
+  ['bt-estado','mp-bt-estado'].forEach(id=>{const e=$(id);if(e){e.textContent=t;e.style.color='var(--text2)';}});
+}
+// UN SOLO CLIC: si Chrome ya recuerda la impresora, reconexión silenciosa;
+// si no, selector del navegador con el MISMO clic. El gesto del clic
+// caduca en ~5 s, por eso el reintento silencioso tiene tope de 4 s: si
+// no la encuentra, avisa y el siguiente toque abre el selector directo.
+let btFalloPrevio=false;
+window.btConectarUnClic=async()=>{
+  if(btComandera.ch){btEstadoUI();toast('✓ La comandera ya está conectada',2000);return;}
+  if(!navigator.bluetooth){toast('⚠ Este navegador no tiene Bluetooth web — usa Chrome',4000,'warn');return;}
+  // Localizar la impresora recordada (rápido, no gasta el gesto del clic)
+  try{
+    if(!btComandera.device&&navigator.bluetooth.getDevices){
+      const id=localStorage.getItem('h5btid');
+      if(id){
+        const d=(await navigator.bluetooth.getDevices()).find(x=>x.id===id);
+        if(d){btComandera.device=d;d.addEventListener('gattserverdisconnected',()=>{btComandera.ch=null;btEstadoUI();});}
+      }
+    }
+  }catch(e){}
+  if(btComandera.device&&!btFalloPrevio){
+    btEstadoTexto('Conectando…');
+    const ok=await Promise.race([btReconectar(),new Promise(r=>setTimeout(()=>r(false),4000))]);
+    if(ok){btFalloPrevio=false;btEstadoUI();toast('✓ Comandera conectada: '+(btComandera.device?.name||'impresora'),2500);return;}
+    btFalloPrevio=true;btEstadoUI();
+    toast('No encuentro la impresora. Revisa que esté ENCENDIDA y toca de nuevo para elegirla de la lista.',4500,'warn');
+    return;
+  }
+  btFalloPrevio=false;
+  conectarImpresoraBT();
+};
+// Toque en el chip/botón: conecta si falta, imprime prueba si ya está
 window.btChipTap=async()=>{
   if(btComandera.ch){testComanda();return;}
-  if(await btReconectar()){toast('✓ Comandera reconectada',2200);return;}
-  conectarImpresoraBT();
+  btConectarUnClic();
 };
 window.conectarImpresoraBT=async()=>{
   if(!navigator.bluetooth){toast('⚠ Este navegador no tiene Bluetooth web — usa Chrome',4000,'warn');return;}
@@ -5593,7 +5640,10 @@ window.conectarImpresoraBT=async()=>{
     btEstadoUI();
     toast('✓ Comandera conectada: '+(device.name||'impresora'),3000);
     logAudit('comandera_conectada',{nombre:device.name||'—'});
-  }catch(e){if(e.name!=='NotFoundError')toast('❌ '+e.message,3500,'error');}
+  }catch(e){
+    if(e.name==='SecurityError')toast('Chrome pide un toque directo: toca el botón una vez más para abrir la lista',4000,'warn');
+    else if(e.name!=='NotFoundError')toast('❌ '+e.message,3500,'error');
+  }
 };
 async function btReconectar(){
   // Reintento silencioso si el dispositivo sigue emparejado
@@ -9880,6 +9930,7 @@ window.kpiGuardarTargets=async()=>{
 
 // ─── MI PERFIL (empleadas) ───
 function renderMiPerfil(){
+  btEstadoUI(); // tarjeta de comandera del perfil siempre al día
   // Para admin: selector de empleada. Para empleadas: solo su perfil.
   const sel=$('mp-selector');
   let empId;
