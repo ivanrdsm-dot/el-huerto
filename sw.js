@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.49'; // Compras 30-jul a 10-ago: pan, Costco y fruta costeados
+const CACHE_NAME = 'el-huerto-v14.50'; // Arregla 10 insumos que no descontaban ni costeaban por unidad
 const ASSETS = [
   '/',
   '/index.html',

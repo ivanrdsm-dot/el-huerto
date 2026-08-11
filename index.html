@@ -2534,6 +2534,7 @@ async function completeInit(){
   await migRecetasExtrasAgo2026();
   await migRecategorizaInvAgo2026();
   await migComprasAgo2026_v2();
+  await migArreglaUnidadesRecetas();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3439,6 +3440,76 @@ async function migComprasAgo2026_v2(){
   await markMig(migKey);
   logAudit('compras_registradas',{lote:'30jul-10ago 2026',gastos:nuevos,sinCostear:omitidos});
   toast(`✓ ${nuevos.length} compras cargadas (\$7,657.05)${omitidos.length?` · ${omitidos.length} sin costear por unidad`:''}`,5000);
+}
+
+// ══ ARREGLO: 10 insumos no descontaban ni costeaban por unidad ══
+// La receta pedía una unidad y el inventario guardaba otra (ej. "1 pz de
+// plátano" contra un inventario en kg). qtyToInvUnit devuelve null en esos
+// casos, así que esos insumos NO se descontaban NI entraban al food cost.
+// Arreglo: reexpresar la receta en la unidad del inventario, para no
+// cambiar cómo compra Iván. Pesos confirmados por él: domo de fresa 500 g,
+// sandía por kilo, piña por pieza. Los demás son pesos estándar de mercado.
+// Solo se convierte lo que HOY está roto (qtyToInvUnit === null), así que
+// si un dato ya estaba bien no se toca.
+const CONV_RECETA={
+  // nombre normalizado del inventario: [unidad receta, unidad inventario, factor, nota]
+  'platano':      ['pz','kg',0.12, 'plátano tabasco ≈ 120 g'],
+  'pepino':       ['pz','kg',0.20, 'pepino ≈ 200 g'],
+  'zanahoria':    ['pz','kg',0.08, 'zanahoria ≈ 80 g'],
+  'manzana':      ['pz','kg',0.18, 'manzana ≈ 180 g'],
+  'jitomate':     ['pz','kg',0.12, 'jitomate ≈ 120 g'],
+  'jicama':       ['pz','kg',0.30, 'jícama ≈ 300 g'],
+  'fresa':        ['g','domo',0.002, 'domo = 500 g (dato de Iván)'],
+  'jamonserrano': ['g','paq',0.001, 'paquete Costco = 10×100 g'],
+  'pina':         ['g','pz',0.001, '1 piña ≈ 1000 g de pulpa aprovechable'],
+};
+async function migArreglaUnidadesRecetas(){
+  const migKey='h5unidades_ago26';
+  if(await migDone(migKey)) return;
+
+  // 1. Sandía: Iván la compra por KILO, el inventario la tenía en piezas.
+  //    Con el inventario en kg la receta (en gramos) ya convierte sola.
+  const san=D.inventario.find(i=>normInvNombre(i.nombre)==='sandia');
+  if(san&&san.unit!=='kg'){
+    const antes=`${san.qty} ${san.unit}`;
+    if(san.unit==='pz') san.qty=Math.round((san.qty||0)*5*1000)/1000; // sandía ≈ 5 kg
+    san.unit='kg'; san.unidadOf='kilos';
+    san.qty=Math.round(((san.qty||0)+11.5)*1000)/1000;                // compra de la lista
+    san.precio=15.00;
+    await fsSet('inventario',san);
+    logAudit('inventario_correccion',{articulo:'Sandía',de:antes,a:`${san.qty} kg a \$15/kg`});
+  }
+
+  // 2. Fresas de Costco que quedaron sin capturar: 2.72 kg = 5.44 domos.
+  //    No se toca el precio: \$100/domo es el del proveedor habitual.
+  const fre=D.inventario.find(i=>normInvNombre(i.nombre)==='fresa');
+  if(fre&&fre.unit==='domo'){
+    fre.qty=Math.round(((fre.qty||0)+5.44)*1000)/1000;
+    await fsSet('inventario',fre);
+  }
+
+  // 3. Reexpresar las recetas rotas en la unidad del inventario
+  let cambios=0; const detalle=[];
+  for(const rec of D.recetas){
+    if(!Array.isArray(rec.ings)) continue;
+    let dirty=false;
+    for(const ing of rec.ings){
+      const inv=D.inventario.find(i=>i.id===ing.invId)
+             ||D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre||''));
+      if(!inv) continue;
+      const qty=parseFloat(ing.qty); if(!(qty>0)) continue;
+      if(qtyToInvUnit(qty,ing.unit,inv.unit)!=null) continue;   // ya funciona: no tocar
+      const r=CONV_RECETA[normInvNombre(inv.nombre)];
+      if(!r||normUnit(ing.unit)!==normUnit(r[0])||normUnit(inv.unit)!==normUnit(r[1])) continue;
+      const nq=Math.round(qty*r[2]*100000)/100000;
+      detalle.push(`${inv.nombre}: ${qty}${r[0]} → ${nq}${r[1]}`);
+      ing.qty=String(nq); ing.unit=r[1]; dirty=true; cambios++;
+    }
+    if(dirty) await fsSet('recetas',rec);
+  }
+  await markMig(migKey);
+  logAudit('unidades_recetas_corregidas',{lineas:cambios,detalle:detalle.slice(0,40)});
+  toast(`✓ ${cambios} línea(s) de receta corregidas: ahora sí descuentan y cuestan`,5000);
 }
 
 // ══ COSTO PHILADELPHIA — barra de 190 g a \$50 (dato de Iván) ══
