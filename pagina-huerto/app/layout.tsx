@@ -3,6 +3,8 @@ import { Archivo_Black, Barlow_Condensed, Manrope } from "next/font/google";
 import "./globals.css";
 import { Header } from "@/components/navigation/Header";
 import { Footer } from "@/components/navigation/Footer";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 import { WhatsAppFab } from "@/components/ui/WhatsAppFab";
 import { negocioJsonLd, sitioJsonLd } from "@/lib/schema";
 import { SITE } from "@/lib/site";
@@ -82,6 +84,9 @@ export default function RootLayout({
         </main>
         <Footer />
         <WhatsAppFab />
+        {/* Visitas y Core Web Vitals reales. Actívalos en Vercel → proyecto → Analytics */}
+        <Analytics />
+        <SpeedInsights />
         {jsonLdGlobal.map((bloque, i) => (
           <script
             key={i}

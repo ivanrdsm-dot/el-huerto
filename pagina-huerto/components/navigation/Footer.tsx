@@ -101,7 +101,8 @@ export function Footer() {
           ))}
         </div>
 
-        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-cream-100/15 pt-6 text-xs text-cream-100/50 sm:flex-row">
+        {/* /70 mantiene el contraste sobre verde en 5.8:1 (WCAG AA pide 4.5) */}
+        <div className="mt-12 flex flex-col items-start justify-between gap-3 border-t border-cream-100/15 pt-6 text-xs text-cream-100/70 sm:flex-row">
           <p>
             © {new Date().getFullYear()} El Huerto. Todos los derechos reservados.
           </p>

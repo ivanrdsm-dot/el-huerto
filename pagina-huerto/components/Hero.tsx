@@ -78,12 +78,16 @@ export function Hero() {
         {/* Producto protagonista: recortes oficiales flotando */}
         <div className="relative mx-auto h-[380px] w-full max-w-[420px] sm:h-[460px]" aria-hidden="true">
           <div className="absolute left-1/2 top-1/2 h-72 w-72 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cream-100/10 sm:h-80 sm:w-80" />
+          {/* sizes evita que el navegador descargue una versión mucho mayor
+              de la que se muestra: es el elemento LCP de la página. */}
           <Image
             src="/products/smoothie-fresa.png"
             alt=""
             width={413}
             height={830}
+            sizes="(max-width: 640px) 144px, 176px"
             priority
+            fetchPriority="high"
             className="anim-flotar absolute left-[8%] top-1/2 w-36 -translate-y-1/2 rotate-[-6deg] drop-shadow-[0_24px_32px_rgba(0,0,0,0.35)] sm:w-44"
           />
           <Image
@@ -91,7 +95,7 @@ export function Hero() {
             alt=""
             width={714}
             height={1404}
-            priority
+            sizes="(max-width: 640px) 128px, 160px"
             className="anim-flotar absolute right-[10%] top-[46%] w-32 -translate-y-1/2 rotate-[7deg] drop-shadow-[0_24px_32px_rgba(0,0,0,0.35)] sm:w-40"
             style={{ animationDelay: "1.2s" }}
           />
@@ -100,6 +104,7 @@ export function Hero() {
             alt=""
             width={1392}
             height={693}
+            sizes="(max-width: 640px) 208px, 256px"
             className="anim-flotar absolute bottom-[4%] left-1/2 w-52 -translate-x-1/2 rotate-[-3deg] drop-shadow-[0_20px_28px_rgba(0,0,0,0.4)] sm:w-64"
             style={{ animationDelay: "0.6s" }}
           />
