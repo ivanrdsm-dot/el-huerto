@@ -2533,6 +2533,7 @@ async function completeInit(){
   await migCostoPhillyAgo2026();
   await migRecetasExtrasAgo2026();
   await migRecategorizaInvAgo2026();
+  await migComprasAgo2026_v2();
   await loadInventarioAbril2026();
   await loadInventarioCostcoRenee();
   await loadInventario15Abr();
@@ -3341,6 +3342,103 @@ async function migCostoAcaiAgo2026(){
   }
   await markMig(migKey);
   toast('✓ Açaí costeado: \$215/L (\$32.25 por bowl) — Vega Life dado de alta',4500);
+}
+
+// ══ COMPRAS 30-jul a 10-ago 2026 — pan, Costco y fruta ══
+// Evidencia: tickets 18934/18936 (Panes de la Tía Reneé), CFDI ARG-5835877
+// y ARG-5838958 (Costco) y la lista de fruta de Iván.
+// Los precios se toman de la BASE del CFDI (ya con descuento aplicado),
+// no del valor unitario de lista, para que el food cost sea el real pagado.
+async function migComprasAgo2026_v2(){
+  const migKey='h5compras2_ago26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const hit=D.inventario.find(i=>normInvNombre(i.nombre)===nn||normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(hit) return hit;
+    }
+    return null;
+  };
+  const omitidos=[];
+  const addC=async(cands,qty,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qty,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;inv.precio=Math.round(precioUnit*(qty/q)*10000)/10000;}
+      else{omitidos.push(`${inv.nombre} (comprado en ${unit}, inventario en ${inv.unit})`);return;}
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+
+  // ── Panes de la Tía Reneé, 30-jul (25 panes a \$46.75 c/u ya con 15% dto) ──
+  await addC(['Pan Tía Renee — Queso','Pan tía Renee - Queso'],10,'pz',46.75,'interna_ivan');
+  await addC(['Pan Tía Renee — Chilaquiles'],10,'pz',46.75,'interna_ivan');   // 5 verdes + 5 rojos
+  await addC(['Pan Tía Renee — Pizza'],5,'pz',46.75,'interna_ivan');
+
+  // ── Costco 07-ago (CFDI ARG-5835877, \$4,040.20) ──
+  await addC(['Leche de almendra','Leche de almendras'],11.352,'L',26.2508,'interna_ivan'); // 2×6×946ml \$298
+  await addC(['Queso mozzarella','Mozzarella','Mezcla 4 quesos'],2.26,'kg',141.1504,'lacteos_proteinas'); // 2×1.13kg \$319
+  await addC(['Salami Genoa','Genoa'],6,'pz',33.1667,'lacteos_proteinas');    // 6×85g \$199
+  await addC(['Tiras de pollo','Pollo'],1812,'g',0.2417,'lacteos_proteinas'); // 2×2×453g \$438
+  await addC(['Leche deslactosada'],24,'L',22.3333,'interna_ivan');           // 2×12L \$536
+  await addC(['Susalias','Susalias horneadas'],40,'pz',14.95,'abarrotes');    // 2×20×50g \$598
+  await addC(['Jamón serrano'],1,'paq',649.00,'lacteos_proteinas');           // 10×100g \$649
+  await addC(['Chai'],700,'g',0.3646,'abarrotes');                           // 700g \$255.20
+  await addC(['Blueberry','Moras azules'],1360,'g',0.1316,'frutas_verduras'); // 1.36kg \$179
+  await addC(['Crema de almendras'],2,'pz',175.00,'lacteos_proteinas');       // 2×765g \$350
+  // Fresas 2.72 kg: el inventario mide Fresa en 'domo' — sin gramos por domo
+  // no hay equivalencia, así que solo entra al gasto (pendiente de Iván).
+
+  // ── Costco 10-ago (CFDI ARG-5838958, \$915.60) ──
+  await addC(['Lechuga','Ensalada italiana'],1816,'g',0.0539,'frutas_verduras'); // 2×908g \$97.90
+  await addC(['Espinaca'],454,'g',0.1958,'frutas_verduras');                     // 454g \$88.90
+  await addC(['Jamón serrano'],1,'paq',649.00,'lacteos_proteinas');              // 10×100g \$649
+  await addC(['Jitomate uva'],907,'g',0.0881,'frutas_verduras');                 // 907g \$79.90
+
+  // ── Lista de fruta de Iván (costo por kilo capturado a mano) ──
+  await addC(['Pepino'],12,'kg',23.00,'frutas_verduras');
+  await addC(['Jícama'],12,'kg',18.00,'frutas_verduras');
+  await addC(['Zanahoria'],6,'kg',18.00,'frutas_verduras');
+  await addC(['Limón agrio','Limón'],6,'kg',15.00,'frutas_verduras');
+  await addC(['Plátano'],15,'kg',18.00,'frutas_verduras');
+  await addC(['Manzana'],2,'kg',50.00,'frutas_verduras');
+  await addC(['Piña'],4,'pz',25.00,'frutas_verduras');
+  await addC(['Sandía'],11.5,'kg',15.00,'frutas_verduras');   // inventario en pz → queda omitida
+  await addC(['Jitomate'],4,'kg',12.50,'frutas_verduras');
+  await addC(['Aguacate'],1,'kg',50.00,'frutas_verduras');
+  await addC(['Fresa'],1,'domo',100.00,'frutas_verduras');
+  // Mango: venía sin cantidad ni precio en la lista — no se captura.
+
+  // ── Gastos (idempotentes por ticket) ──
+  const gastos=[
+    {fecha:'2026-07-30',cat:'proveedor',prov:'Panes de la Tía Reneé',monto:467.50,ticket:'RENEE-18934',metodo:'efectivo',
+     notas:'10 panes con queso a \$55 menos 15% dto = \$46.75 c/u'},
+    {fecha:'2026-07-30',cat:'proveedor',prov:'Panes de la Tía Reneé',monto:701.25,ticket:'RENEE-18936',metodo:'efectivo',
+     notas:'15 panes: 5 chilaquiles verdes, 5 chilaquiles rojos, 5 pizza — \$46.75 c/u'},
+    {fecha:'2026-08-07',cat:'costco',prov:'Costco',monto:4040.20,ticket:'ARG-5835877',metodo:'tarjeta',
+     notas:'Leche almendra 11.35L, mezcla 4 quesos 2.26kg, salami Genoa 510g, tiras de pollo 1.81kg, fresas 2.72kg, leche deslactosada 24L, totopos 40pz, jamón serrano 1kg, chai 700g, moras azules 1.36kg, crema de almendras 2pz'},
+    {fecha:'2026-08-10',cat:'costco',prov:'Costco',monto:915.60,ticket:'ARG-5838958',metodo:'tarjeta',
+     notas:'Ensalada italiana 2×908g, espinaca 454g, jamón serrano 1kg, jitomate uva 907g'},
+    {fecha:'2026-08-10',cat:'proveedor',prov:'Mercado — fruta y verdura',monto:1532.50,ticket:'FRUTA-AGO26-L1',metodo:'efectivo',
+     notas:'FECHA Y PROVEEDOR POR CONFIRMAR. Pepino 12kg, jícama 12kg, zanahoria 6kg, limón 6kg, plátano 15kg, manzana 2kg, piña 4pz, sandía 11.5kg, jitomate 4kg, aguacate 1kg, fresa 1 domo'},
+  ];
+  const nuevos=[];
+  for(const g of gastos){
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      await fsSet('gastos',{id:++nid,tipoEstrategico:'general',...g});
+      nuevos.push(`${g.prov} ${fmt(g.monto)}`);
+    }
+  }
+  for(const nombre of ['Panes de la Tía Reneé','Mercado — fruta y verdura']){
+    if(!D.provDir.find(p=>normInvNombre(p.nombre)===normInvNombre(nombre))){
+      await fsSet('provDir',{id:++nid,nombre,contacto:'',tel:'',entrega:'',notas:'Alta automática desde compras registradas'});
+    }
+  }
+  await markMig(migKey);
+  logAudit('compras_registradas',{lote:'30jul-10ago 2026',gastos:nuevos,sinCostear:omitidos});
+  toast(`✓ ${nuevos.length} compras cargadas (\$7,657.05)${omitidos.length?` · ${omitidos.length} sin costear por unidad`:''}`,5000);
 }
 
 // ══ COSTO PHILADELPHIA — barra de 190 g a \$50 (dato de Iván) ══

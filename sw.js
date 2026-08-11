@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.48'; // Comandera desde Mi Perfil: conexión de un solo toque
+const CACHE_NAME = 'el-huerto-v14.49'; // Compras 30-jul a 10-ago: pan, Costco y fruta costeados
 const ASSETS = [
   '/',
   '/index.html',
