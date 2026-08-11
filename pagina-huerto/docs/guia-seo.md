@@ -21,6 +21,29 @@ Dominio en producción: **https://www.elhuertomx.com**
 | Logo de El Huerto sobre las imágenes de producto | ✅ |
 | Open Graph e imagen para compartir en WhatsApp | ✅ |
 | Imágenes en AVIF/WebP automáticas y caché de un año | ✅ |
+| Vercel Analytics y Speed Insights instalados | ✅ (activar en el dashboard) |
+
+### Resultados de Lighthouse (móvil, agosto 2026)
+
+| Categoría | Puntuación |
+| --- | --- |
+| SEO | **100** |
+| Accesibilidad | **100** |
+| Buenas prácticas | **100** |
+| Rendimiento | **84–96** (varía por latencia de la medición) |
+
+Métricas: CLS 0 · TBT 0–10 ms · LCP 2.7–4.1 s.
+
+El LCP oscila entre mediciones aunque la imagen del hero pesa solo 21 KB en
+AVIF: la diferencia es latencia de red del laboratorio, no del sitio. **Lo
+que Google usa para posicionar son los datos de usuarios reales (CrUX)**, no
+Lighthouse de laboratorio — y eso ya lo está midiendo Speed Insights.
+Revísalo en Vercel → proyecto `pagina-huerto` → Speed Insights en 2–3 semanas.
+
+Correcciones aplicadas que subieron la nota: `sizes` en las imágenes del hero
+(servían una versión mucho mayor de la mostrada), `fetchPriority` alto solo en
+la imagen LCP, contraste del pie de página a 5.8:1, y optimización de los PNG
+de producto (29.6 MB → 25.2 MB conservando transparencia y calidad).
 
 ---
 
@@ -45,6 +68,12 @@ mí", "café Universidad Panamericana").
 
 Cuando tengas las coordenadas exactas, dímelas y las agrego al sitio
 (schema `geo` + mapa embebido), que es el complemento de este paso.
+
+**Mientras esperas la verificación:** la postal tarda ~5–14 días; la
+verificación por video suele resolverse en 24–72 h. No hace falta hacer nada
+más en el sitio — en cuanto Google confirme, entra al perfil, completa fotos y
+horario, y pídeme que agregue las coordenadas al sitio (schema `geo` + mapa
+embebido). Ese es el complemento que cierra el círculo.
 
 ### 2. Google Search Console
 
