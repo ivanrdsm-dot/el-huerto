@@ -5710,7 +5710,18 @@ const PREP_LISTAS={
   panes:['Queso','Chilaquiles','Pizza','Rajas poblanas'],
   panini_verduras:['Jitomate','Pepino','Aceitunas'],
   panini_aderezo:['Chipotle','Guacamole','Chipotle y guacamole','Sin aderezo'],
+  smoothie_leche:['Deslactosada','Light'],
 };
+// Smoothies que NO llevan leche según su receta: no se les pregunta el tipo
+// (ni sueltos ni dentro de un combo). Si cambia una receta, actualiza esta lista.
+const SMOOTHIES_SIN_LECHE=new Set(["Pal'Sediento","Pal'Crudo"]);
+// Paso reutilizable: todos los smoothies con leche preguntan cuál
+const PASO_LECHE={t:'¿Con qué leche?',de:'smoothie_leche',n:1,pre:'Leche'};
+// En combos el paso solo aplica si el smoothie elegido lleva leche
+const PASO_LECHE_COMBO={...PASO_LECHE,si:r=>{
+  const l=r.find(x=>/^smoothie:/i.test(x));
+  return l?!SMOOTHIES_SIN_LECHE.has(l.split(':').slice(1).join(':').trim()):true;
+}};
 const PROD_PREP={
   1001:{elige:1,de:'bowl',base:'Açaí + granola'},
   1002:{elige:2,de:'bowl',base:'Açaí + granola'},
@@ -5727,14 +5738,19 @@ const PROD_PREP={
   1058:{fijo:'Piña con chile y limón'},
   1059:{fijo:'Sandía con chile y limón'},
   1060:{fijo:'Pepino con chile y limón'},
-  1008:{fijo:'Fresa, plátano y leche'},
+  // Smoothies: los que llevan leche preguntan si va deslactosada o light.
+  // Quiénes llevan leche se tomó de la receta de inventario (setRec), que es
+  // lo que de verdad se descuenta. El Crudo y el Sediento no llevan, así que
+  // se quedan fijos y no preguntan.
+  1007:{base:'Piña, mango y leche',pasos:[PASO_LECHE]},   // dado de baja; queda listo por si vuelve
+  1008:{base:'Fresa, plátano y leche',pasos:[PASO_LECHE]},
   1009:{fijo:'Manzana, leche y zanahoria'},
   1010:{fijo:'Sandía y limón'},
-  1011:{fijo:'Plátano, mango y leche'},
-  1012:{fijo:'Plátano, crema de almendra, avena y leche'},
-  1063:{fijo:'Matcha, plátano, avena, crema de almendra, miel y leche'},
-  1064:{fijo:'Chai, plátano, avena, crema de almendra, miel y leche'},
-  1065:{fijo:'Fresa, blueberry, plátano, avena y leche'},
+  1011:{base:'Plátano, mango y leche',pasos:[PASO_LECHE]},
+  1012:{base:'Plátano, crema de almendra, avena y leche',pasos:[PASO_LECHE]},
+  1063:{base:'Matcha, plátano, avena, crema de almendra, miel y leche',pasos:[PASO_LECHE]},
+  1064:{base:'Chai, plátano, avena, crema de almendra, miel y leche',pasos:[PASO_LECHE]},
+  1065:{base:'Fresa, blueberry, plátano, avena y leche',pasos:[PASO_LECHE]},
   // Paninis: verduras preseleccionadas (la cajera QUITA lo que no lleve) +
   // aderezo obligatorio. base = lo fijo del panini (queso/proteína).
   1019:{base:'Queso mozzarella',pasos:[
@@ -5756,14 +5772,14 @@ const PROD_PREP={
   1071:{fijo:'Lata de té + 30 g perlas explosivas'},
   1015:{fijo:'Susalias + pepino, jícama, zanahoria + chile y limón'},
   // Combos: variantes por pasos — la cajera elige cada componente
-  1016:{pasos:[{t:'Toppings del Oats (elige 2)',de:'bowl',n:2,pre:'Oats'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},              // Home Run
-  1017:{pasos:[{t:'Frutas del cóctel (elige 2)',de:'coctel',n:2,pre:'Cóctel'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},          // Gym Rat
-  1018:{pasos:[{t:'Toppings del Açaí (elige 2)',de:'bowl',n:2,pre:'Açaí'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},              // El Fresa
+  1016:{pasos:[{t:'Toppings del Oats (elige 2)',de:'bowl',n:2,pre:'Oats'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},PASO_LECHE_COMBO]},  // Home Run
+  1017:{pasos:[{t:'Frutas del cóctel (elige 2)',de:'coctel',n:2,pre:'Cóctel'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},PASO_LECHE_COMBO]},// Gym Rat
+  1018:{pasos:[{t:'Toppings del Açaí (elige 2)',de:'bowl',n:2,pre:'Açaí'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},PASO_LECHE_COMBO]},    // El Fresa
   // El OG y El Mañanero: el panini del combo también pregunta verduras y
   // aderezo (mismos pasos que el panini suelto). Las líneas 'Con:'/'SIN'/
   // 'Aderezo:' no tienen prefijo de componente, así que comboProductoDeEtiqueta
   // las ignora y el descuento de inventario sigue igual.
-  1048:{pasos:[{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'},
+  1048:{pasos:[{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},PASO_LECHE_COMBO,{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'},
     {t:'Verduras del panini — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
     {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},                                                                                   // El OG
   1049:{base:'+ Capuchino chico',pasos:[{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'},
@@ -5811,6 +5827,7 @@ function pintarPasoPrep(){
     PREP_LISTAS[paso.de].forEach(t=>sel.add(t));
     (prepPendiente._preselHecho??={})[idx]=true;
   }
+  (prepPendiente.vistos??=new Set()).add(idx); // para numerar sin contar los saltados
   $('prep-title').textContent=`🧩 ${p?.nombre||''}`;
   $('prep-chips').innerHTML=PREP_LISTAS[paso.de].map(t=>`<button class="prep-chip ${sel.has(t)?'on':''}" data-t="${t}" onclick="togglePrepChip(this)">${t}</button>`).join('');
   actualizarPrepUI();
@@ -5830,10 +5847,15 @@ window.togglePrepChip=btn=>{
   actualizarPrepUI();
 };
 function actualizarPrepUI(){
-  const{pasos,idx,sel}=prepPendiente; const paso=pasos[idx];
+  const{pasos,idx,sel,resultado,vistos}=prepPendiente; const paso=pasos[idx];
+  // Numera solo los pasos que se muestran: los ya vistos más los que
+  // todavía aplican (ver el salto condicional en confirmarPrep).
+  const nActual=vistos?.size||idx+1;
+  const faltan=pasos.filter((p,i)=>i>idx&&(!p.si||p.si(resultado))).length;
+  const total=nActual+faltan;
   $('prep-contador').textContent=paso.libre
-    ?`${pasos.length>1?`Paso ${idx+1} de ${pasos.length} · `:''}${paso.t}`
-    :`${pasos.length>1?`Paso ${idx+1} de ${pasos.length} · `:''}${paso.t} — llevas ${sel.size}/${paso.n}`;
+    ?`${total>1?`Paso ${nActual} de ${total} · `:''}${paso.t}`
+    :`${total>1?`Paso ${nActual} de ${total} · `:''}${paso.t} — llevas ${sel.size}/${paso.n}`;
   const ok=$('prep-ok');
   ok.textContent=idx<pasos.length-1?'Siguiente ▸':'Agregar';
   const listo=paso.libre||sel.size===paso.n;
@@ -5854,7 +5876,11 @@ window.confirmarPrep=()=>{
   else if(vals.length===1&&/^sin /i.test(vals[0])) pp.resultado.push(vals[0]); // "Sin aderezo" sin prefijo
   else pp.resultado.push(paso.pre?`${paso.pre}: ${vals.join(', ')}`:vals.join(', '));
   pp.sel=new Set();
-  if(pp.idx<pp.pasos.length-1){pp.idx++;pintarPasoPrep();return;}
+  // Salta los pasos que no aplican a lo ya elegido (p. ej. la leche cuando
+  // el smoothie del combo es el Sediento, que no lleva).
+  let sig=pp.idx+1;
+  while(sig<pp.pasos.length&&pp.pasos[sig].si&&!pp.pasos[sig].si(pp.resultado)) sig++;
+  if(sig<pp.pasos.length){pp.idx=sig;pintarPasoPrep();return;}
   pushItemOrden(pp.pid,pp.resultado);
   cancelarPrep();
 };
