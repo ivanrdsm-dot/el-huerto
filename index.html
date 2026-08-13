@@ -2540,6 +2540,7 @@ async function completeInit(){
   await fixEmpleadosTipo();
   await migEmpleadosJul2026();
   await migEmpleadosAgo2026();
+  await migQuitaLuisDuplicado();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -2745,6 +2746,31 @@ async function migEmpleadosAgo2026(){
   await markMig(migKey);
   logAudit('equipo_actualizado',{baja:'Juan Pablo (historial conservado)',alta:'Luis — \$2,400/sem',contrasenas:'Claudia y Luis actualizadas'});
   toast('✓ Equipo actualizado: baja Juan Pablo, alta Luis',4500);
+}
+// Ago-2026: había DOS Luis — el 2004 (contraseña arturo13) y un duplicado
+// creado a mano (id de timestamp) sin hash en EMP_PASS_HASH, por eso su
+// contraseña "no funcionaba". Se elimina el duplicado traspasando su
+// historial (checadas/ventas/extras) al Luis real: es la misma persona.
+// Red de seguridad: solo Claudia (2002) y Luis (2004) quedan activos.
+async function migQuitaLuisDuplicado(){
+  const migKey='h5luisdup_ago26';
+  if(await migDone(migKey)) return;
+  const dups=D.empleados.filter(e=>normInvNombre(e.nombre)==='luis'&&e.id!==2004);
+  let ck=0,vt=0,ex=0;
+  for(const dup of dups){
+    for(const c of D.checkins.filter(c=>c.empId===dup.id)){await fsSet('checkins',{...c,empId:2004,empNombre:'Luis'});ck++;}
+    for(const v of D.ventas.filter(v=>v.vendedorId===dup.id)){await fsSet('ventas',{...v,vendedorId:2004});vt++;}
+    for(const x of (D.extras||[]).filter(x=>x.empId===dup.id)){await fsSet('extras',{...x,empId:2004});ex++;}
+    await fsDel('empleados',dup.id);
+    const i=D.empleados.findIndex(e=>e.id===dup.id); if(i>=0)D.empleados.splice(i,1);
+  }
+  for(const e of D.empleados){
+    if(e.activo!==false&&![2002,2004].includes(e.id)) await fsSet('empleados',{...e,activo:false,baja:today()});
+  }
+  await markMig(migKey);
+  logAudit('equipo_actualizado',{accion:'Luis duplicado eliminado',ids:dups.map(d=>d.id),traspaso:{checadas:ck,ventas:vt,extras:ex}});
+  if(dups.length) toast(`✓ Luis duplicado eliminado (${ck} checada(s) y ${vt} venta(s) traspasadas al Luis real)`,5000);
+  try{renderLock();}catch(e){}
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
