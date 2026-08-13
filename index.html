@@ -2517,6 +2517,7 @@ async function completeInit(){
   await fixUTCDates();
   await fixEmpleadosTipo();
   await migEmpleadosJul2026();
+  await migEmpleadosAgo2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -2680,7 +2681,7 @@ async function seedMenu(){
 async function seedEmps(){
   const E=[
     {id:2002,nombre:'Claudia',rol:'Empleada',base:12400,bonoCierre:700,cierresFijos:0,tipo:'variable',color:'#5ab4e8',activo:true},
-    {id:2003,nombre:'Juan Pablo',rol:'Empleado',base:9600,bonoCierre:0,cierresFijos:0,tipo:'variable',color:'#e8944a',activo:true},
+    {id:2004,nombre:'Luis',rol:'Empleado',base:9600,bonoCierre:0,cierresFijos:0,tipo:'variable',color:'#9b6be8',activo:true},
   ];
   for(const e of E) await fsSet('empleados',e);
 }
@@ -2699,6 +2700,29 @@ async function migEmpleadosJul2026(){
   }
   await markMig(migKey);
   logAudit('equipo_actualizado',{baja:'Adilene (historial conservado)',alta:'Juan Pablo — $2,400/sem',claudia:'$3,100/sem'});
+}
+// Agosto 2026: sale Juan Pablo (2003), entra Luis (2004).
+// NO se renombra el perfil de Juan Pablo: sus ventas, asistencias y nómina
+// están amarradas a su id, y renombrarlo pasaría todo su historial a Luis.
+// Se da de baja (activo:false) y Luis nace con id propio e historial limpio.
+// Al quedar inactivo desaparece solo de reloj, nómina, caja y POS, porque
+// toda la UI operativa se arma con empsActivos().
+// Sueldo de Luis: mismo del puesto que deja Juan Pablo ($2,400/sem = base
+// mensual 9,600). Si Iván acordó otro, se cambia esta línea.
+async function migEmpleadosAgo2026(){
+  const migKey='h5emps_ago26';
+  if(await migDone(migKey)) return;
+  const jp=D.empleados.find(e=>e.id===2003);
+  if(jp && jp.activo!==false) await fsSet('empleados',{...jp,activo:false,baja:'2026-08-11'});
+  const luis=D.empleados.find(e=>e.id===2004);
+  if(!luis){
+    await fsSet('empleados',{id:2004,nombre:'Luis',rol:'Empleado',base:9600,bonoCierre:0,cierresFijos:0,tipo:'variable',color:'#9b6be8',activo:true});
+  }else if(luis.activo===false||luis.nombre!=='Luis'){
+    await fsSet('empleados',{...luis,nombre:'Luis',activo:true});
+  }
+  await markMig(migKey);
+  logAudit('equipo_actualizado',{baja:'Juan Pablo (historial conservado)',alta:'Luis — \$2,400/sem',contrasenas:'Claudia y Luis actualizadas'});
+  toast('✓ Equipo actualizado: baja Juan Pablo, alta Luis',4500);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
@@ -5082,10 +5106,11 @@ function playSaleSound(){
 // A0-SEGURIDAD: PINs almacenados como hash SHA-256 (ya no en texto plano).
 // Los PINs NO cambiaron para las usuarias — solo su almacenamiento.
 const ADMIN_PASS_HASH = 'bfb2ca8244bbe280b98df043a537394ac05e690f1fc8463ec7601b804d854960';
+// Solo empleados ACTIVOS: la pantalla de bloqueo se arma con empsActivos(),
+// así que a los dados de baja se les quita el hash (no hay puerta que forzar).
 const EMP_PASS_HASH = {
-  2001:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92',
-  2002:'8bb0cf6eb9b17d0f7d22b456f121257dc1254e1f01665370476383ea776df414',
-  2003:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92'
+  2002:'e3e9199ebfeb5d94cc27a769550728027943cff9c700b13db139059d07eba484', // Claudia
+  2004:'fda1b3b67f1a6681ff07d837893786a8467bcca89f7500c757aafab08325b857'  // Luis
 };
 // Empleados vigentes (los dados de baja conservan historial pero no aparecen en UI operativa)
 const empsActivos=()=>D.empleados.filter(e=>e.activo!==false);
@@ -7783,7 +7808,7 @@ window.confirmarApertura=async()=>{
 function checkApertura(){
   const td=today();
   const fondoHoy=D.retiros.find(r=>r.fecha===td&&r.tipo==='fondo');
-  // Quien abra el turno (Claudia, Juan Pablo o admin) registra el efectivo
+  // Quien abra el turno (Claudia, Luis o admin) registra el efectivo
   // inicial UNA sola vez al día — con eso el corte de la noche cuadra.
   if(!fondoHoy && SESSION){
     $('apertura-modal').style.display='flex';
@@ -7951,8 +7976,10 @@ function getNominaSemanal(mon){
   const wd=getWDays(mon);
   const exts=D.extras.filter(x=>x.semana===mon);
   return empsActivos().map((e,idx)=>{
-    // Checkbox de cierre en caja: cC siempre fue de Claudia (2002); dC era de Adilene, ahora de Juan Pablo
-    const checkFieldMap={2001:'dC',2002:'cC',2003:'dC'};
+    // Checkbox de cierre en caja: cC siempre fue de Claudia (2002); dC lo hereda
+    // quien ocupe el otro puesto (Adilene → Juan Pablo → Luis). Sin el 2004 aquí,
+    // Luis caía en el fallback y compartía el 'cC' de Claudia.
+    const checkFieldMap={2001:'dC',2002:'cC',2003:'dC',2004:'dC'};
     const checkField = checkFieldMap[e.id] || (idx===0?'dC':'cC');
     let cierres=0;
     let cierreLabel='';

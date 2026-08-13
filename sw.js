@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.50'; // Arregla 10 insumos que no descontaban ni costeaban por unidad
+const CACHE_NAME = 'el-huerto-v14.51'; // Equipo: baja Juan Pablo, alta Luis + contraseñas de Claudia y Luis
 const ASSETS = [
   '/',
   '/index.html',
