@@ -2541,6 +2541,7 @@ async function completeInit(){
   await migEmpleadosJul2026();
   await migEmpleadosAgo2026();
   await migQuitaLuisDuplicado();
+  await migAjustaHorasLuis();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -2771,6 +2772,41 @@ async function migQuitaLuisDuplicado(){
   logAudit('equipo_actualizado',{accion:'Luis duplicado eliminado',ids:dups.map(d=>d.id),traspaso:{checadas:ck,ventas:vt,extras:ex}});
   if(dups.length) toast(`✓ Luis duplicado eliminado (${ck} checada(s) y ${vt} venta(s) traspasadas al Luis real)`,5000);
   try{renderLock();}catch(e){}
+}
+// Ago-2026: el horario real de Luis es 07:00–19:00. Sus checadas de los
+// primeros días quedaron mal (checó tarde / bajo el perfil duplicado), así
+// que se corrigen TODAS sus jornadas hasta el 12-ago inclusive: una sola
+// checada por día 07:00–19:00 (las repetidas del mismo día se eliminan).
+// Si el 12-ago no tiene registro, se crea. Ajuste pedido por Iván; queda
+// asentado en la bitácora como corrección manual.
+async function migAjustaHorasLuis(){
+  const migKey='h5horasluis_ago26';
+  if(await migDone(migKey)) return;
+  const HASTA='2026-08-12';
+  const cks=D.checkins.filter(c=>c.empId===2004&&c.fecha<=HASTA);
+  const porDia={};
+  cks.forEach(c=>{(porDia[c.fecha]??=[]).push(c);});
+  if(!porDia[HASTA]){
+    const nuevo={id:Date.now(),empId:2004,empNombre:'Luis',fecha:HASTA,hora:'07:00',horaSalida:'19:00',color:'#9b6be8'};
+    await fsSet('checkins',nuevo); D.checkins.push(nuevo);
+    porDia[HASTA]=null; // ya quedó bien; no reprocesar abajo
+  }
+  const dias=[];
+  for(const [fecha,lista] of Object.entries(porDia)){
+    if(!lista){dias.push(fecha+' (creado)');continue;}
+    lista.sort((a,b)=>(a.hora||'').localeCompare(b.hora||''));
+    await fsSet('checkins',{...lista[0],hora:'07:00',horaSalida:'19:00'});
+    const local=D.checkins.find(x=>x.id===lista[0].id);
+    if(local){local.hora='07:00';local.horaSalida='19:00';}
+    for(const extra of lista.slice(1)){
+      await fsDel('checkins',extra.id);
+      const i=D.checkins.findIndex(x=>x.id===extra.id); if(i>=0)D.checkins.splice(i,1);
+    }
+    dias.push(fecha);
+  }
+  await markMig(migKey);
+  logAudit('checkin_ajuste',{empleado:'Luis (2004)',dias,horario:'07:00–19:00',motivo:'Corrección de Iván: horario real desde el inicio'});
+  if(dias.length) toast(`✓ Horas de Luis corregidas a 07:00–19:00 (${dias.length} día(s))`,4500);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){

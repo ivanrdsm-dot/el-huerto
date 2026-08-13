@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.55'; // Elimina el Luis duplicado sin contraseña — quedan 3 perfiles
+const CACHE_NAME = 'el-huerto-v14.56'; // Corrige la jornada de Luis: 07:00–19:00 desde su inicio
 const ASSETS = [
   '/',
   '/index.html',
