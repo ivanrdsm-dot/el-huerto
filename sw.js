@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.52'; // Horario lun-vie en reloj/asistencia + perfiles de empleado idénticos
+const CACHE_NAME = 'el-huerto-v14.53'; // Nombre grande al cobrar y en comanda + paninis con verduras y aderezo
 const ASSETS = [
   '/',
   '/index.html',

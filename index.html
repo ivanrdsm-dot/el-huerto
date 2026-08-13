@@ -1194,7 +1194,7 @@ nav{padding-top:env(safe-area-inset-top);}
       </div>
       <div class="op-extra">
         <input id="op-nota" placeholder="📝 Mesa / nota">
-        <input id="op-cliente" placeholder="👤 Cliente (opc.)" autocomplete="off">
+        <input id="op-cliente" placeholder="👤 Nombre del cliente (sale en la comanda)" autocomplete="off" style="font-size:15px;font-weight:700;padding:12px;">
       </div>
       <div id="op-fecha-wrap" style="display:none;">
         <div style="display:flex;align-items:center;gap:6px;background:color-mix(in srgb, var(--gold) 10%, var(--surface));border:1px solid var(--border);border-radius:var(--rsm);padding:4px 8px;">
@@ -1206,7 +1206,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <div class="op-actions">
         <div class="pago-row">
           <button class="btn bp bfull" onclick="abrirCobro()" style="gap:6px;">💵 Efectivo</button>
-          <button class="btn bbl bfull" onclick="cobrar('tarjeta',0)" style="gap:6px;">💳 Tarjeta</button>
+          <button class="btn bbl bfull" onclick="cobrarTarjeta()" style="gap:6px;">💳 Tarjeta</button>
         </div>
         <div style="display:flex;gap:6px;">
           <button class="btn bs bfull bsm" onclick="clearOrder()">✕ Limpiar</button>
@@ -2282,6 +2282,11 @@ nav{padding-top:env(safe-area-inset-top);}
       <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">TOTAL A COBRAR</div>
       <div id="cobro-total" style="font-family:'Playfair Display',serif;font-size:36px;font-weight:900;color:var(--accent2);">$0.00</div>
     </div>
+    <div class="fg"><label>👤 Nombre del cliente (sale GRANDE en la comanda)</label>
+      <input id="cobro-cliente" placeholder="¿Para quién es?" autocomplete="off"
+        style="font-size:19px;text-align:center;font-weight:800;padding:12px;"
+        oninput="if($('op-cliente'))$('op-cliente').value=this.value">
+    </div>
     <div class="fg"><label>Con cuánto paga el cliente</label>
       <input type="number" id="cobro-recibido" placeholder="0.00" oninput="calcCambio()" style="font-size:20px;text-align:center;font-family:'DM Mono',monospace;" autofocus>
     </div>
@@ -2300,6 +2305,23 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div id="cobro-alerta" style="display:none;text-align:center;" class="astrip"></div>
     <button class="btn bp bfull" id="cobro-btn" onclick="cobrarEfectivo()" disabled style="opacity:.4;">✓ Confirmar Cobro</button>
+  </div>
+</div>
+
+<!-- MODAL NOMBRE (cobro con tarjeta: el nombre es lo que canta la cocina) -->
+<div class="modal-bg" id="nombre-modal" style="display:none;" onclick="closeModal('nombre-modal',event)">
+  <div class="modal" style="max-width:380px;">
+    <div class="modal-head">
+      <span class="modal-title">💳 ¿A nombre de quién?</span>
+      <button class="btn bs bxs" onclick="$('nombre-modal').style.display='none'">✕</button>
+    </div>
+    <div class="fg"><label>👤 Nombre del cliente (sale GRANDE en la comanda)</label>
+      <input id="nombre-cliente" placeholder="¿Para quién es?" autocomplete="off"
+        style="font-size:22px;text-align:center;font-weight:800;padding:14px;"
+        onkeydown="if(event.key==='Enter')confirmarNombreTarjeta()">
+    </div>
+    <button class="btn bbl bfull" onclick="confirmarNombreTarjeta()" style="font-size:16px;padding:14px;">💳 Cobrar con tarjeta</button>
+    <button class="btn bs bfull bsm" onclick="confirmarNombreTarjeta(true)" style="margin-top:8px;">Sin nombre →</button>
   </div>
 </div>
 
@@ -5624,6 +5646,8 @@ const PREP_LISTAS={
   smoothies:["Pal'Fresa","Pal'Mamado","Pal'Sediento","Pal'Crudo","Pal'Changuito","Pal'Berry Fuerte","Pal'Matcha Gains","Pal'Chai Lover"],
   paninis:['Mozzarella','4 Quesos','Pechuga de pavo','Jamón serrano','Chorizo pamplona'],
   panes:['Queso','Chilaquiles','Pizza','Rajas poblanas'],
+  panini_verduras:['Jitomate','Pepino','Aceitunas'],
+  panini_aderezo:['Chipotle','Guacamole','Chipotle y guacamole','Sin aderezo'],
 };
 const PROD_PREP={
   1001:{elige:1,de:'bowl',base:'Açaí + granola'},
@@ -5649,11 +5673,23 @@ const PROD_PREP={
   1063:{fijo:'Matcha, plátano, avena, crema de almendra, miel y leche'},
   1064:{fijo:'Chai, plátano, avena, crema de almendra, miel y leche'},
   1065:{fijo:'Fresa, blueberry, plátano, avena y leche'},
-  1019:{fijo:'Jitomate, pepino, aceitunas + queso mozzarella'},
-  1020:{fijo:'Jitomate, pepino, aceitunas + mezcla 4 quesos'},
-  1021:{fijo:'Jitomate, pepino, aceitunas, queso + pechuga de pavo'},
-  1022:{fijo:'Jitomate, pepino, aceitunas, queso + jamón serrano'},
-  1023:{fijo:'Jitomate, pepino, aceitunas, queso + chorizo pamplona'},
+  // Paninis: verduras preseleccionadas (la cajera QUITA lo que no lleve) +
+  // aderezo obligatorio. base = lo fijo del panini (queso/proteína).
+  1019:{base:'Queso mozzarella',pasos:[
+    {t:'Verduras — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
+    {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},
+  1020:{base:'Mezcla 4 quesos',pasos:[
+    {t:'Verduras — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
+    {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},
+  1021:{base:'Pechuga de pavo + queso',pasos:[
+    {t:'Verduras — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
+    {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},
+  1022:{base:'Jamón serrano + queso',pasos:[
+    {t:'Verduras — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
+    {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},
+  1023:{base:'Chorizo pamplona + queso',pasos:[
+    {t:'Verduras — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
+    {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},
   1070:{fijo:'Espresso doble + leche'},
   1071:{fijo:'Lata de té + 30 g perlas explosivas'},
   1015:{fijo:'Susalias + pepino, jícama, zanahoria + chile y limón'},
@@ -5699,13 +5735,20 @@ window.abrirPrepModal=pid=>{
 function pintarPasoPrep(){
   const{pid,pasos,idx,sel}=prepPendiente;
   const p=D.productos.find(x=>x.id===pid);
+  const paso=pasos[idx];
+  // presel: el paso arranca con TODO marcado y la cajera quita (paninis)
+  if(paso.presel&&!prepPendiente._preselHecho?.[idx]){
+    PREP_LISTAS[paso.de].forEach(t=>sel.add(t));
+    (prepPendiente._preselHecho??={})[idx]=true;
+  }
   $('prep-title').textContent=`🧩 ${p?.nombre||''}`;
-  $('prep-chips').innerHTML=PREP_LISTAS[pasos[idx].de].map(t=>`<button class="prep-chip ${sel.has(t)?'on':''}" data-t="${t}" onclick="togglePrepChip(this)">${t}</button>`).join('');
+  $('prep-chips').innerHTML=PREP_LISTAS[paso.de].map(t=>`<button class="prep-chip ${sel.has(t)?'on':''}" data-t="${t}" onclick="togglePrepChip(this)">${t}</button>`).join('');
   actualizarPrepUI();
 }
 window.togglePrepChip=btn=>{
   const t=btn.dataset.t; const paso=prepPendiente.pasos[prepPendiente.idx];
   if(prepPendiente.sel.has(t)){prepPendiente.sel.delete(t);btn.classList.remove('on');}
+  else if(paso.libre){prepPendiente.sel.add(t);btn.classList.add('on');}
   else if(paso.n===1){
     // Selección única: un toque cambia la elección directamente
     prepPendiente.sel.clear();
@@ -5718,18 +5761,28 @@ window.togglePrepChip=btn=>{
 };
 function actualizarPrepUI(){
   const{pasos,idx,sel}=prepPendiente; const paso=pasos[idx];
-  $('prep-contador').textContent=`${pasos.length>1?`Paso ${idx+1} de ${pasos.length} · `:''}${paso.t} — llevas ${sel.size}/${paso.n}`;
+  $('prep-contador').textContent=paso.libre
+    ?`${pasos.length>1?`Paso ${idx+1} de ${pasos.length} · `:''}${paso.t}`
+    :`${pasos.length>1?`Paso ${idx+1} de ${pasos.length} · `:''}${paso.t} — llevas ${sel.size}/${paso.n}`;
   const ok=$('prep-ok');
   ok.textContent=idx<pasos.length-1?'Siguiente ▸':'Agregar';
-  ok.disabled=sel.size!==paso.n; ok.style.opacity=sel.size===paso.n?'1':'.4';
+  const listo=paso.libre||sel.size===paso.n;
+  ok.disabled=!listo; ok.style.opacity=listo?'1':'.4';
 }
 window.cancelarPrep=()=>{prepPendiente=null;$('prep-modal').style.display='none';};
 window.confirmarPrep=()=>{
   const pp=prepPendiente; if(!pp) return;
   const paso=pp.pasos[pp.idx];
-  if(pp.sel.size!==paso.n) return;
+  if(!paso.libre&&pp.sel.size!==paso.n) return;
   const vals=[...pp.sel];
-  pp.resultado.push(paso.pre?`${paso.pre}: ${vals.join(', ')}`:vals.join(', '));
+  if(paso.libre){
+    // La cocina necesita los SIN explícitos: "—" se lee como "lleva todo"
+    const fuera=PREP_LISTAS[paso.de].filter(t=>!pp.sel.has(t));
+    if(vals.length) pp.resultado.push(`Con: ${vals.join(', ')}`);
+    fuera.forEach(t=>pp.resultado.push(`SIN ${t.toLowerCase()}`));
+  }
+  else if(vals.length===1&&/^sin /i.test(vals[0])) pp.resultado.push(vals[0]); // "Sin aderezo" sin prefijo
+  else pp.resultado.push(paso.pre?`${paso.pre}: ${vals.join(', ')}`:vals.join(', '));
   pp.sel=new Set();
   if(pp.idx<pp.pasos.length-1){pp.idx++;pintarPasoPrep();return;}
   pushItemOrden(pp.pid,pp.resultado);
@@ -5878,7 +5931,12 @@ function escposComanda(v){
   txt('COMANDA'); NL();
   push(0x1D,0x21,0x00);       // normal
   txt(`${v.ticket}  ${v.hora}`); NL();
-  if(v.cliente){txt(`Cliente: ${v.cliente}`);NL();}
+  if(v.cliente){
+    // El nombre es lo que canta la cocina al entregar: va GRANDE
+    push(0x1D,0x21,0x11);
+    txt(`* ${v.cliente.toUpperCase()} *`); NL();
+    push(0x1D,0x21,0x00);
+  }
   if(v.nota){txt(`** ${v.nota} **`);NL();}
   txt('----------------------------'); NL();
   push(0x1B,0x61,0);          // izquierda
@@ -6475,8 +6533,25 @@ window.abrirCobro=()=>{
   $('cobro-cambio-box').style.display='none';
   $('cobro-alerta').style.display='none';
   $('cobro-btn').disabled=true;$('cobro-btn').style.opacity='.4';
+  // Nombre del cliente: precargado desde la orden; si falta, el foco va ahí
+  const cc=$('cobro-cliente');
+  if(cc) cc.value=$('op-cliente')?.value?.trim()||'';
   $('cobro-modal').style.display='flex';
-  setTimeout(()=>$('cobro-recibido').focus(),120);
+  setTimeout(()=>{(cc&&!cc.value?cc:$('cobro-recibido')).focus();},120);
+};
+// Tarjeta: antes cobraba directo sin pedir nada — ahora, si no hay nombre,
+// se pide GRANDE primero (es lo que canta la cocina al entregar).
+window.cobrarTarjeta=()=>{
+  if($('op-cliente')?.value?.trim()){cobrar('tarjeta',0);return;}
+  if(!order.length){toast('No hay productos en la orden',2000,'warn');return;}
+  $('nombre-modal').style.display='flex';
+  const inp=$('nombre-cliente'); if(inp){inp.value='';setTimeout(()=>inp.focus(),120);}
+};
+window.confirmarNombreTarjeta=(sin)=>{
+  const v=sin?'':($('nombre-cliente')?.value?.trim()||'');
+  if($('op-cliente'))$('op-cliente').value=v;
+  $('nombre-modal').style.display='none';
+  cobrar('tarjeta',0);
 };
 window.setBillete=v=>{
   $('cobro-recibido').value=v; calcCambio();
@@ -6966,7 +7041,7 @@ function ordCard(v){
   const totalMin=done?Math.round((v.prep.tsEntrega-(v.tsCobro||v.id))/60000):null;
   return `<div class="ord-card ${cls} ${_ordSeen.has(String(v.id))?'':'ord-nueva'}" data-oid="${v.id}">
     <div class="ord-head">
-      <span class="ord-folio">${v.ticket}</span>
+      <span class="ord-folio">${v.ticket}${v.cliente?` <span style="color:var(--accent);">· ${v.cliente.toUpperCase()}</span>`:''}</span>
       <span class="ord-estado">${est.icon} ${est.label}</span>
       ${done
         ?`<span class="ord-timer" style="color:var(--teal);">${totalMin} min</span>`
