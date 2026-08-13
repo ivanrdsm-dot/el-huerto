@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.53'; // Nombre grande al cobrar y en comanda + paninis con verduras y aderezo
+const CACHE_NAME = 'el-huerto-v14.54'; // Combos El OG y El Mañanero: el panini también pregunta verduras y aderezo
 const ASSETS = [
   '/',
   '/index.html',

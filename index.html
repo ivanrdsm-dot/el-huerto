@@ -5697,8 +5697,16 @@ const PROD_PREP={
   1016:{pasos:[{t:'Toppings del Oats (elige 2)',de:'bowl',n:2,pre:'Oats'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},              // Home Run
   1017:{pasos:[{t:'Frutas del cóctel (elige 2)',de:'coctel',n:2,pre:'Cóctel'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},          // Gym Rat
   1018:{pasos:[{t:'Toppings del Açaí (elige 2)',de:'bowl',n:2,pre:'Açaí'},{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'}]},              // El Fresa
-  1048:{pasos:[{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'}]},                       // El OG
-  1049:{base:'+ Capuchino chico',pasos:[{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'}]},                                                       // El Mañanero
+  // El OG y El Mañanero: el panini del combo también pregunta verduras y
+  // aderezo (mismos pasos que el panini suelto). Las líneas 'Con:'/'SIN'/
+  // 'Aderezo:' no tienen prefijo de componente, así que comboProductoDeEtiqueta
+  // las ignora y el descuento de inventario sigue igual.
+  1048:{pasos:[{t:'¿Cuál smoothie?',de:'smoothies',n:1,pre:'Smoothie'},{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'},
+    {t:'Verduras del panini — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
+    {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},                                                                                   // El OG
+  1049:{base:'+ Capuchino chico',pasos:[{t:'¿Cuál panini?',de:'paninis',n:1,pre:'Panini'},
+    {t:'Verduras del panini — quita lo que NO lleve',de:'panini_verduras',libre:true,presel:true},
+    {t:'¿Qué aderezo?',de:'panini_aderezo',n:1,pre:'Aderezo'}]},                                                                                   // El Mañanero
   1050:{base:'+ Capuchino chico',pasos:[{t:'¿Cuál pan de la Tía Renee?',de:'panes',n:1,pre:'Pan'}]},                                               // El de Renee
 };
 // Texto de preparación de un renglón de orden (elegido o fijo)
