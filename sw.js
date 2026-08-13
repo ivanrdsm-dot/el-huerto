@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.56'; // Corrige la jornada de Luis: 07:00–19:00 desde su inicio
+const CACHE_NAME = 'el-huerto-v14.57'; // Jornada neta: descuenta 1h de comida libre en turnos corridos >6h
 const ASSETS = [
   '/',
   '/index.html',

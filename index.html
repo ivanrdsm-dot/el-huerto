@@ -9720,6 +9720,7 @@ window.registroAsistenciaPDF=()=>{
     else doc.text('Sin tiempo extraordinario en el periodo.',14,y);
     y+=6;doc.setFont('helvetica','bold');doc.text('Jornada semanal: lunes a viernes. Sábado y domingo son días de descanso semanal (Art. 69 LFT).',14,y);
     doc.setFont('helvetica','normal');
+    if(hs.minsComida>0){y+=5;doc.text(`La jornada mostrada es NETA: en turno corrido mayor a 6 h se descuenta 1 h de comida libre (Arts. 63-64 LFT) — ${fmtMins(hs.minsComida)} en la semana.`,14,y);}
     if(hs.minsDescanso>0){y+=5;doc.text(`Se laboraron ${fmtMins(hs.minsDescanso)} en día de descanso: se cubren con salario doble adicional (Art. 73 LFT).`,14,y);}
     y+=6;doc.text('Los días hábiles sin registro corresponden a inasistencia. Ajustes manuales constan en la bitácora inmutable del sistema.',14,y);
     // Firmas
@@ -9753,16 +9754,23 @@ function getHorasSemana(empId,monday){
     const ultimoCheck=checks[checks.length-1];
     const salida=ultimoCheck?.horaSalida||null;
     // Sumar todas las horas (cerradas + abierta si es hoy)
-    const mins=calcMinsFromCheckins(checks, fecha===today());
+    const brutos=calcMinsFromCheckins(checks, fecha===today());
+    // Hora de comida LIBRE (Arts. 63-64 LFT): no cuenta como jornada.
+    // Se descuenta SOLO en turno corrido (una sola checada) de más de 6 h;
+    // si salieron a comer y volvieron a checar (2+ checadas), el hueco ya
+    // quedó fuera del conteo y descontar otra vez sería doble.
+    const comida=(checks.length===1&&brutos>=360)?60:0;
+    const mins=Math.max(0,brutos-comida);
     // El Huerto abre lun-vie: sáb y dom son descanso semanal (Art. 69 LFT),
     // no falta. Si aun así hay horas, es descanso TRABAJADO (Art. 73: se paga
     // con prima) y el reporte lo tiene que hacer visible.
     const descanso=!DIAS_OPERACION.includes(d.getDay());
-    days.push({fecha,dayName,entrada,salida,mins,descanso,descansoTrabajado:descanso&&mins>0});
+    days.push({fecha,dayName,entrada,salida,mins,comida,descanso,descansoTrabajado:descanso&&mins>0});
   }
   const totalMins=days.reduce((s,d)=>s+d.mins,0);
   const minsDescanso=days.reduce((s,d)=>s+(d.descanso?d.mins:0),0);
-  return {days,totalMins,minsDescanso};
+  const minsComida=days.reduce((s,d)=>s+(d.comida||0),0);
+  return {days,totalMins,minsDescanso,minsComida};
 }
 
 window.checkarEntrada=async(empId)=>{
@@ -9869,7 +9877,8 @@ function renderReloj(){
     });
     totalRow+='</tr>';
 
-    $('reloj-week-table').innerHTML=`<table class="tbl reloj-week-table"><thead><tr>${headerCols}</tr><tr>${subHeader}</tr></thead><tbody>${rows}${totalRow}</tbody></table>`;
+    const notaComida=empData.some(ed=>ed.minsComida>0)?`<div style="font-size:10px;color:var(--text3);margin-top:6px;">🍽 Horas netas: el turno corrido &gt;6 h descuenta 1 h de comida libre (Arts. 63-64 LFT).</div>`:'';
+    $('reloj-week-table').innerHTML=`<table class="tbl reloj-week-table"><thead><tr>${headerCols}</tr><tr>${subHeader}</tr></thead><tbody>${rows}${totalRow}</tbody></table>${notaComida}`;
   }
 
   // Totales resumen
