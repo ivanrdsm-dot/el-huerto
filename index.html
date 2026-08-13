@@ -5122,11 +5122,14 @@ async function sha256Hex(s){
 const EMP_PASSWORDS = {}; // Populated from empleados.pin field
 // (PINs de empleadas ahora en EMP_PASS_HASH arriba — mismo PIN, distinto almacenamiento)
 // Páginas restringidas a admin solamente (nadie más entra)
-// Inventario lo ven TODAS las empleadas (Adilene y Claudia) para captura diaria
+// Inventario lo ven TODOS los empleados para captura diaria
 const ADMIN_ONLY = ['dashboard','historial','gastos','nomina','vendedores','proveedores','suscriptores','recetas','reportes','config','ajustes','caja','kpis','clientes','mercado'];
-// Páginas que Clau (gerente) puede ver además de ventas
-const GERENTE_PERMS = ['kpis']; // Claudia ve KPIs (lectura). Inventario lo ven todas (no es ADMIN_ONLY ni GERENTE_PERMS).
-// ID de Clau
+// Ago-2026, decisión de Iván: los dos perfiles de empleado tienen EXACTAMENTE
+// los mismos accesos (ventas, órdenes, inventario, reloj y su perfil). Antes
+// Claudia veía KPIs por ser gerente; los KPIs muestran márgenes y rentabilidad,
+// así que quedan solo para el admin. Vacío = sin privilegios extra por persona.
+const GERENTE_PERMS = [];
+// ID de Clau (gerente para efectos de nómina, ya no de accesos)
 const GERENTE_ID = 2002;
 // Lista combinada para compatibilidad
 const RESTRICTED = [...ADMIN_ONLY, 'caja', 'inventario'];
@@ -5435,6 +5438,12 @@ function go(p){
 window.go=go;
 
 const localDate=d=>{return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
+// Días que abre El Huerto (getDay(): 0=dom … 6=sáb). Solo lun-vie.
+// Fuente única: la usan el Reloj y el registro de asistencia para marcar
+// sábado y domingo como DESCANSO en lugar de dejarlos en blanco — en un
+// documento de la LFT dos días vacíos por semana se leen como faltas.
+const DIAS_OPERACION=[1,2,3,4,5];
+const esDiaDescanso=fechaISO=>!DIAS_OPERACION.includes(new Date(fechaISO+'T12:00:00').getDay());
 function getWDays(ref){
   const d=ref?new Date(ref+'T12:00:00'):new Date();
   const day=d.getDay(); const mon=new Date(d); mon.setDate(d.getDate()-(day===0?6:day-1));
@@ -5515,8 +5524,10 @@ function renderVendedorBar(){
     if(av){av.textContent='?';av.style.background='var(--surface3)';}
     if(nm) nm.textContent='Sin vendedor — toca para seleccionar';
   }
-  // Mostrar selector de fecha retroactiva solo para admin y gerente
-  const puedeRetroactivo = SESSION?.tipo==='admin' || SESSION?.id===GERENTE_ID;
+  // Fecha retroactiva: SOLO admin. Antes también Claudia por ser gerente, pero
+  // los dos perfiles de empleado quedaron iguales y antedatar una venta mueve
+  // el corte y los reportes de un día ya cerrado.
+  const puedeRetroactivo = SESSION?.tipo==='admin';
   const fw=$('op-fecha-wrap');
   if(fw) fw.style.display = puedeRetroactivo ? '' : 'none';
   // Init fecha value to today if empty
@@ -9538,9 +9549,12 @@ window.registroAsistenciaPDF=()=>{
     const hs=getHorasSemana(e.id,mon);
     let extraSemMin=0;
     const body=hs.days.map(d=>{
+      // Descanso sin horas: no es falta ni genera tiempo extra (Art. 69 LFT).
+      if(d.descanso&&!d.mins) return [d.fecha,d.dayName.toUpperCase(),'DESCANSO','DESCANSO','—','—'];
       const extra=Math.max(0,(d.mins||0)-JORNADA_MIN);
       extraSemMin+=extra;
-      return [d.fecha,d.dayName.toUpperCase(),d.entrada||'—',d.salida||(d.entrada?'SIN REGISTRO':'—'),d.mins?fmtMins(d.mins):'—',extra?fmtMins(extra):'—'];
+      const dia=d.descansoTrabajado?d.dayName.toUpperCase()+' (DESCANSO TRABAJADO)':d.dayName.toUpperCase();
+      return [d.fecha,dia,d.entrada||'—',d.salida||(d.entrada?'SIN REGISTRO':'—'),d.mins?fmtMins(d.mins):'—',extra?fmtMins(extra):'—'];
     });
     doc.autoTable({startY:60,
       head:[['Fecha','Día','Entrada','Salida','Jornada','Tiempo extra (>8h)']],
@@ -9559,7 +9573,10 @@ window.registroAsistenciaPDF=()=>{
     y+=6;doc.setFont('helvetica','normal');doc.setFontSize(8);doc.setTextColor(110);
     if(extraSemMin>0) doc.text(`Desglose LFT Art. 67-68: ${fmtMins(dobles)} al doble${triples?` · ${fmtMins(triples)} al triple`:''}`,14,y);
     else doc.text('Sin tiempo extraordinario en el periodo.',14,y);
-    y+=6;doc.text('Los días sin registro corresponden a descanso o inasistencia. Ajustes manuales constan en la bitácora inmutable del sistema.',14,y);
+    y+=6;doc.setFont('helvetica','bold');doc.text('Jornada semanal: lunes a viernes. Sábado y domingo son días de descanso semanal (Art. 69 LFT).',14,y);
+    doc.setFont('helvetica','normal');
+    if(hs.minsDescanso>0){y+=5;doc.text(`Se laboraron ${fmtMins(hs.minsDescanso)} en día de descanso: se cubren con salario doble adicional (Art. 73 LFT).`,14,y);}
+    y+=6;doc.text('Los días hábiles sin registro corresponden a inasistencia. Ajustes manuales constan en la bitácora inmutable del sistema.',14,y);
     // Firmas
     y+=26;
     doc.setDrawColor(120);doc.setLineWidth(.3);
@@ -9592,10 +9609,15 @@ function getHorasSemana(empId,monday){
     const salida=ultimoCheck?.horaSalida||null;
     // Sumar todas las horas (cerradas + abierta si es hoy)
     const mins=calcMinsFromCheckins(checks, fecha===today());
-    days.push({fecha,dayName,entrada,salida,mins});
+    // El Huerto abre lun-vie: sáb y dom son descanso semanal (Art. 69 LFT),
+    // no falta. Si aun así hay horas, es descanso TRABAJADO (Art. 73: se paga
+    // con prima) y el reporte lo tiene que hacer visible.
+    const descanso=!DIAS_OPERACION.includes(d.getDay());
+    days.push({fecha,dayName,entrada,salida,mins,descanso,descansoTrabajado:descanso&&mins>0});
   }
   const totalMins=days.reduce((s,d)=>s+d.mins,0);
-  return {days,totalMins};
+  const minsDescanso=days.reduce((s,d)=>s+(d.descanso?d.mins:0),0);
+  return {days,totalMins,minsDescanso};
 }
 
 window.checkarEntrada=async(empId)=>{
@@ -9682,9 +9704,15 @@ function renderReloj(){
       rows+=`<td class="mono" style="font-weight:700;font-size:11px;">${dayNames[i]}<br><span style="font-size:9px;color:var(--text3);">${empData[0]?.days[i]?.fecha?.slice(5)||''}</span></td>`;
       empData.forEach(ed=>{
         const d=ed.days[i];
+        // Sáb y dom son descanso (El Huerto abre lun-vie): se marcan como
+        // tal en vez de mostrar guiones, que se leen como falta.
+        if(d.descanso&&!d.mins){
+          rows+=`<td colspan="3" class="mono" style="font-size:10px;color:var(--text3);opacity:.65;">DESCANSO</td>`;
+          return;
+        }
         rows+=`<td class="mono ag" style="font-size:11px;">${d.entrada||'—'}</td>`;
         rows+=`<td class="mono ${d.salida?'ar':'ay'}" style="font-size:11px;">${d.salida||'—'}</td>`;
-        rows+=`<td class="mono" style="font-size:11px;font-weight:700;">${fmtMins(d.mins)}</td>`;
+        rows+=`<td class="mono" style="font-size:11px;font-weight:700;">${fmtMins(d.mins)}${d.descansoTrabajado?' ⚠':''}</td>`;
       });
       rows+='</tr>';
     }
@@ -10239,7 +10267,6 @@ function renderMiPerfil(){
     } else {
       // Empleada: solo accesos rápidos, sin montos
       const topProd=Object.entries(misVentasHoy.flatMap(v=>v.items).reduce((a,i)=>{a[i.nombre]=(a[i.nombre]||0)+i.qty;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,5);
-      const esGerente=SESSION?.id===GERENTE_ID;
       $('mp-ventas-hoy').innerHTML=`
         <div class="ct">🚀 Accesos Rápidos</div>
         <button class="btn bp bfull" onclick="go('pos')" style="margin:6px 0;padding:14px;font-size:15px;font-weight:700;">🛒 Vender / POS</button>

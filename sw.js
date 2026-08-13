@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.51'; // Equipo: baja Juan Pablo, alta Luis + contraseñas de Claudia y Luis
+const CACHE_NAME = 'el-huerto-v14.52'; // Horario lun-vie en reloj/asistencia + perfiles de empleado idénticos
 const ASSETS = [
   '/',
   '/index.html',
