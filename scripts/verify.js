@@ -39,7 +39,7 @@ const FNS = ['cobrar', 'renderOrder', 'renderPOS', 'realizarCorte', 'calcDia',
   'toggleKDS', 'playNewOrderSound', 'checkNuevaOrdenSound',
   'printComanda', 'conectarImpresoraBT', 'escposComanda', 'abrirPrepModal', 'pushItemOrden', 'prepTexto', 'prepLineas', 'prepPasosDe',
   'renderMercado', 'registrarCompra', 'mcAddInv', 'renderPosOrdenes',
-  'abrirScanLealtad', 'altaLealtad', 'registrarSelloLealtad', 'renderTarjetaPublica', 'renderLealtadPanel', 'canjearPremio', 'renderCampana', 'setLtSegmento', 'abrirCfgLealtad', 'actualizarProgresoCorte', 'btChipTap', 'renderPropinasNomina', 'repartirPropinas', 'setInvEstadoFiltro', 'renderInvFiltroRes', 'registroAsistenciaPDF', 'pinBloqueado', 'pinFallo', 'plPDF', 'clasificarCatOf', 'comboComponentes', 'hojaComprasPDF', 'toggleNavGroup', 'btConectarUnClic'];
+  'abrirScanLealtad', 'altaLealtad', 'registrarSelloLealtad', 'renderTarjetaPublica', 'renderLealtadPanel', 'canjearPremio', 'renderCampana', 'setLtSegmento', 'abrirCfgLealtad', 'actualizarProgresoCorte', 'btChipTap', 'renderPropinasNomina', 'repartirPropinas', 'setInvEstadoFiltro', 'renderInvFiltroRes', 'registroAsistenciaPDF', 'pinBloqueado', 'pinFallo', 'plPDF', 'clasificarCatOf', 'comboComponentes', 'hojaComprasPDF', 'toggleNavGroup', 'btConectarUnClic', 'esGerente', 'esAdminOGerente'];
 FNS.forEach(fn => {
   const re = new RegExp(`(function ${fn}\\b|window\\.${fn}\\s*=|const ${fn}\\s*=)`);
   if (re.test(html)) ok(fn); else fail(`función no encontrada: ${fn}`);

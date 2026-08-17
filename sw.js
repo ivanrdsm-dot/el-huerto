@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.58'; // Equipo: baja Luis, alta Erandy · nueva contraseña de admin
+const CACHE_NAME = 'el-huerto-v14.59'; // Rol GERENTE: alta de Vale con accesos de gerencia
 const ASSETS = [
   '/',
   '/index.html',

@@ -2535,7 +2535,11 @@ async function completeInit(){
   const loader=document.getElementById('loader');
   if(loader) loader.style.display='none';
   initD(); renderAll();
-  try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);}}catch(e){}
+  try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);
+    // El rol se recalcula desde el empleado real (no se confía en lo guardado):
+    // si Iván asciende o degrada a alguien, aplica en cuanto recarga.
+    if(SESSION?.tipo==='emp'){const e=D.empleados.find(x=>x.id===SESSION.id);SESSION.rol=(e?.rol||'').toLowerCase()==='gerente'?'gerente':'emp';}
+  }}catch(e){}
   await fixUTCDates();
   await fixEmpleadosTipo();
   await migEmpleadosJul2026();
@@ -2543,6 +2547,7 @@ async function completeInit(){
   await migQuitaLuisDuplicado();
   await migAjustaHorasLuis();
   await migEmpleadosAgo2026_v2();
+  await migAltaValeGerente();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -2829,13 +2834,30 @@ async function migEmpleadosAgo2026_v2(){
   }
   const bajas=[];
   for(const e of D.empleados){
-    if(e.activo!==false&&![2002,2005].includes(e.id)){
+    if(e.activo!==false&&![2002,2005,2006].includes(e.id)){ // 2006 = Vale (gerente)
       await fsSet('empleados',{...e,activo:false,baja:today()}); bajas.push(e.nombre);
     }
   }
   await markMig(migKey);
   logAudit('equipo_actualizado',{alta:'Erandy (2005) — \$2,400/sem',bajas,contrasenas:'admin y Erandy actualizadas'});
   toast(`✓ Equipo: alta Erandy${bajas.length?' · baja '+bajas.join(', '):''}`,4500);
+  try{renderLock();}catch(e){}
+}
+// Ago-2026: alta de Vale (2006) como GERENTE. Entra por el mismo botón que
+// las empleadas (checa reloj como todas) pero su sesión lleva rol 'gerente'
+// y ve GERENTE_PAGES. La migración anterior (v2) daba de baja a todo lo que
+// no fuera 2002/2005, así que se corre DESPUÉS y reactiva/crea a Vale.
+// Sueldo: NO lo dio Iván — se deja base 0 y se captura en Nómina.
+async function migAltaValeGerente(){
+  const migKey='h5vale_ago26';
+  if(await migDone(migKey)) return;
+  const v=D.empleados.find(e=>e.id===2006);
+  const perfil={id:2006,nombre:'Vale',rol:'Gerente',base:0,bonoCierre:0,cierresFijos:0,tipo:'fijo',color:'#2fb8a6',activo:true,alta:today()};
+  if(!v) await fsSet('empleados',perfil);
+  else if(v.activo===false||v.rol!=='Gerente'||v.nombre!=='Vale') await fsSet('empleados',{...v,nombre:'Vale',rol:'Gerente',activo:true});
+  await markMig(migKey);
+  logAudit('equipo_actualizado',{alta:'Vale (2006) — GERENTE',accesos:GERENTE_PAGES.join(', '),soloLectura:GERENTE_READONLY.join(', ')});
+  toast('✓ Alta de Vale como gerente',4000);
   try{renderLock();}catch(e){}
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
@@ -5224,7 +5246,8 @@ const ADMIN_PASS_HASH = '939fbf1ca6dc3c0b4a6ce82cf89ef5ac0c06e82272077a330207ef6
 // así que a los dados de baja se les quita el hash (no hay puerta que forzar).
 const EMP_PASS_HASH = {
   2002:'e3e9199ebfeb5d94cc27a769550728027943cff9c700b13db139059d07eba484', // Claudia
-  2005:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92'  // Erandy
+  2005:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', // Erandy
+  2006:'457a84b407269af6a1badb5e7e9392ad5fc91d75d2ec489e514a96f0d3486349'  // Vale (gerente)
 };
 // Empleados vigentes (los dados de baja conservan historial pero no aparecen en UI operativa)
 const empsActivos=()=>D.empleados.filter(e=>e.activo!==false);
@@ -5248,23 +5271,40 @@ const GERENTE_ID = 2002;
 // Lista combinada para compatibilidad
 const RESTRICTED = [...ADMIN_ONLY, 'caja', 'inventario'];
 
+// ── ROL GERENTE (ago-2026: Vale, id 2006) ──
+// Nivel intermedio entre empleada y admin. Es lo que necesita quien lleva
+// la operación del día sin ser dueño: caja y cortes, inventario completo,
+// órdenes, reloj y asistencia del equipo, clientes/lealtad, compras y
+// proveedores, historial y KPIs (lectura). NO ve: nómina y sueldos, gastos
+// y P&L (reportes), recetas y costos, config/ajustes (RFC, precios,
+// contraseñas). Se identifica por empleado.rol==='Gerente'.
+const GERENTE_PAGES = ['caja','inventario','ordenes','reloj','historial','clientes','vendedores','proveedores','mercado','kpis'];
+const GERENTE_READONLY = ['kpis','historial'];
+const esGerente=()=>SESSION?.tipo==='emp'&&SESSION?.rol==='gerente';
+
 function canAccess(page){
   if(!SESSION) return false;
   if(SESSION.tipo==='admin') return true;
   if(SESSION.tipo==='emp'){
+    if(esGerente() && GERENTE_PAGES.includes(page)) return true;
     if(SESSION.id===GERENTE_ID && GERENTE_PERMS.includes(page)) return true;
     if(!ADMIN_ONLY.includes(page) && !GERENTE_PERMS.includes(page)) return true; // pos etc
     return false;
   }
   return false;
 }
-// True si la sesión actual solo puede leer (no modificar) — usado en KPIs para Claudia
+// True si la sesión actual solo puede leer (no modificar)
 function isReadOnly(page){
   if(!SESSION) return true;
   if(SESSION.tipo==='admin') return false;
+  if(esGerente() && GERENTE_READONLY.includes(page)) return true;
   if(SESSION.tipo==='emp' && SESSION.id===GERENTE_ID && GERENTE_PERMS.includes(page)) return true;
   return false;
 }
+// Admin O gerente: para botones operativos que un gerente sí debe tocar
+// (cerrar caja, hoja de compras, tabs completos de inventario, reabrir orden,
+// registro de asistencia, fecha retroactiva en ventas).
+const esAdminOGerente=()=>SESSION?.tipo==='admin'||esGerente();
 let SESSION = null;
 let pinTarget = null;
 let pinTargetEmpId = null; // for employee PIN flow
@@ -5326,7 +5366,7 @@ window.openEmpPIN = function(empId){
 
 function loginEmp(id){
   const e = D.empleados.find(x=>x.id===id); if(!e) return;
-  SESSION = {tipo:'emp', id:e.id, nombre:e.nombre, color:e.color||'var(--accent)'};
+  SESSION = {tipo:'emp', id:e.id, nombre:e.nombre, color:e.color||'var(--accent)', rol:(e.rol||'').toLowerCase()==='gerente'?'gerente':'emp'};
   activeVend = {id:e.id, nombre:e.nombre, color:e.color||'var(--accent)'};
   try{ localStorage.setItem('h5vend', JSON.stringify(activeVend)); }catch(er){}
   try{ localStorage.setItem('h5session', JSON.stringify(SESSION)); }catch(er){}
@@ -5641,7 +5681,7 @@ function renderVendedorBar(){
   // Fecha retroactiva: SOLO admin. Antes también Claudia por ser gerente, pero
   // los dos perfiles de empleado quedaron iguales y antedatar una venta mueve
   // el corte y los reportes de un día ya cerrado.
-  const puedeRetroactivo = SESSION?.tipo==='admin';
+  const puedeRetroactivo = esAdminOGerente();
   const fw=$('op-fecha-wrap');
   if(fw) fw.style.display = puedeRetroactivo ? '' : 'none';
   // Init fecha value to today if empty
@@ -7183,7 +7223,7 @@ function ordCard(v){
     </div>
     <div class="ord-hist">${ordHistLinea(v)}</div>
     ${done
-      ?(SESSION?.tipo==='admin'?`<div class="ord-btns"><button class="btn bs bfull bsm" onclick="reabrirOrden(${v.id})">↩ Reabrir</button></div>`:'')
+      ?(esAdminOGerente()?`<div class="ord-btns"><button class="btn bs bfull bsm" onclick="reabrirOrden(${v.id})">↩ Reabrir</button></div>`:'')
       :`<div class="ord-seg">
         <button class="${v.prep.estado==='cobrada'?'on':''}" onclick="setEstadoOrden(${v.id},'cobrada')">🧾 Cobrada</button>
         <button class="${v.prep.estado==='preparando'?'on':''}" onclick="setEstadoOrden(${v.id},'preparando')">👨‍🍳 En prep.</button>
@@ -7229,7 +7269,7 @@ function renderOrdenes(){
   if(sel){const pv=sel.value;const vs=[...new Map(D.ventas.filter(v=>v.prep&&v.fecha===today()).map(v=>[v.vendedorId,v.vendedorNombre])).entries()];
     sel.innerHTML='<option value="">Todos los cajeros</option>'+vs.map(([id,n])=>`<option value="${id}">${n}</option>`).join('');sel.value=pv;}
   // Config solo admin
-  const esAdmin=SESSION?.tipo==='admin';
+  const esAdmin=esAdminOGerente();
   if($('ord-cfg-btn'))$('ord-cfg-btn').style.display=esAdmin?'':'none';
   const kb=$('ord-kds-btn');
   if(kb) kb.textContent=document.body.classList.contains('kds-mode')?'✕ Salir de Cocina':'🖥 Cocina';
@@ -8191,7 +8231,7 @@ function getNominaSemanal(mon){
     // Checkbox de cierre en caja: cC siempre fue de Claudia (2002); dC lo hereda
     // quien ocupe el otro puesto (Adilene → Juan Pablo → Luis). Sin el 2004 aquí,
     // Luis caía en el fallback y compartía el 'cC' de Claudia.
-    const checkFieldMap={2001:'dC',2002:'cC',2003:'dC',2004:'dC',2005:'dC'};
+    const checkFieldMap={2001:'dC',2002:'cC',2003:'dC',2004:'dC',2005:'dC'}; // Vale (2006) es tipo fijo: no usa checkbox
     const checkField = checkFieldMap[e.id] || (idx===0?'dC':'cC');
     let cierres=0;
     let cierreLabel='';
@@ -9124,7 +9164,7 @@ function renderInv(){
   renderInvFiltroRes();
 
   // Mostrar/ocultar tabs según permisos
-  const isAdmin=SESSION?.tipo==='admin';
+  const isAdmin=esAdminOGerente();
   if($('btn-hoja-compras'))$('btn-hoja-compras').style.display=isAdmin?'':'none';
   if($('inv-tab-admin'))$('inv-tab-admin').style.display=isAdmin?'':'none';
   if($('inv-tab-dashboard'))$('inv-tab-dashboard').style.display=isAdmin?'':'none';
@@ -9857,8 +9897,8 @@ window.checkarSalida=async(empId)=>{
 function renderReloj(){
   populateRelojSemanas();
   const td=today();
-  const isAdmin=SESSION&&SESSION.tipo==='admin';
-  const isEmp=SESSION&&SESSION.tipo==='emp';
+  const isAdmin=esAdminOGerente();
+  const isEmp=SESSION&&SESSION.tipo==='emp'&&!esGerente();
   if($('btn-reg-asist'))$('btn-reg-asist').style.display=isAdmin?'':'none';
 
   // Tarjetas de empleadas
