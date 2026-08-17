@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.57'; // Jornada neta: descuenta 1h de comida libre en turnos corridos >6h
+const CACHE_NAME = 'el-huerto-v14.58'; // Equipo: baja Luis, alta Erandy · nueva contraseña de admin
 const ASSETS = [
   '/',
   '/index.html',

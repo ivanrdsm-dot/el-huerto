@@ -2542,6 +2542,7 @@ async function completeInit(){
   await migEmpleadosAgo2026();
   await migQuitaLuisDuplicado();
   await migAjustaHorasLuis();
+  await migEmpleadosAgo2026_v2();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -2807,6 +2808,35 @@ async function migAjustaHorasLuis(){
   await markMig(migKey);
   logAudit('checkin_ajuste',{empleado:'Luis (2004)',dias,horario:'07:00–19:00',motivo:'Corrección de Iván: horario real desde el inicio'});
   if(dias.length) toast(`✓ Horas de Luis corregidas a 07:00–19:00 (${dias.length} día(s))`,4500);
+}
+// Ago-2026: sale Luis (2004), entra Erandy (2005) con el mismo puesto y
+// sueldo ($9,600/mes = $2,400/sem). Mismo patrón de siempre: NO se
+// renombra ni se borra el doc de Luis — sus checadas y ventas son
+// registros que la LFT obliga a conservar (Arts. 784-VII y 804-III) y
+// forman parte del historial contable; se le pone activo:false y con eso
+// desaparece de TODA la operación (entrada, reloj, nómina, caja, POS)
+// porque la UI se arma con empsActivos(). Red de seguridad: solo Claudia
+// (2002) y Erandy (2005) pueden quedar activas; cualquier otro perfil
+// (duplicados a mano, etc.) se da de baja también.
+async function migEmpleadosAgo2026_v2(){
+  const migKey='h5emps_ago26_v2';
+  if(await migDone(migKey)) return;
+  const era=D.empleados.find(e=>e.id===2005);
+  if(!era){
+    await fsSet('empleados',{id:2005,nombre:'Erandy',rol:'Empleada',base:9600,bonoCierre:0,cierresFijos:0,tipo:'variable',color:'#e85aa0',activo:true,alta:today()});
+  }else if(era.activo===false||era.nombre!=='Erandy'){
+    await fsSet('empleados',{...era,nombre:'Erandy',activo:true});
+  }
+  const bajas=[];
+  for(const e of D.empleados){
+    if(e.activo!==false&&![2002,2005].includes(e.id)){
+      await fsSet('empleados',{...e,activo:false,baja:today()}); bajas.push(e.nombre);
+    }
+  }
+  await markMig(migKey);
+  logAudit('equipo_actualizado',{alta:'Erandy (2005) — \$2,400/sem',bajas,contrasenas:'admin y Erandy actualizadas'});
+  toast(`✓ Equipo: alta Erandy${bajas.length?' · baja '+bajas.join(', '):''}`,4500);
+  try{renderLock();}catch(e){}
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
@@ -5189,12 +5219,12 @@ function playSaleSound(){
 // ─── AUTH ───
 // A0-SEGURIDAD: PINs almacenados como hash SHA-256 (ya no en texto plano).
 // Los PINs NO cambiaron para las usuarias — solo su almacenamiento.
-const ADMIN_PASS_HASH = 'bfb2ca8244bbe280b98df043a537394ac05e690f1fc8463ec7601b804d854960';
+const ADMIN_PASS_HASH = '939fbf1ca6dc3c0b4a6ce82cf89ef5ac0c06e82272077a330207ef6b361cc432'; // cambiada ago-2026
 // Solo empleados ACTIVOS: la pantalla de bloqueo se arma con empsActivos(),
 // así que a los dados de baja se les quita el hash (no hay puerta que forzar).
 const EMP_PASS_HASH = {
   2002:'e3e9199ebfeb5d94cc27a769550728027943cff9c700b13db139059d07eba484', // Claudia
-  2004:'fda1b3b67f1a6681ff07d837893786a8467bcca89f7500c757aafab08325b857'  // Luis
+  2005:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92'  // Erandy
 };
 // Empleados vigentes (los dados de baja conservan historial pero no aparecen en UI operativa)
 const empsActivos=()=>D.empleados.filter(e=>e.activo!==false);
@@ -7990,7 +8020,7 @@ window.confirmarApertura=async()=>{
 function checkApertura(){
   const td=today();
   const fondoHoy=D.retiros.find(r=>r.fecha===td&&r.tipo==='fondo');
-  // Quien abra el turno (Claudia, Luis o admin) registra el efectivo
+  // Quien abra el turno (Claudia, Erandy o admin) registra el efectivo
   // inicial UNA sola vez al día — con eso el corte de la noche cuadra.
   if(!fondoHoy && SESSION){
     $('apertura-modal').style.display='flex';
@@ -8161,7 +8191,7 @@ function getNominaSemanal(mon){
     // Checkbox de cierre en caja: cC siempre fue de Claudia (2002); dC lo hereda
     // quien ocupe el otro puesto (Adilene → Juan Pablo → Luis). Sin el 2004 aquí,
     // Luis caía en el fallback y compartía el 'cC' de Claudia.
-    const checkFieldMap={2001:'dC',2002:'cC',2003:'dC',2004:'dC'};
+    const checkFieldMap={2001:'dC',2002:'cC',2003:'dC',2004:'dC',2005:'dC'};
     const checkField = checkFieldMap[e.id] || (idx===0?'dC':'cC');
     let cierres=0;
     let cierreLabel='';
