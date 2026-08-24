@@ -2548,6 +2548,7 @@ async function completeInit(){
   await migAjustaHorasLuis();
   await migEmpleadosAgo2026_v2();
   await migAltaValeGerente();
+  await migCompraCostco23Ago2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -2859,6 +2860,60 @@ async function migAltaValeGerente(){
   logAudit('equipo_actualizado',{alta:'Vale (2006) — GERENTE',accesos:GERENTE_PAGES.join(', '),soloLectura:GERENTE_READONLY.join(', ')});
   toast('✓ Alta de Vale como gerente',4000);
   try{renderLock();}catch(e){}
+}
+// ══ COMPRA COSTCO 23-ago-2026 (CFDI ARG-5854506, \$4,503.90 en EFECTIVO) ══
+// 15 partidas. Los precios salen de la BASE del CFDI (ya con descuento),
+// no del valor de lista, para que el food cost sea el realmente pagado.
+// Verificado: las 15 bases suman exacto \$4,503.90.
+// Cambio importante: la FRESA pasa de \$100/domo (proveedor del mercado) a
+// \$40.26/domo equivalente — Iván ya la compra en Costco (2.72 kg = 5.44
+// domos de 500 g), así que ese es su costo marginal real.
+async function migCompraCostco23Ago2026(){
+  const migKey='h5costco_23ago26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const hit=D.inventario.find(i=>normInvNombre(i.nombre)===nn||normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(hit) return hit;
+    }
+    return null;
+  };
+  const omitidos=[];
+  const addC=async(cands,qty,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qty,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;inv.precio=Math.round(precioUnit*(qty/q)*10000)/10000;}
+      else{omitidos.push(`${inv.nombre} (comprado en ${unit}, inventario en ${inv.unit})`);return;}
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+  await addC(['Leche de almendra','Leche de almendras'],5.676,'L',26.2509,'interna_ivan');   // 6×946ml \$149
+  await addC(['Crutones'],907,'g',0.1643,'abarrotes');                                       // 907g \$149
+  await addC(['Salami Genoa','Genoa'],6,'pz',31.50,'lacteos_proteinas');                      // 6×85g \$189
+  await addC(['Tiras de pollo','Pollo'],906,'g',0.2417,'lacteos_proteinas');                  // 2×453g \$219
+  await addC(['Fresa'],5.44,'domo',40.2574,'frutas_verduras');                                // 2.72kg \$219
+  await addC(['Aceitunas negras','Aceitunas'],3000,'g',0.0597,'frutas_verduras');             // 3kg \$179
+  await addC(['Lechuga','Ensalada italiana'],1816,'g',0.0539,'frutas_verduras');              // 2×908g \$97.80
+  await addC(['Espinaca'],454,'g',0.1958,'frutas_verduras');                                  // 454g \$88.90
+  await addC(['Leche deslactosada'],36,'L',22.3333,'interna_ivan');                           // 3×12L \$804
+  await addC(['Susalias','Susalias horneadas'],20,'pz',14.95,'abarrotes');                    // 20×50g \$299
+  await addC(['Jamón serrano'],2,'paq',649.00,'lacteos_proteinas');                           // 2×1kg \$1,298
+  await addC(['Chai'],700,'g',0.3646,'abarrotes');                                            // 700g \$255.20
+  await addC(['Queso parmesano'],908,'g',0.2302,'lacteos_proteinas');                         // 908g \$209 — NUEVO
+  await addC(['Blueberry','Moras azules'],1360,'g',0.1316,'frutas_verduras');                 // 1.36kg \$179
+  await addC(['Crema de almendras'],1,'pz',169.00,'lacteos_proteinas');                        // 765g \$169
+
+  const g={fecha:'2026-08-23',cat:'costco',prov:'Costco',monto:4503.90,ticket:'ARG-5854506',metodo:'efectivo',
+    notas:'Leche almendra 5.68L, crutones 907g, salami Genoa 510g, tiras de pollo 906g, fresas 2.72kg, aceitunas negras 3kg, ensalada italiana 2×908g, espinaca 454g, leche deslactosada 36L, totopos 20pz, jamón serrano 2kg, chai 700g, queso parmesano 908g, moras azules 1.36kg, crema de almendras 765g'};
+  let nuevo=false;
+  if(!D.gastos.find(x=>x.ticket===g.ticket)){await fsSet('gastos',{id:++nid,tipoEstrategico:'general',...g});nuevo=true;}
+  await markMig(migKey);
+  logAudit('compras_registradas',{lote:'Costco 23-ago-2026',ticket:'ARG-5854506',monto:4503.90,partidas:15,sinCostear:omitidos,
+    nota:'Fresa recosteada a \$40.26/domo (Costco) desde \$100/domo (mercado)'});
+  if(nuevo) toast('✓ Costco 23-ago cargado: \$4,503.90 · 15 partidas',5000);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
@@ -4360,6 +4415,7 @@ const ALIAS_INV = {
   'jicama':'Jícama',
   'pepino':'Pepino',
   'aceitunas':'Aceitunas negras','aceitunasnegras':'Aceitunas negras','aceitunanegra':'Aceitunas negras','aceitunanegrarodajas':'Aceitunas negras',
+  'parmesano':'Queso parmesano','quesoparmesanorallado':'Queso parmesano','parmesanorallado':'Queso parmesano',
   'quesophiladelphia':'Queso Philadelphia','quesocrema':'Queso Philadelphia','quesocremaphiladelphia':'Queso Philadelphia',
   'quesomozzarella':'Queso mozzarella','mozzarella':'Queso mozzarella','quesomozzrellaralla':'Queso mozzarella','quesocubmozzarellasaucito':'Queso mozzarella','mozzarellarallado':'Queso mozzarella',
   'yogurt':'Yogurth natural','yogurthnatural':'Yogurth natural','yogurtnatural':'Yogurth natural',
