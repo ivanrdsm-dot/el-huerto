@@ -2780,7 +2780,6 @@ async function completeInit(){
   await migAjustaHorasLuis();
   await migEmpleadosAgo2026_v2();
   await migAltaValeGerente();
-  await migBajaValeSep2026();
   await migCompraCostco23Ago2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -2814,6 +2813,9 @@ async function completeInit(){
   await autoSeedRecetas();
   await migRecetasExtras_v1();
   await migSeedDescuentosSep2026();
+  // Va al FINAL: reescribe ventas/asistencias; ninguna migración posterior
+  // debe volver a escribir esos documentos con el nombre viejo.
+  await migBajaValeSep2026();
   renderLock();
   if(!SESSION){
     $('lock-screen').style.display='flex';
@@ -3104,12 +3106,33 @@ async function migBajaValeSep2026(){
   if(await migDone(migKey)) return;
   // Se escribe la baja aunque la lista local aún no traiga a Vale (p. ej.
   // justo después de correr el alta): el registro queda inactivo sí o sí.
-  const v=D.empleados.find(e=>e.id===2006)||{id:2006,nombre:'Vale',base:0,bonoCierre:0,cierresFijos:0,tipo:'fijo',color:'#2fb8a6'};
+  const ALIAS='Ex-colaborador';
+  const v=D.empleados.find(e=>e.id===2006)||{id:2006,base:0,bonoCierre:0,cierresFijos:0,tipo:'fijo',color:'#2fb8a6'};
   const {pin,...sinPin}=v;
-  await fsSet('empleados',{...sinPin,rol:'Empleada',activo:false,baja:today()});
+  // El nombre se sustituye por un alias: no debe verse en ninguna pantalla
+  await fsSet('empleados',{...sinPin,nombre:ALIAS,rol:'Empleada',activo:false,baja:today()});
+  // Registros históricos que guardaron su nombre como texto (ventas,
+  // asistencias, cortes, retiros, capturas): se reescriben con el alias.
+  // Solo se tocan los campos de "quién lo hizo", nunca notas ni productos.
+  const esNombre=x=>typeof x==='string'&&/\bVale\b/.test(x);
+  const limpia=x=>ocultarNombresBaja(x);
+  let n=0;
+  for(const col of ['ventas','checkins','cortes','retiros','kpiCaptura','extras','gastos','invDiario','ordenesCompra','pedidos']){
+    for(const d of (D[col]||[])){
+      let c=false; const nd={...d};
+      for(const k of ['vendedorNombre','empNombre','por','capturadoPorNombre','cerroNombre','unombre']){
+        if(esNombre(nd[k])){nd[k]=limpia(nd[k]);c=true;}
+      }
+      if(Array.isArray(nd.cerroNombres)&&nd.cerroNombres.some(esNombre)){nd.cerroNombres=nd.cerroNombres.map(limpia);c=true;}
+      if(nd.prep&&Array.isArray(nd.prep.hist)&&nd.prep.hist.some(h=>esNombre(h?.por))){
+        nd.prep={...nd.prep,hist:nd.prep.hist.map(h=>esNombre(h?.por)?{...h,por:limpia(h.por)}:h)};c=true;
+      }
+      if(c){await fsSet(col,nd);n++;}
+    }
+  }
   await markMig(migKey);
-  logAudit('equipo_actualizado',{baja:'Vale (2006) — se retiran rol de gerente, contraseña y accesos (historial conservado)'});
-  toast('✓ Baja de Vale: contraseña y accesos eliminados',4000);
+  logAudit('equipo_actualizado',{baja:`Empleado 2006 — se retiran rol de gerente, contraseña y accesos; nombre sustituido por "${ALIAS}" en ${n} registros (historial conservado)`});
+  toast('✓ Baja aplicada: contraseña, accesos y nombre retirados',4000);
   try{renderLock();}catch(e){}
 }
 // ══ COMPRA COSTCO 23-ago-2026 (CFDI ARG-5854506, \$4,503.90 en EFECTIVO) ══
@@ -5558,6 +5581,11 @@ const EMP_PASS_HASH = {
 };
 // Empleados vigentes (los dados de baja conservan historial pero no aparecen en UI operativa)
 const empsActivos=()=>D.empleados.filter(e=>e.activo!==false);
+// Personas dadas de baja cuyo nombre no debe verse en ninguna pantalla.
+// Los registros editables se reescriben en su migración de baja; la
+// bitácora es inmutable, así que ahí se enmascara al pintar.
+const NOMBRES_OCULTOS=[[/\bVale\b/g,'Ex-colaborador']];
+const ocultarNombresBaja=str=>NOMBRES_OCULTOS.reduce((t,[re,alias])=>String(t).replace(re,alias),str==null?'':str);
 async function sha256Hex(s){
   const buf=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));
   return [...new Uint8Array(buf)].map(b=>b.toString(16).padStart(2,'0')).join('');
@@ -12611,8 +12639,8 @@ function renderBitacora(){
         <span style="font-size:15px;flex-shrink:0;">${ico}</span>
         <div style="min-width:0;flex:1;">
           <span style="font-weight:700;color:${color};">${(l.accion||'').replace(/_/g,' ')}</span>
-          ${resumen?`<span style="color:var(--text2);"> — ${resumen}</span>`:''}
-          <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;">${l.fecha} ${l.hora} · ${l.unombre||'—'}</div>
+          ${resumen?`<span style="color:var(--text2);"> — ${ocultarNombresBaja(resumen)}</span>`:''}
+          <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;">${l.fecha} ${l.hora} · ${ocultarNombresBaja(l.unombre||'—')}</div>
         </div>
       </div>`;
     }).join('');
@@ -12699,8 +12727,8 @@ function renderAjustes(){
         return `<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border);font-size:11.5px;">
           <span style="font-size:15px;flex-shrink:0;">${AUDIT_ICONS[l.accion]||'📌'}</span>
           <div style="flex:1;min-width:0;">
-            <div><strong>${AUDIT_LABELS[l.accion]||l.accion}</strong> <span style="color:var(--text3);">· ${l.unombre||'—'}</span></div>
-            <div style="color:var(--text2);word-break:break-word;">${resumen}</div>
+            <div><strong>${AUDIT_LABELS[l.accion]||l.accion}</strong> <span style="color:var(--text3);">· ${ocultarNombresBaja(l.unombre||'—')}</span></div>
+            <div style="color:var(--text2);word-break:break-word;">${ocultarNombresBaja(resumen)}</div>
           </div>
           <span class="mono" style="font-size:10px;color:var(--text3);flex-shrink:0;">${l.fecha||''}<br>${l.hora||''}</span>
         </div>`;
