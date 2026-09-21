@@ -2767,7 +2767,10 @@ async function completeInit(){
   try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);
     // El rol se recalcula desde el empleado real (no se confía en lo guardado):
     // si Iván asciende o degrada a alguien, aplica en cuanto recarga.
-    if(SESSION?.tipo==='emp'){const e=D.empleados.find(x=>x.id===SESSION.id);SESSION.rol=(e?.rol||'').toLowerCase()==='gerente'?'gerente':'emp';}
+    if(SESSION?.tipo==='emp'){const e=D.empleados.find(x=>x.id===SESSION.id);SESSION.rol=(e?.rol||'').toLowerCase()==='gerente'?'gerente':'emp';
+      // Empleada dada de baja (o borrada): su sesión guardada ya no vale
+      if(!e||e.activo===false){SESSION=null;try{localStorage.removeItem('h5session');}catch(_){}}
+    }
   }}catch(e){}
   await fixUTCDates();
   await fixEmpleadosTipo();
@@ -2777,6 +2780,7 @@ async function completeInit(){
   await migAjustaHorasLuis();
   await migEmpleadosAgo2026_v2();
   await migAltaValeGerente();
+  await migBajaValeSep2026();
   await migCompraCostco23Ago2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -3089,6 +3093,23 @@ async function migAltaValeGerente(){
   await markMig(migKey);
   logAudit('equipo_actualizado',{alta:'Vale (2006) — GERENTE',accesos:GERENTE_PAGES.join(', '),soloLectura:GERENTE_READONLY.join(', ')});
   toast('✓ Alta de Vale como gerente',4000);
+  try{renderLock();}catch(e){}
+}
+// Sep-2026: BAJA de Vale (2006). Se le retira el rol de gerente, la
+// contraseña (ya no está en EMP_PASS_HASH ni queda pin legado) y el acceso.
+// El historial (ventas, asistencia, bitácora) se conserva. Corre DESPUÉS de
+// migAltaValeGerente para que esa no la reactive.
+async function migBajaValeSep2026(){
+  const migKey='h5vale_baja_sep26';
+  if(await migDone(migKey)) return;
+  // Se escribe la baja aunque la lista local aún no traiga a Vale (p. ej.
+  // justo después de correr el alta): el registro queda inactivo sí o sí.
+  const v=D.empleados.find(e=>e.id===2006)||{id:2006,nombre:'Vale',base:0,bonoCierre:0,cierresFijos:0,tipo:'fijo',color:'#2fb8a6'};
+  const {pin,...sinPin}=v;
+  await fsSet('empleados',{...sinPin,rol:'Empleada',activo:false,baja:today()});
+  await markMig(migKey);
+  logAudit('equipo_actualizado',{baja:'Vale (2006) — se retiran rol de gerente, contraseña y accesos (historial conservado)'});
+  toast('✓ Baja de Vale: contraseña y accesos eliminados',4000);
   try{renderLock();}catch(e){}
 }
 // ══ COMPRA COSTCO 23-ago-2026 (CFDI ARG-5854506, \$4,503.90 en EFECTIVO) ══
@@ -5532,8 +5553,8 @@ const ADMIN_PASS_HASH = '939fbf1ca6dc3c0b4a6ce82cf89ef5ac0c06e82272077a330207ef6
 // así que a los dados de baja se les quita el hash (no hay puerta que forzar).
 const EMP_PASS_HASH = {
   2002:'e3e9199ebfeb5d94cc27a769550728027943cff9c700b13db139059d07eba484', // Claudia
-  2005:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92', // Erandy
-  2006:'457a84b407269af6a1badb5e7e9392ad5fc91d75d2ec489e514a96f0d3486349'  // Vale (gerente)
+  2005:'8d969eef6ecad3c29a3a629280e686cf0c3f5d5a86aff3ca12020c923adc6c92'  // Erandy
+  // Vale (2006): baja sep-2026 — contraseña y accesos eliminados (migBajaValeSep2026)
 };
 // Empleados vigentes (los dados de baja conservan historial pero no aparecen en UI operativa)
 const empsActivos=()=>D.empleados.filter(e=>e.activo!==false);
@@ -5557,7 +5578,7 @@ const GERENTE_ID = 2002;
 // Lista combinada para compatibilidad
 const RESTRICTED = [...ADMIN_ONLY, 'caja', 'inventario'];
 
-// ── ROL GERENTE (ago-2026: Vale, id 2006) ──
+// ── ROL GERENTE (ago-2026: Vale, id 2006; baja sep-2026 — hoy sin gerente activo) ──
 // Nivel intermedio entre empleada y admin. Es lo que necesita quien lleva
 // la operación del día sin ser dueño: caja y cortes, inventario completo,
 // órdenes, reloj y asistencia del equipo, clientes/lealtad, compras y
@@ -5572,6 +5593,8 @@ function canAccess(page){
   if(!SESSION) return false;
   if(SESSION.tipo==='admin') return true;
   if(SESSION.tipo==='emp'){
+    const emp=D.empleados.find(x=>x.id===SESSION.id);
+    if(!emp||emp.activo===false) return false; // dada de baja: sin acceso aunque tenga sesión
     if(esGerente() && GERENTE_PAGES.includes(page)) return true;
     if(SESSION.id===GERENTE_ID && GERENTE_PERMS.includes(page)) return true;
     if(!ADMIN_ONLY.includes(page) && !GERENTE_PERMS.includes(page)) return true; // pos etc
@@ -5651,7 +5674,7 @@ window.openEmpPIN = function(empId){
 };
 
 function loginEmp(id){
-  const e = D.empleados.find(x=>x.id===id); if(!e) return;
+  const e = D.empleados.find(x=>x.id===id); if(!e||e.activo===false) return;
   SESSION = {tipo:'emp', id:e.id, nombre:e.nombre, color:e.color||'var(--accent)', rol:(e.rol||'').toLowerCase()==='gerente'?'gerente':'emp'};
   activeVend = {id:e.id, nombre:e.nombre, color:e.color||'var(--accent)'};
   try{ localStorage.setItem('h5vend', JSON.stringify(activeVend)); }catch(er){}

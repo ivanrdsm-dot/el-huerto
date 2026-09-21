@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.62'; // Diseño tipo Apple + POS: sugerencias para subir el ticket + descuentos predefinidos
+const CACHE_NAME = 'el-huerto-v14.63'; // Baja de Vale (contraseña y accesos) + diseño tipo Apple + sugerencias y descuentos en POS
 const ASSETS = [
   '/',
   '/index.html',
