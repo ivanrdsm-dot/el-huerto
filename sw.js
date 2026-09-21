@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.60'; // Costco 23-ago: 15 partidas + fresa recosteada a precio Costco
+const CACHE_NAME = 'el-huerto-v14.61'; // POS: sugerencias para subir el ticket + descuentos predefinidos (maestros, limpieza…)
 const ASSETS = [
   '/',
   '/index.html',

@@ -291,7 +291,7 @@ select option{background:var(--surface2);}
 .op-head{display:flex;align-items:center;justify-content:space-between;cursor:pointer;}
 .op-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:700;display:flex;align-items:center;gap:8px;}
 .op-cnt{background:var(--accent);color:#ffffff;border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;}
-#op-items{overflow-y:auto;max-height:36vh;overscroll-behavior:contain;}
+#op-items{overflow-y:auto;max-height:36vh;overscroll-behavior:contain;flex-shrink:0;}
 .oi{display:flex;align-items:center;gap:6px;padding:6px 0;border-bottom:1px solid var(--border);}
 .oi:last-child{border-bottom:none;}
 .oi-name{font-size:13.5px;font-weight:700;line-height:1.25;}
@@ -417,6 +417,38 @@ body.modo-tarjeta nav,body.modo-tarjeta .mnav,body.modo-tarjeta #lock-screen,bod
 .prep-chip{padding:11px 14px;border-radius:20px;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s ease;min-height:44px;}
 .prep-chip.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));color:var(--accent);transform:scale(1.05);}
 .prep-chip:active{transform:scale(.93);}
+/* Sugerencias para subir el ticket (panel de orden) */
+.sug-box{margin:6px 0 4px;background:color-mix(in srgb, var(--gold) 9%, var(--surface));border:1.5px dashed var(--gold);border-radius:var(--rsm);padding:7px 8px;}
+.sug-title{font-size:10.5px;font-weight:800;color:var(--goldd);letter-spacing:.3px;margin-bottom:5px;display:flex;justify-content:space-between;align-items:center;}
+.sug-title small{font-weight:600;color:var(--text3);letter-spacing:0;}
+.sug-chips{display:flex;flex-direction:column;gap:5px;}
+.sug-chip{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:var(--surface);border:1.5px solid var(--border);border-radius:10px;padding:7px 9px;cursor:pointer;transition:all .15s ease;color:var(--text);min-height:44px;}
+.sug-chip:hover{border-color:var(--accent);}
+.sug-chip:active{transform:scale(.97);}
+.sug-chip .sug-em{font-size:18px;flex-shrink:0;}
+.sug-chip .sug-txt{flex:1;min-width:0;}
+.sug-chip .sug-n{font-size:12.5px;font-weight:800;line-height:1.2;}
+.sug-chip .sug-f{font-size:10.5px;color:var(--text2);line-height:1.25;margin-top:1px;}
+.sug-chip .sug-p{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;color:var(--accent);white-space:nowrap;flex-shrink:0;}
+.sug-card{display:flex;align-items:center;gap:12px;background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--rsm);padding:12px;margin-bottom:8px;}
+.sug-card .sug-em{font-size:30px;flex-shrink:0;}
+.sug-card .sug-n{font-size:15px;font-weight:800;}
+.sug-card .sug-f{font-size:13px;color:var(--text);margin-top:3px;line-height:1.35;background:var(--surface);border-left:3px solid var(--gold);padding:5px 8px;border-radius:6px;}
+.sug-card .sug-tag{display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.4px;color:var(--goldd);text-transform:uppercase;margin-bottom:2px;}
+.sug-card .sug-add{flex-shrink:0;min-width:96px;font-size:13px;padding:10px 12px;}
+/* Chips de descuento predefinido */
+.desc-chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px;}
+.desc-chip{padding:4px 9px;border-radius:14px;border:1.5px solid var(--border);background:var(--surface);font-size:11px;font-weight:700;cursor:pointer;color:var(--text2);min-height:28px;transition:all .15s ease;}
+.desc-chip.on{border-color:var(--red);background:color-mix(in srgb, var(--red) 12%, var(--surface));color:var(--red);}
+.desc-chip:active{transform:scale(.95);}
+/* Móvil: sugerencias compactas en una fila deslizable (las frases completas van en el modal de cobro) */
+@media(max-width:960px){
+  .sug-chips{flex-direction:row;overflow-x:auto;scrollbar-width:none;padding-bottom:2px;}
+  .sug-chips::-webkit-scrollbar{display:none;}
+  .sug-chip{flex:0 0 auto;width:auto;max-width:230px;min-height:40px;padding:6px 9px;}
+  .sug-chip .sug-f{display:none;}
+  .sug-chip .sug-n{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:150px;}
+}
 .oi-prep{font-size:10.5px;color:var(--accent);margin-top:1px;line-height:1.3;}
 /* Strip de órdenes vivas dentro del POS */
 .pos-ord-strip{display:flex;gap:7px;overflow-x:auto;padding:2px 0 5px;margin-top:8px;scrollbar-width:none;}
@@ -1180,15 +1212,24 @@ nav{padding-top:env(safe-area-inset-top);}
         <span id="op-arr" style="color:var(--text3);font-size:12px;">▲</span>
       </div>
       <div id="op-items"></div>
+      <!-- Sugerencias del sistema para subir el ticket (se calculan con lo que lleva el cliente) -->
+      <div id="op-sug"></div>
       <!-- Cliente de lealtad: escanear QR, ver sellos y canjear premio -->
       <div id="op-lealtad"></div>
       <div class="ototal-bar">
         <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:4px;"><span>Subtotal</span><span id="op-sub" class="mono">$0.00</span></div>
-        <div style="display:flex;align-items:center;gap:5px;margin-bottom:5px;padding-bottom:5px;border-bottom:1px dashed var(--border);">
-          <span style="font-size:11px;color:var(--text2);flex:1;">🏷 Descuento</span>
-          <select id="op-desc-tipo" onchange="calcDesc()" style="width:auto;padding:2px 5px;font-size:11px;background:var(--surface3);border:1px solid var(--border);color:var(--text);border-radius:4px;"><option value="pct">%</option><option value="mxn">$MXN</option></select>
-          <input id="op-desc-val" type="number" min="0" placeholder="0" oninput="calcDesc()" style="width:52px;padding:2px 6px;font-size:11.5px;text-align:right;">
-          <span class="mono" id="op-desc-show" style="font-size:11px;color:var(--red);min-width:44px;text-align:right;">−$0.00</span>
+        <!-- Descuentos: chips predefinidos (maestros, limpieza…) + "Otro" para % o $ libre -->
+        <div style="margin-bottom:5px;padding-bottom:5px;border-bottom:1px dashed var(--border);">
+          <div style="display:flex;align-items:center;gap:5px;">
+            <span style="font-size:11px;color:var(--text2);flex:1;">🏷 Descuento</span>
+            <span class="mono" id="op-desc-show" style="font-size:11px;color:var(--red);min-width:44px;text-align:right;">−$0.00</span>
+          </div>
+          <div id="op-desc-chips" class="desc-chips"></div>
+          <div id="op-desc-manual" style="display:none;align-items:center;gap:5px;margin-top:4px;">
+            <span style="font-size:10.5px;color:var(--text3);flex:1;">Otro descuento</span>
+            <select id="op-desc-tipo" onchange="calcDesc()" style="width:auto;padding:2px 5px;font-size:11px;background:var(--surface3);border:1px solid var(--border);color:var(--text);border-radius:4px;"><option value="pct">%</option><option value="mxn">$MXN</option></select>
+            <input id="op-desc-val" type="number" min="0" placeholder="0" oninput="calcDesc()" style="width:52px;padding:2px 6px;font-size:11.5px;text-align:right;">
+          </div>
         </div>
         <div class="ototal"><span>Total</span><span id="op-tot">$0.00</span></div>
       </div>
@@ -2050,6 +2091,21 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
   </div>
 
+  <!-- Descuentos predefinidos (chips en el POS) -->
+  <div class="card" style="margin-bottom:10px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">🏷 Descuentos predefinidos</span>
+      <span style="font-size:10.5px;color:var(--text3);">Salen como botones en Ventas · quedan en el ticket y la bitácora</span>
+    </div>
+    <div style="display:grid;grid-template-columns:56px 1fr 90px 90px auto;gap:6px;align-items:end;margin-bottom:8px;">
+      <div class="fg" style="margin:0;"><label>Emoji</label><input type="text" id="aj-desc-em" placeholder="👩‍🏫" maxlength="4"></div>
+      <div class="fg" style="margin:0;"><label>Nombre</label><input type="text" id="aj-desc-n" placeholder="Ej: Maestros, Personal de limpieza"></div>
+      <div class="fg" style="margin:0;"><label>Tipo</label><select id="aj-desc-tipo"><option value="pct">%</option><option value="mxn">$ MXN</option></select></div>
+      <div class="fg" style="margin:0;"><label>Valor</label><input type="number" id="aj-desc-val" placeholder="10" min="0" step="0.5"></div>
+      <button class="btn bp bsm" onclick="addDescuentoPreset()">+ Agregar</button>
+    </div>
+    <div id="aj-desc-list"></div>
+  </div>
+
   <!-- Catálogo de Productos -->
   <div class="card" style="margin-bottom:10px;">
     <div class="sh"><span class="ct" style="margin-bottom:0;">📦 Catálogo de Productos</span>
@@ -2325,6 +2381,22 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
 </div>
 
+<!-- MODAL SUGERENCIAS AL COBRAR: el sistema propone qué ofrecer antes de cerrar la venta -->
+<div class="modal-bg" id="sug-modal" style="display:none;" onclick="if(event.target===this)sugContinuar()">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <span class="modal-title">💡 Antes de cobrar, ofrécele al cliente</span>
+      <button class="btn bs bxs" onclick="sugContinuar()">✕</button>
+    </div>
+    <p style="font-size:12px;color:var(--text2);margin:-6px 0 10px;">Sugerencias calculadas con lo que lleva. Léele la frase al cliente y, si acepta, toca <b>Agregar</b>.</p>
+    <div id="sug-modal-list"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-top:12px;gap:8px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--text3);">Total actual: <b class="mono" id="sug-modal-total">$0.00</b></span>
+      <button class="btn bp" id="sug-modal-btn" onclick="sugContinuar()" style="font-size:15px;padding:12px 18px;">Continuar al cobro ▸</button>
+    </div>
+  </div>
+</div>
+
 <!-- MODAL VENTA DETALLE -->
 <div class="modal-bg" id="venta-modal" style="display:none;" onclick="closeModal('venta-modal',event)">
   <div class="modal"><div class="modal-head"><span class="modal-title">Detalle de Venta</span><button class="btn bs bxs" onclick="$('venta-modal').style.display='none'">✕</button></div><div id="vm-content"></div></div>
@@ -2423,7 +2495,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],descuentos:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
@@ -2580,6 +2652,7 @@ async function completeInit(){
   await migrarRecategorizacionV1();
   await autoSeedRecetas();
   await migRecetasExtras_v1();
+  await migSeedDescuentosSep2026();
   renderLock();
   if(!SESSION){
     $('lock-screen').style.display='flex';
@@ -2595,7 +2668,7 @@ async function completeInit(){
 }
 
 function listenAll(){
-  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad'];
+  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','descuentos'];
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
   const loaded=new Set();
 
@@ -5987,7 +6060,7 @@ function actualizarPrepUI(){
   const listo=paso.libre||sel.size===paso.n;
   ok.disabled=!listo; ok.style.opacity=listo?'1':'.4';
 }
-window.cancelarPrep=()=>{prepPendiente=null;$('prep-modal').style.display='none';};
+window.cancelarPrep=()=>{prepPendiente=null;_sugPendiente=null;$('prep-modal').style.display='none';};
 window.confirmarPrep=()=>{
   const pp=prepPendiente; if(!pp) return;
   const paso=pp.pasos[pp.idx];
@@ -6017,6 +6090,7 @@ function pushItemOrden(pid,prep){
   const ex=order.find(o=>o.id===pid&&((o.prep||[]).join('|')===key));
   if(ex) ex.qty++;
   else order.push({id:pid,nombre:p.nombre,precio:p.precio,qty:1,nota:'',...(prep?{prep}:{})});
+  if(_sugPendiente===pid){ const l=ex||order[order.length-1]; l.sug=(l.sug||0)+1; _sugPendiente=null; }
   if(!orderStartedAt) orderStartedAt=Date.now();
   renderOrder();
   try{navigator.vibrate&&navigator.vibrate(20);}catch(_){}
@@ -6690,13 +6764,231 @@ if(_tarjetaCode){
   },1500);
 }
 
+
+// ═══════════════════════════════════════════════════════════════
+// SUGERENCIAS PARA SUBIR EL TICKET (sep-2026)
+// El sistema analiza lo que lleva el cliente y propone qué ofrecer:
+// un extra/topping, algo dulce o salado que complemente, una bebida,
+// pasar a combo, o lo que otros clientes suelen llevar junto. Siempre
+// recomienda algo. Se muestra en el panel de la orden y, una vez por
+// orden, en un modal antes de cobrar (con la frase para decírsela al
+// cliente). No depende de que se le ocurra a la cajera.
+// ═══════════════════════════════════════════════════════════════
+const SUG_PERFIL={acai:'dulce',oats:'dulce',smoothie:'dulce',coctel:'dulce',panini:'salado',papas:'salado',ensalada:'salado',pan:'salado',cafe:'bebida',te:'bebida'};
+const SUG_BEBIDA=new Set(['smoothie','cafe','te']);
+// Qué trae cada combo (para no ofrecer lo que ya incluye)
+const SUG_COMBO={1016:{dulce:1,bebida:1,extras:['oats','smoothie']},1017:{dulce:1,bebida:1,extras:['smoothie']},1018:{dulce:1,bebida:1,extras:['acai','smoothie']},
+  1048:{salado:1,bebida:1,extras:['panini','smoothie']},1049:{salado:1,bebida:1,extras:['panini','cafe']},1050:{salado:1,bebida:1,extras:['pan','cafe']}};
+// Extras que aplican a cada categoría: [idProducto, frase para el cliente]
+const SUG_EXTRAS={
+  acai:[[1051,'¿Le agregamos un topping extra a su bowl por solo {p}?'],[1055,'¿Le ponemos cacahuates a su bowl por {p}?']],
+  oats:[[1051,'¿Le agregamos un topping extra a sus oats por solo {p}?'],[1055,'¿Le ponemos cacahuates a sus oats por {p}?']],
+  smoothie:[[1052,'¿Le agregamos proteína extra a su smoothie por solo {p}?']],
+  panini:[[1053,'¿Le agregamos un topping extra a su panini (jamón, aguacate, queso…) por {p}?']],
+  pan:[[1054,'¿Le ponemos aguacate a su pan por solo {p}?']],
+  cafe:[[1056,'¿Le agregamos un shot de espresso extra por {p}?']],
+};
+// Pasar a combo: [idsBase, idCombo, qué incluye de más]
+const SUG_COMBOS=[
+  {base:[1019,1020,1021,1022,1023],combo:1049,falta:'bebida',incluye:'capuchino chico'},
+  {base:[1044,1045,1046,1047],combo:1050,falta:'bebida',incluye:'capuchino chico'},
+  {base:[1008,1009,1010,1011,1012,1063,1064,1065],combo:1048,falta:'salado',incluye:'panini a elegir'},
+  {base:[1005],combo:1016,falta:'bebida',incluye:'smoothie a elegir'},
+  {base:[1002],combo:1018,falta:'bebida',incluye:'smoothie a elegir'},
+  {base:[1013],combo:1017,falta:'bebida',incluye:'smoothie a elegir'},
+];
+let sugActuales=[];      // sugerencias vigentes de la orden
+let sugRevisadas=false;  // ya se mostró el modal antes de cobrar (una vez por orden)
+let sugAceptadas=[];     // lo que sí se agregó por sugerencia (va a la venta)
+let _sugPendiente=null;  // pid que se está agregando desde una sugerencia
+const sugProd=id=>D.productos.find(p=>p.id===id&&p.activo);
+// Productos que otros clientes llevan junto con los de la orden (últimos 90 días)
+function sugCoocurrencia(ids,excluir){
+  const lim=new Date(); lim.setDate(lim.getDate()-90); const limS=localDate(lim);
+  const cnt={}; const set=new Set(ids);
+  (D.ventas||[]).forEach(v=>{
+    if(v.anulada||!v.items||v.fecha<limS) return;
+    const vs=new Set(v.items.map(i=>i.id));
+    if(![...set].some(id=>vs.has(id))) return;
+    vs.forEach(id=>{ if(!set.has(id)&&!excluir.has(id)) cnt[id]=(cnt[id]||0)+1; });
+  });
+  return Object.entries(cnt).map(([id,n])=>[Number(id),n]).filter(([id,n])=>n>=3&&sugProd(id)).sort((a,b)=>b[1]-a[1]);
+}
+function calcularSugerencias(){
+  if(!order.length) return [];
+  const enOrden=new Set(order.map(o=>o.id));
+  const perfil={dulce:0,salado:0,bebida:0}; const cats=new Set();
+  order.forEach(o=>{
+    const p=D.productos.find(x=>x.id===o.id); if(!p) return;
+    const c=SUG_COMBO[o.id];
+    if(c){ if(c.dulce)perfil.dulce++; if(c.salado)perfil.salado++; if(c.bebida)perfil.bebida++; c.extras.forEach(x=>cats.add(x)); return; }
+    cats.add(p.cat);
+    if(SUG_PERFIL[p.cat]==='dulce') perfil.dulce++;
+    if(SUG_PERFIL[p.cat]==='salado') perfil.salado++;
+    if(SUG_BEBIDA.has(p.cat)) perfil.bebida++;
+  });
+  const ventasCnt=ventasRecientesPorProducto(30);
+  const activos=D.productos.filter(p=>p.activo&&!enOrden.has(p.id)&&p.cat!=='combo');
+  const masVendido=f=>[...activos].filter(f).sort((a,b)=>(ventasCnt[b.id]||0)-(ventasCnt[a.id]||0)||a.precio-b.precio)[0];
+  const out=[]; const usados=new Set();
+  const add=(tipo,pid,frase,extra={})=>{
+    const p=sugProd(pid); if(!p||enOrden.has(pid)||usados.has(pid)) return;
+    usados.add(pid);
+    out.push({tipo,pid,nombre:p.nombre,precio:p.precio,emoji:catEmoji[p.cat]||'🌿',frase:frase.replace('{p}',fmt(p.precio)).replace('{n}',p.nombre),...extra});
+  };
+  // 1) Topping / extra para lo que ya lleva (lo más fácil de aceptar)
+  cats.forEach(c=>(SUG_EXTRAS[c]||[]).forEach(([pid,f])=>add('extra',pid,f)));
+  // 2) Complemento dulce ↔ salado
+  if(perfil.salado&&!perfil.dulce){const p=masVendido(x=>SUG_PERFIL[x.cat]==='dulce'&&x.cat!=='smoothie'); if(p) add('dulce',p.id,'¿Algo dulce para acompañar? Le recomiendo {n} por {p}.');}
+  if(perfil.dulce&&!perfil.salado){
+    const papas=sugProd(1062);
+    if(papas) add('salado',1062,'¿Le agregamos unas papas Susalias para acompañar? Son solo {p}.');
+    const p=masVendido(x=>SUG_PERFIL[x.cat]==='salado'&&x.id!==1062); if(p) add('salado',p.id,'¿Algo salado para acompañar? Le recomiendo {n} por {p}.');
+  }
+  // 2b) Solo bebida: ofrecer algo de comer (dulce y salado)
+  if(perfil.bebida&&!perfil.dulce&&!perfil.salado){
+    const d=masVendido(x=>SUG_PERFIL[x.cat]==='dulce'&&x.cat!=='smoothie'); if(d) add('dulce',d.id,'¿Algo para acompañar su bebida? Le recomiendo {n} por {p}.');
+    const sl=masVendido(x=>SUG_PERFIL[x.cat]==='salado'&&x.id!==1062); if(sl) add('salado',sl.id,'¿Se le antoja algo salado? {n} por {p}.');
+  }
+  // 3) Bebida si no lleva ninguna
+  if(!perfil.bebida){
+    const p=masVendido(x=>SUG_BEBIDA.has(x.cat)); if(p) add('bebida',p.id,'¿Qué va a tomar? Le recomiendo {n} por {p}.');
+  }
+  // 4) Pasar a combo (le sale más barato al cliente y sube el ticket)
+  SUG_COMBOS.forEach(cb=>{
+    const linea=order.find(o=>cb.base.includes(o.id)); if(!linea) return;
+    if(cb.falta==='bebida'&&perfil.bebida) return;
+    if(cb.falta==='salado'&&perfil.salado) return;
+    const combo=sugProd(cb.combo); if(!combo) return;
+    const dif=combo.precio-linea.precio; if(dif<=0) return;
+    add('combo',cb.combo,`Por solo ${fmt(dif)} más se lo llevamos en ${combo.nombre}, que incluye ${cb.incluye}.`,{baseId:linea.id,dif});
+  });
+  // 5) Lo que otros clientes llevan junto con esto
+  sugCoocurrencia([...enOrden],usados).slice(0,2).forEach(([pid])=>{
+    const base=order[0]?.nombre||'esto';
+    add('juntos',pid,`Los clientes que llevan ${base} suelen llevar {n}. ¿Le agregamos uno por {p}?`);
+  });
+  // 6) Siempre recomendar algo: lo más pedido que no lleve
+  if(out.length<2){
+    const p=masVendido(x=>x.cat!=='otro'); if(p) add('top',p.id,'¿Le antoja {n}? Es de lo más pedido, por {p}.');
+    const papas=sugProd(1062); if(papas) add('top',1062,'¿Le agregamos unas papas Susalias? Son solo {p}.');
+  }
+  const orden={extra:0,combo:1,dulce:2,salado:2,bebida:3,juntos:4,top:5};
+  return out.sort((a,b)=>orden[a.tipo]-orden[b.tipo]);
+}
+const SUG_TAG={extra:'Topping / extra',dulce:'Algo dulce',salado:'Algo salado',bebida:'Bebida',combo:'Pasar a combo',juntos:'Lo llevan junto',top:'Más pedido'};
+function renderOpSugerencias(){
+  const el=$('op-sug'); if(!el) return;
+  if(!order.length){el.innerHTML='';sugActuales=[];return;}
+  sugActuales=calcularSugerencias();
+  if(!sugActuales.length){el.innerHTML='';return;}
+  el.innerHTML=`<div class="sug-box"><div class="sug-title"><span>💡 OFRÉCELE AL CLIENTE</span><small>toca para agregar</small></div>
+    <div class="sug-chips">${sugActuales.slice(0,3).map((g,i)=>`<button class="sug-chip" onclick="sugAceptar(${i})">
+      <span class="sug-em">${g.emoji}</span>
+      <span class="sug-txt"><div class="sug-n">${g.tipo==='combo'?'Cambiar a ':'+ '}${g.nombre}</div><div class="sug-f">${g.frase}</div></span>
+      <span class="sug-p">${g.tipo==='combo'?'+'+fmt(g.dif):'+'+fmt(g.precio)}</span></button>`).join('')}</div></div>`;
+}
+window.sugAceptar=(i,desdeModal=false)=>{
+  const g=sugActuales[i]; if(!g) return;
+  if(g.tipo==='combo'){
+    // Quita una unidad del producto base y arma el combo (pide sus componentes)
+    const ix=order.findIndex(o=>o.id===g.baseId);
+    if(ix>=0){order[ix].qty--; if(order[ix].qty<=0) order.splice(ix,1);}
+    sugAceptadas.push({id:g.pid,nombre:g.nombre,tipo:g.tipo,monto:g.dif});
+  } else sugAceptadas.push({id:g.pid,nombre:g.nombre,tipo:g.tipo,monto:g.precio});
+  _sugPendiente=g.pid;
+  addItem(g.pid);
+  toast(`💡 Sugerencia aceptada: ${g.nombre}`,1800);
+  if(desdeModal) pintarSugModal();
+};
+// Modal antes de cobrar: se muestra una vez por orden; "Continuar" sigue al cobro
+let _sugDespues=null;
+function abrirSugModal(despues){
+  const lista=calcularSugerencias();
+  if(sugRevisadas||!lista.length||CFG.sugerencias===false){despues();return;}
+  _sugDespues=despues;
+  pintarSugModal();
+  $('sug-modal').style.display='flex';
+}
+function pintarSugModal(){
+  sugActuales=calcularSugerencias();
+  const {total}=getDescuento();
+  $('sug-modal-total').textContent=fmt(total);
+  $('sug-modal-list').innerHTML=sugActuales.length?sugActuales.slice(0,4).map((g,i)=>`<div class="sug-card">
+      <span class="sug-em">${g.emoji}</span>
+      <div style="flex:1;min-width:0;"><span class="sug-tag">${SUG_TAG[g.tipo]||''}</span><div class="sug-n">${g.tipo==='combo'?'Cambiar a ':''}${g.nombre} <span class="mono" style="color:var(--accent);font-size:13px;">${g.tipo==='combo'?'+'+fmt(g.dif):'+'+fmt(g.precio)}</span></div><div class="sug-f">🗣 ${g.frase}</div></div>
+      <button class="btn bp sug-add" onclick="sugAceptar(${i},true)">＋ Agregar</button></div>`).join('')
+    :`<p style="color:var(--text3);font-size:12.5px;text-align:center;padding:10px 0;">Ya lleva de todo. ¡A cobrar!</p>`;
+}
+window.sugContinuar=()=>{
+  sugRevisadas=true;
+  $('sug-modal').style.display='none';
+  const f=_sugDespues; _sugDespues=null;
+  if(f) f();
+};
+function resetSugerencias(){sugRevisadas=false;sugAceptadas=[];sugActuales=[];_sugPendiente=null;}
+
+// ═══════════════════════════════════════════════════════════════
+// DESCUENTOS PREDEFINIDOS (sep-2026): maestros, personal de limpieza…
+// Se administran en Ajustes (colección "descuentos", compartida entre
+// dispositivos). En el POS aparecen como chips; "Otro" deja poner % o $.
+// ═══════════════════════════════════════════════════════════════
+let descuentoSel=null; // preset elegido para la orden actual
+async function migSeedDescuentosSep2026(){
+  const migKey='h5desc_sep26';
+  if(await migDone(migKey)) return;
+  if(D.descuentos.length===0){
+    const S=[
+      {id:9001,nombre:'Maestros',emoji:'👩‍🏫',tipo:'pct',val:10,activo:true},
+      {id:9002,nombre:'Personal de limpieza',emoji:'🧹',tipo:'pct',val:10,activo:true},
+      {id:9003,nombre:'Estudiantes',emoji:'🎓',tipo:'pct',val:10,activo:true},
+      {id:9004,nombre:'Adultos mayores',emoji:'👴',tipo:'pct',val:10,activo:true},
+    ];
+    for(const d of S) await fsSet('descuentos',d);
+  }
+  await markMig(migKey);
+}
+const descPresets=()=>[...(D.descuentos||[])].filter(d=>d.activo!==false).sort((a,b)=>(a.orden||0)-(b.orden||0)||a.nombre.localeCompare(b.nombre));
+function descEtiqueta(d){return `${d.nombre} (${d.tipo==='pct'?d.val+'%':'−'+fmt(d.val)})`;}
+function renderOpDescuentos(){
+  const el=$('op-desc-chips'); if(!el) return;
+  const man=$('op-desc-manual');
+  const manualActivo=(parseFloat($('op-desc-val')?.value)||0)>0;
+  const presets=descPresets();
+  if(descuentoSel&&!presets.find(d=>d.id===descuentoSel.id)) descuentoSel=null;
+  el.innerHTML=presets.map(d=>`<button class="desc-chip ${descuentoSel?.id===d.id?'on':''}" onclick="setDescuentoPreset(${d.id})" title="${descEtiqueta(d)}">${d.emoji||'🏷'} ${d.nombre} · ${d.tipo==='pct'?d.val+'%':fmt(d.val)}</button>`).join('')
+    +`<button class="desc-chip ${manualActivo||man?.style.display==='flex'?'on':''}" onclick="toggleDescManual()">✏️ Otro</button>`;
+}
+window.setDescuentoPreset=id=>{
+  const d=descPresets().find(x=>x.id===id);
+  descuentoSel=(descuentoSel?.id===id||!d)?null:{...d};
+  renderOrder();
+  if(descuentoSel) toast(`🏷 Descuento ${descEtiqueta(descuentoSel)} aplicado`,1800);
+};
+window.toggleDescManual=()=>{
+  const man=$('op-desc-manual'); if(!man) return;
+  const abrir=man.style.display!=='flex';
+  man.style.display=abrir?'flex':'none';
+  if(!abrir&&!_canjeDesc){$('op-desc-val').value='';}
+  renderOrder();
+  if(abrir) setTimeout(()=>$('op-desc-val')?.focus(),80);
+};
+
 function getDescuento(){
   const sub=order.reduce((s,o)=>s+o.precio*o.qty,0);
+  let desc=0; const partes=[];
+  if(descuentoSel){
+    const d=descuentoSel.tipo==='pct'?Math.round(sub*descuentoSel.val/100*100)/100:Math.min(descuentoSel.val,sub);
+    if(d>0){desc+=d;partes.push(descEtiqueta(descuentoSel));}
+  }
   const tipo=$('op-desc-tipo')?.value||'pct';
   const val=parseFloat($('op-desc-val')?.value)||0;
-  if(val<=0) return {sub,desc:0,total:sub};
-  const desc=tipo==='pct'?Math.round(sub*val/100*100)/100:Math.min(val,sub);
-  return {sub,desc,total:Math.max(0,sub-desc)};
+  if(val>0){
+    const d=tipo==='pct'?Math.round(sub*val/100*100)/100:Math.min(val,sub);
+    desc+=d; partes.push(_canjeDesc?`Premio lealtad (−${fmt(d)})`:(tipo==='pct'?`Otro ${val}%`:`Otro −${fmt(d)}`));
+  }
+  desc=Math.min(Math.round(desc*100)/100,sub);
+  return {sub,desc,total:Math.max(0,sub-desc),descNombre:partes.join(' + ')||null};
 }
 window.calcDesc=()=>{
   const {sub,desc,total}=getDescuento();
@@ -6718,6 +7010,8 @@ function renderOrder(){
   $('op-tot').textContent=fmt(total);
   const fab=$('fab-order'); if(fab) fab.textContent=cnt>0?cnt:'🛒';
   if(typeof renderOpLealtad==='function') renderOpLealtad();
+  renderOpDescuentos();
+  renderOpSugerencias();
   $('op-items').innerHTML=order.length===0?`<p style="color:var(--text3);font-size:12px;padding:14px 0;text-align:center;">🛒 Toca un producto para agregar</p>`:
     order.map((o,ix)=>`<div class="oi">
       <div style="flex:1;min-width:0;">
@@ -6741,7 +7035,7 @@ window.setNota=(pid,v)=>{const o=order.find(x=>x.id===pid);if(o)o.nota=v;};
 // toppings distintos — el id ya no identifica la línea
 window.chgQtyIdx=(i,d)=>{if(!order[i])return;order[i].qty+=d;if(order[i].qty<=0)order.splice(i,1);renderOrder();};
 window.setNotaIdx=(i,v)=>{if(order[i])order[i].nota=v;};
-window.clearOrder=()=>{order=[];orderStartedAt=null;ventaVendedorOk=false;lealtadActual=null;canjeActivo=false;_canjeDesc=false;if($('op-desc-val'))$('op-desc-val').value='';renderOrder();toast('Orden limpiada');};
+window.clearOrder=()=>{order=[];orderStartedAt=null;ventaVendedorOk=false;lealtadActual=null;canjeActivo=false;_canjeDesc=false;descuentoSel=null;resetSugerencias();if($('op-desc-val'))$('op-desc-val').value='';if($('op-desc-manual'))$('op-desc-manual').style.display='none';renderOrder();toast('Orden limpiada');};
 window.toggleOP=()=>{opOpen=!opOpen;$('order-panel').classList.toggle('hidden',!opOpen);$('op-arr').textContent=opOpen?'▲':'▼';};
 
 // ABRIR modal efectivo
@@ -6749,6 +7043,7 @@ window.abrirCobro=()=>{
   if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return;}
   if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
   if(!ventaVendedorOk){pedirVendedorVenta(()=>abrirCobro());return;}
+  if(!sugRevisadas){abrirSugModal(()=>abrirCobro());return;}
   const {total}=getDescuento();
   $('cobro-total').textContent=fmt(total);
   $('cobro-recibido').value='';
@@ -6764,8 +7059,9 @@ window.abrirCobro=()=>{
 // Tarjeta: antes cobraba directo sin pedir nada — ahora, si no hay nombre,
 // se pide GRANDE primero (es lo que canta la cocina al entregar).
 window.cobrarTarjeta=()=>{
-  if($('op-cliente')?.value?.trim()){cobrar('tarjeta',0);return;}
   if(!order.length){toast('No hay productos en la orden',2000,'warn');return;}
+  if(!sugRevisadas){abrirSugModal(()=>cobrarTarjeta());return;}
+  if($('op-cliente')?.value?.trim()){cobrar('tarjeta',0);return;}
   $('nombre-modal').style.display='flex';
   const inp=$('nombre-cliente'); if(inp){inp.value='';setTimeout(()=>inp.focus(),120);}
 };
@@ -6867,7 +7163,7 @@ async function cobrar(metodo,recibido=0){
   btns.forEach(b=>b.classList.add('loading'));
 
   try{
-    const {sub,desc,total}=getDescuento();
+    const {sub,desc,total,descNombre}=getDescuento();
     const nota=$('op-nota').value.trim();
     const tid=Date.now();
     const cambio=metodo==='efectivo'?recibido-total:0;
@@ -6879,6 +7175,10 @@ async function cobrar(metodo,recibido=0){
       hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
       items:order.map(o=>({...o})),
       subtotal:sub, descuento:desc, total, metodo, nota, anulada:false,
+      descuentoNombre:desc>0?descNombre:null,
+      descuentoPresetId:desc>0&&descuentoSel?descuentoSel.id:null,
+      // Sugerencias del sistema que el cliente aceptó (para medir el ticket promedio)
+      sugerencias:sugAceptadas.length?{n:sugAceptadas.length,monto:Math.round(sugAceptadas.reduce((s,x)=>s+(x.monto||0),0)*100)/100,items:sugAceptadas.map(x=>({id:x.id,nombre:x.nombre,tipo:x.tipo,monto:x.monto}))}:null,
       ticket:'#'+String(tid).slice(-6),
       vendedorId:activeVend?.id||null,
       vendedorNombre:activeVend?.nombre||'Sin asignar',
@@ -6918,6 +7218,7 @@ async function cobrar(metodo,recibido=0){
       }
     }catch(e){/* costeo no bloquea el cobro */}
     await fsSetCritical('ventas',venta);
+    if(venta.descuento>0) logAudit('descuento_aplicado',{ticket:venta.ticket,descuento:venta.descuentoNombre||'—',monto:venta.descuento,total:venta.total,cliente:venta.cliente||''});
     // Caja también es crítica — si falla, la venta queda guardada pero hay que reintentar caja
     if(!esRetroactiva){
       try{
@@ -6955,6 +7256,7 @@ async function cobrar(metodo,recibido=0){
     // Sello de lealtad (solo si la venta SÍ se guardó)
     try{await registrarSelloLealtad(venta);}catch(e){console.warn('lealtad:',e);}
     order=[]; orderStartedAt=null; ventaVendedorOk=false; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
+    descuentoSel=null; resetSugerencias(); if($('op-desc-manual'))$('op-desc-manual').style.display='none';
     if($('op-cliente'))$('op-cliente').value='';
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
     renderOrder();
@@ -6993,7 +7295,7 @@ function printTicket(v,auto=false){
     ${itemsHTML}
     <hr class="tk-sep">
     ${v.descuento>0?`<div class="tk-row"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div>
-    <div class="tk-row"><span>Descuento</span><span>-${fmt(v.descuento)}</span></div>`:''}
+    <div class="tk-row"><span>Descuento${v.descuentoNombre?' '+v.descuentoNombre:''}</span><span>-${fmt(v.descuento)}</span></div>`:''}
     <div class="tk-big">TOTAL: ${fmt(v.total)}</div>
     <div class="tk-row"><span>Método</span><span>${v.metodo==='efectivo'?'EFECTIVO':'TARJETA'}</span></div>
     ${v.metodo==='efectivo'?`<div class="tk-row"><span>Recibido</span><span>${fmt(v.recibido||v.total)}</span></div>
@@ -7034,7 +7336,7 @@ function escposTicket(v){
   });
   push(0x1B,0x61,1);
   txt('----------------------------'); NL();
-  if(v.descuento>0){txt(`Subtotal ${fmt(v.subtotal)}  Desc -${fmt(v.descuento)}`);NL();}
+  if(v.descuento>0){txt(`Subtotal ${fmt(v.subtotal)}  Desc -${fmt(v.descuento)}`);NL();if(v.descuentoNombre){txt(`(${v.descuentoNombre})`);NL();}}
   push(0x1D,0x21,0x11); txt(`TOTAL ${fmt(v.total)}`); NL();
   push(0x1D,0x21,0x00);
   txt(v.metodo==='efectivo'?`Efectivo ${fmt(v.recibido||v.total)} · Cambio ${fmt(v.cambio||0)}`:'Tarjeta'); NL();
@@ -7521,7 +7823,9 @@ window.openVentaModal=id=>{
       <div class="sr"><span>Fecha / Hora</span><span class="mono">${v.fecha} ${v.hora}</span></div>
       <div class="sr"><span>Vendedor</span><span>${e?`<span class="badge" style="background:${e.color||'var(--accent)'}22;color:${e.color||'var(--accent)'};">${e.nombre}</span>`:'Sin asignar'}</span></div>
       <div class="sr"><span>Método</span><span class="badge ${v.metodo==='efectivo'?'xb':'xy'}">${v.metodo}</span></div>
+      ${v.descuento>0?`<div class="sr"><span>Descuento</span><span class="mono" style="color:var(--red);">−${fmt(v.descuento)}${v.descuentoNombre?` <em style="font-size:10px;color:var(--text3);">(${v.descuentoNombre})</em>`:''}</span></div>`:''}
       <div class="sr"><span>Total</span><span class="mono fw7 ag" style="font-size:16px;">${fmt(v.total)}</span></div>
+      ${v.sugerencias?.n?`<div class="sr"><span>💡 Sugerencias aceptadas</span><span class="mono" style="color:var(--goldd);">${v.sugerencias.n} · +${fmt(v.sugerencias.monto)}</span></div>`:''}
     </div>
     <div class="ct">Productos</div>
     ${(v.items||[]).map(i=>`<div class="sr"><span>${i.nombre}${i.nota?` <em style="color:var(--text3);font-size:10px;">(${i.nota})</em>`:''}</span><span class="mono">${i.qty}×${fmt(i.precio)}=${fmt(i.precio*i.qty)}</span></div>`).join('')}
@@ -12134,9 +12438,46 @@ function renderBitacora(){
     }).join('');
 }
 
+function renderDescuentosAjustes(){
+  const el=$('aj-desc-list'); if(!el) return;
+  const L=[...(D.descuentos||[])].sort((a,b)=>(a.orden||0)-(b.orden||0)||a.nombre.localeCompare(b.nombre));
+  el.innerHTML=L.length?L.map(d=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px;${d.activo===false?'opacity:.5;':''}">
+      <span style="font-size:18px;">${d.emoji||'🏷'}</span>
+      <div style="flex:1;min-width:0;"><b>${d.nombre}</b> <span class="mono" style="color:var(--red);">${d.tipo==='pct'?d.val+'%':'−'+fmt(d.val)}</span>${d.activo===false?' <span class="badge xr">inactivo</span>':''}</div>
+      <button class="btn bs bxs" onclick="toggleDescuentoPreset(${d.id})">${d.activo===false?'Activar':'Pausar'}</button>
+      <button class="btn bd bxs" onclick="delDescuentoPreset(${d.id})">✕</button>
+    </div>`).join('')
+    :'<p style="color:var(--text3);font-size:12px;padding:8px 0;">Sin descuentos predefinidos. Agrega el primero arriba.</p>';
+}
+window.addDescuentoPreset=async()=>{
+  const nombre=$('aj-desc-n').value.trim(); const tipo=$('aj-desc-tipo').value; const val=parseFloat($('aj-desc-val').value)||0; const emoji=$('aj-desc-em').value.trim()||'🏷';
+  if(!nombre||val<=0){toast('⚠ Pon nombre y valor del descuento',2400,'warn');return;}
+  if(tipo==='pct'&&val>100){toast('⚠ El porcentaje no puede pasar de 100',2400,'warn');return;}
+  const d={id:Date.now(),nombre,emoji,tipo,val,activo:true,orden:(D.descuentos||[]).length+1};
+  await fsSet('descuentos',d);
+  D.descuentos=[...(D.descuentos||[]).filter(x=>x.id!==d.id),d]; renderDescuentosAjustes();
+  logAudit('descuento_cfg',{accion:'Alta',nombre,tipo,val});
+  $('aj-desc-n').value='';$('aj-desc-val').value='';$('aj-desc-em').value='';
+  toast(`✓ Descuento "${nombre}" agregado`);
+};
+window.toggleDescuentoPreset=async id=>{
+  const d=(D.descuentos||[]).find(x=>x.id===id); if(!d) return;
+  const nd={...d,activo:d.activo===false}; await fsSet('descuentos',nd);
+  D.descuentos=(D.descuentos||[]).map(x=>x.id===id?nd:x); renderDescuentosAjustes();
+  logAudit('descuento_cfg',{accion:d.activo===false?'Activado':'Pausado',nombre:d.nombre,tipo:d.tipo,val:d.val});
+};
+window.delDescuentoPreset=async id=>{
+  const d=(D.descuentos||[]).find(x=>x.id===id); if(!d) return;
+  if(!confirm(`¿Eliminar el descuento "${d.nombre}"?`)) return;
+  await fsDel('descuentos',id);
+  D.descuentos=(D.descuentos||[]).filter(x=>x.id!==id); renderDescuentosAjustes();
+  logAudit('descuento_cfg',{accion:'Eliminado',nombre:d.nombre,tipo:d.tipo,val:d.val});
+  toast('Descuento eliminado');
+};
 function renderAjustes(){
   const td=today();
   renderBitacora();
+  renderDescuentosAjustes();
   if($('ajuste-fecha-checkin'))$('ajuste-fecha-checkin').textContent=td;
 
   // A4: visor de bitácora (últimas 60 entradas, más recientes primero)
@@ -12146,14 +12487,15 @@ function renderAjustes(){
       venta_anulada:'🚫',corte_realizado:'🧾',corte_eliminado:'🗑',
       movimiento_efectivo:'💸',movimiento_eliminado:'🗑',
       gasto_eliminado:'🗑',nomina_pagada:'👩',nomina_pago_eliminado:'🗑',
-      merma_registrada:'🍂',respaldo_descargado:'💾',sesion_iniciada:'🔑'
+      merma_registrada:'🍂',respaldo_descargado:'💾',sesion_iniciada:'🔑',descuento_aplicado:'🏷',descuento_cfg:'⚙️'
     };
     const AUDIT_LABELS={
       venta_anulada:'Venta anulada',corte_realizado:'Corte de caja',
       corte_eliminado:'Corte ELIMINADO',movimiento_efectivo:'Movimiento de efectivo',
       movimiento_eliminado:'Movimiento ELIMINADO',gasto_eliminado:'Gasto ELIMINADO',
       nomina_pagada:'Nómina pagada',nomina_pago_eliminado:'Pago nómina ELIMINADO',
-      merma_registrada:'Merma',respaldo_descargado:'Respaldo',sesion_iniciada:'Sesión iniciada'
+      merma_registrada:'Merma',respaldo_descargado:'Respaldo',sesion_iniciada:'Sesión iniciada',
+      descuento_aplicado:'Descuento aplicado',descuento_cfg:'Descuentos configurados'
     };
     const logs=[...(D.auditLog||[])].sort((a,b)=>(b.ts||0)-(a.ts||0)).slice(0,60);
     auditEl.innerHTML=logs.length===0?
@@ -12172,6 +12514,8 @@ function renderAjustes(){
         else if(l.accion==='merma_registrada') resumen=`${d.cantidad||''} ${d.unidad||''} de ${d.insumo||''} · ${fmt(d.costo||0)} · ${d.motivo||''}`;
         else if(l.accion==='respaldo_descargado') resumen=`${d.registros||0} registros`;
         else if(l.accion==='sesion_iniciada') resumen=d.perfil||'';
+        else if(l.accion==='descuento_aplicado') resumen=`${d.ticket||''} · ${d.descuento||''} · −${fmt(d.monto||0)} · total ${fmt(d.total||0)}${d.cliente?' · '+d.cliente:''}`;
+        else if(l.accion==='descuento_cfg') resumen=`${d.accion||''}: ${d.nombre||''}${d.val!=null?' · '+(d.tipo==='pct'?d.val+'%':fmt(d.val)):''}`;
         return `<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid var(--border);font-size:11.5px;">
           <span style="font-size:15px;flex-shrink:0;">${AUDIT_ICONS[l.accion]||'📌'}</span>
           <div style="flex:1;min-width:0;">
