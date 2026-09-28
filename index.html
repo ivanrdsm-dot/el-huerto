@@ -2573,6 +2573,7 @@ async function completeInit(){
   await migCafeMolidoSep2026();
   await migConsolidaMenuSep2026();
   await migTesDuplicadosSep2026();
+  await migQuitaProductosErrorSep2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3165,6 +3166,27 @@ async function migTesDuplicadosSep2026(){
   await markMig(migKey);
   if(bajas.length) logAudit('menu_consolidado',{bajasDuplicadas:bajas});
   if(bajas.length) toast(`✓ ${bajas.length} duplicado(s) fuera del menú`,4000);
+}
+// ══ Productos ✨ dados de alta por error (confirmado por Iván) ══
+// Seis productos capturados a mano con precios que no son los del menú
+// (PANINI $99 contra $89, CÓCTEL $79 contra $69, COMBO $200) y sin receta.
+// Se dan de baja por NOMBRE para atrapar también los ids de timestamp.
+async function migQuitaProductosErrorSep2026(){
+  const migKey='h5prodserror_sep26_v2'; // v1 corrió con el objetivo equivocado (ids, no nombres)
+  if(await migDone(migKey)) return;
+  const bajas=[];
+  for(const pr of D.productos){
+    if(pr.activo===false) continue;
+    const n=(pr.nombre||'').trim().toUpperCase();
+    // Los ids son timestamps (se capturaron desde la app), así que se van
+    // por nombre exacto en MAYÚSCULAS, que es como quedaron guardados.
+    if(['ACAI','COCTEL DE FRUTA','COMBO','PANINI','PAPAS PREPARADAS','PAPAS SOLAS'].includes(n)){
+      await fsSet('productos',{...pr,activo:false}); bajas.push(`${n} (id ${pr.id})`);
+    }
+  }
+  await markMig(migKey);
+  if(bajas.length) logAudit('productos_baja',{motivo:'Alta por error, confirmado por Iván',bajas});
+  if(bajas.length) toast(`✓ ${bajas.length} producto(s) capturados por error dados de baja`,4500);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){

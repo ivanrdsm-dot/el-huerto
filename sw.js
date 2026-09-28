@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.64'; // Consolida menú: tés sueltos y Playero fuera
+const CACHE_NAME = 'el-huerto-v14.65'; // Baja de los 6 productos capturados por error
 const ASSETS = [
   '/',
   '/index.html',
