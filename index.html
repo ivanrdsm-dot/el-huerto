@@ -306,6 +306,17 @@ select option{background:var(--surface2);}
 .oi-del{background:none;border:none;color:var(--text3);cursor:pointer;font-size:13px;padding:0 2px;}
 .oi-del:hover{color:var(--red);}
 .ototal-bar{background:var(--surface2);border-radius:var(--rsm);padding:9px 11px;}
+/* Sugeridos: sube el ticket promedio. Chips de extras que la cajera ofrece
+   en voz alta; un toque los agrega. Solo aparecen si hay algo en la orden. */
+.op-sug{background:color-mix(in srgb, var(--gold) 9%, var(--surface));border:1px dashed var(--gold);border-radius:var(--rsm);padding:8px 9px;margin:8px 0;animation:sugIn .25s ease;}
+.op-sug-t{display:flex;align-items:center;justify-content:space-between;gap:6px;font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--gold);margin-bottom:6px;}
+.op-sug-hoy{font-size:9.5px;font-weight:700;letter-spacing:0;text-transform:none;color:var(--accent);background:color-mix(in srgb, var(--accent) 14%, transparent);padding:1px 6px;border-radius:9px;white-space:nowrap;}
+.op-sug-chips{display:flex;flex-wrap:wrap;gap:5px;}
+.sug-chip{display:flex;align-items:center;gap:5px;background:var(--surface);border:1.5px solid var(--gold);color:var(--text);border-radius:999px;padding:6px 11px;font-size:12px;font-weight:700;cursor:pointer;transition:transform .12s ease,background .15s ease;font-family:inherit;}
+.sug-chip:hover{background:color-mix(in srgb, var(--gold) 16%, var(--surface));}
+.sug-chip:active{transform:scale(.94);}
+.sug-chip .sug-p{font-family:'DM Mono',monospace;font-size:11px;color:var(--gold);font-weight:800;}
+@keyframes sugIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
 .ototal{display:flex;justify-content:space-between;font-size:18px;font-weight:800;align-items:center;}
 .ototal span:last-child{font-family:'DM Mono',monospace;color:var(--accent);}
 .op-extra{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:6px;}
@@ -1180,6 +1191,8 @@ nav{padding-top:env(safe-area-inset-top);}
         <span id="op-arr" style="color:var(--text3);font-size:12px;">▲</span>
       </div>
       <div id="op-items"></div>
+      <!-- Sugeridos para subir el ticket promedio -->
+      <div id="op-sugeridos"></div>
       <!-- Cliente de lealtad: escanear QR, ver sellos y canjear premio -->
       <div id="op-lealtad"></div>
       <div class="ototal-bar">
@@ -1480,7 +1493,7 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn bp bfull" onclick="confirmarApertura()" style="min-height:50px;font-size:14.5px;">💰 Registrar apertura</button>
-      <button class="btn bs" onclick="$('apertura-modal').style.display='none';toast('⚠ Caja sin apertura — podrás registrarla desde el aviso en Ventas',3500,'warn')" style="min-width:88px;">Ahora no</button>
+      <button class="btn bs" onclick="omitirApertura()" style="min-width:88px;">Ahora no</button>
     </div>
   </div>
 </div>
@@ -5252,6 +5265,15 @@ function toast(msg,ms=2400,type=''){
   toastT=setTimeout(()=>{t.className='toast';},ms);
 }
 
+// Los atributos onclick del HTML se ejecutan en scope GLOBAL, no dentro del
+// módulo: ahí `$` no existía y `toast` resolvía al elemento con id="toast".
+// Por eso las ✕ de ~14 modales (cobro, venta, vendedor, merma, nombre,
+// extras, imagen, alta/ajuste de producto e inventario, checkin, KPIs) no
+// cerraban nada y el 👁 del PIN tampoco funcionaba. Exponerlos los arregla
+// todos de raíz, sin tocar cada handler.
+window.$=$;
+window.toast=toast;
+
 // Overlay grande de venta exitosa
 function showSaleSuccess(venta){
   const el=$('sale-ok'); if(!el) return;
@@ -6018,6 +6040,12 @@ function pushItemOrden(pid,prep){
   if(ex) ex.qty++;
   else order.push({id:pid,nombre:p.nombre,precio:p.precio,qty:1,nota:'',...(prep?{prep}:{})});
   if(!orderStartedAt) orderStartedAt=Date.now();
+  // Vino de un chip de sugeridos: se marca para poder medir el upsell
+  if(_sugPend===pid){
+    const l=order.find(o=>o.id===pid&&((o.prep||[]).join('|')===key));
+    if(l) l.sug=true;
+    _sugPend=null;
+  }
   renderOrder();
   try{navigator.vibrate&&navigator.vibrate(20);}catch(_){}
   const target=document.querySelector(`.pitem[data-pid="${pid}"]`);
@@ -6705,6 +6733,83 @@ window.calcDesc=()=>{
   if($('op-tot'))$('op-tot').textContent=fmt(total);
 };
 
+// ═══════════════════════════════════════════════════════════════
+// SUGERIDOS — sube el ticket promedio
+// El sistema nunca ofrecía extras, toppings ni adicionales: se vendían
+// solo si la cajera se acordaba. Aquí se calculan según lo que YA está
+// en la orden y se muestran como chips de un toque.
+// Regla: cada sugerencia debe ser algo que de verdad le queda a lo que
+// el cliente pidió; sugerir de más entrena a ignorarlas.
+// ═══════════════════════════════════════════════════════════════
+// cat del producto en la orden → ids de extras que le quedan, en orden
+const SUGERIDOS_POR_CAT={
+  acai:     [1051,1055,1052],   // topping extra, cacahuates, proteína
+  oats:     [1051,1055,1052],
+  smoothie: [1052,1056],        // proteína, shot de espresso
+  panini:   [1053],             // topping extra de panini
+  pan:      [1054],             // aguacate
+  ensalada: [1074],             // topping extra de ensalada
+  coctel:   [1055],             // cacahuates
+  cafe:     [1056],             // shot extra
+  te:       [1056],
+};
+const CATS_BEBIDA=['cafe','te','smoothie'];
+const CATS_COMIDA=['acai','oats','panini','pan','ensalada','coctel','papas','combo'];
+const SUG_MAX=3;
+
+// Extras vendidos HOY que salieron de una sugerencia (feedback para la cajera)
+function sugeridosHoyMonto(){
+  const td=today();
+  return D.ventas.filter(v=>!v.anulada&&v.fecha===td)
+    .flatMap(v=>v.items||[])
+    .filter(i=>i.sug)
+    .reduce((s,i)=>s+(i.precio||0)*(i.qty||1),0);
+}
+
+function calcSugerencias(){
+  if(!order.length) return [];
+  const enOrden=new Set(order.map(o=>o.id));
+  const cats=new Set(order.map(o=>D.productos.find(p=>p.id===o.id)?.cat).filter(Boolean));
+  const ids=[];
+  const push=id=>{if(!ids.includes(id)&&!enOrden.has(id))ids.push(id);};
+  // 1. Extras que le quedan a lo que ya pidió
+  cats.forEach(c=>(SUGERIDOS_POR_CAT[c]||[]).forEach(push));
+  // 2. Venta cruzada: comida sin bebida (o al revés). Va al final porque
+  //    es un "además de" y no un "súbele a lo tuyo".
+  const hayBebida=[...cats].some(c=>CATS_BEBIDA.includes(c));
+  const hayComida=[...cats].some(c=>CATS_COMIDA.includes(c));
+  if(hayComida&&!hayBebida) push(1024);   // Americano Chico $40
+  if(hayBebida&&!hayComida) push(1062);   // Papas Susalias $19
+  return ids.slice(0,SUG_MAX)
+    .map(id=>D.productos.find(p=>p.id===id))
+    .filter(p=>p&&p.activo!==false);
+}
+
+function renderSugerencias(){
+  const box=$('op-sugeridos'); if(!box) return;
+  const sug=calcSugerencias();
+  if(!sug.length){box.innerHTML='';return;}
+  const hoy=sugeridosHoyMonto();
+  box.innerHTML=`<div class="op-sug">
+    <div class="op-sug-t"><span>💡 Ofrécele al cliente</span>${hoy>0?`<span class="op-sug-hoy">hoy +${fmt(hoy)}</span>`:''}</div>
+    <div class="op-sug-chips">${sug.map(p=>`<button class="sug-chip" onclick="addSugerido(${p.id})" title="${(p.desc||'').replace(/"/g,'&quot;')}">
+      <span>${p.nombre}</span><span class="sug-p">+${fmt(p.precio)}</span>
+    </button>`).join('')}</div>
+  </div>`;
+}
+
+// Agrega el extra marcándolo como sugerido: el flag viaja al item de la
+// venta (items:order.map(o=>({...o}))) y permite medir después cuánto
+// dinero extra trajo esta función.
+// El marcado lo hace pushItemOrden, no esta función: si algún día un extra
+// gana variantes, addItem abre el modal y la línea nace después.
+let _sugPend=null;
+window.addSugerido=pid=>{
+  _sugPend=pid;
+  addItem(pid);
+  logAudit('sugerido_aceptado',{producto:D.productos.find(p=>p.id===pid)?.nombre||pid});
+};
+
 function renderOrder(){
   const {sub,desc,total}=getDescuento();
   const cnt=order.reduce((s,o)=>s+o.qty,0);
@@ -6718,10 +6823,11 @@ function renderOrder(){
   $('op-tot').textContent=fmt(total);
   const fab=$('fab-order'); if(fab) fab.textContent=cnt>0?cnt:'🛒';
   if(typeof renderOpLealtad==='function') renderOpLealtad();
+  renderSugerencias();
   $('op-items').innerHTML=order.length===0?`<p style="color:var(--text3);font-size:12px;padding:14px 0;text-align:center;">🛒 Toca un producto para agregar</p>`:
     order.map((o,ix)=>`<div class="oi">
       <div style="flex:1;min-width:0;">
-        <div class="oi-name">${o.nombre}</div>
+        <div class="oi-name">${o.sug?'<span title="Vendido por sugerencia" style="color:var(--gold);">💡</span> ':''}${o.nombre}</div>
         ${o.prep&&o.prep.length?`<div class="oi-prep">🧩 ${o.prep.join(' · ')}</div>`:''}
         <input class="oi-nota" value="${o.nota||''}" placeholder="nota…" oninput="setNotaIdx(${ix},this.value)">
       </div>
@@ -8092,6 +8198,13 @@ window.delCorte=async id=>{
 };
 
 // Apertura de caja
+// El onclick en línea corre en scope GLOBAL: ahí $ no existe y `toast`
+// resuelve al elemento con id="toast", no a la función. Por eso "Ahora no"
+// lanzaba ReferenceError y el modal de apertura nunca cerraba.
+window.omitirApertura=()=>{
+  const m=$('apertura-modal'); if(m) m.style.display='none';
+  toast('⚠ Caja sin apertura — podrás registrarla desde Ventas',3500,'warn');
+};
 window.confirmarApertura=async()=>{
   const monto=parseFloat($('apertura-monto')?.value);
   if(!monto||monto<=0){toast('⚠ Ingresa un monto');return;}
