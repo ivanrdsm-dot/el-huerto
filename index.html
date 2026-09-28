@@ -2575,6 +2575,7 @@ async function completeInit(){
   await migTesDuplicadosSep2026();
   await migQuitaProductosErrorSep2026();
   await migGastosSemana27Sep2026();
+  await migQuitaBrocoliSep2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3223,7 +3224,7 @@ async function migGastosSemana27Sep2026(){
   await addC(['Crutones'],907,'g',0.1643,'abarrotes');                                       // \$149
   await addC(['Fresa'],1.814,'domo',93.1643,'frutas_verduras');                              // 907 g \$169
   await addC(['Aceitunas negras','Aceitunas'],3000,'g',0.0597,'frutas_verduras');            // \$179
-  await addC(['Brócoli'],1360,'g',0.0322,'frutas_verduras');                                 // 1.36 kg \$43.85 — NUEVO
+  // Brócoli: venía en el CFDI pero Iván NO lo quiere en inventario.
   await addC(['Lechuga','Ensalada italiana'],1816,'g',0.0660,'frutas_verduras');             // 2×908 g \$119.80
   await addC(['Espinaca'],454,'g',0.2112,'frutas_verduras');                                 // \$95.90
   await addC(['Tiras de pollo','Pollo'],1360,'g',0.2640,'lacteos_proteinas');                // 1.36 kg \$359
@@ -3274,6 +3275,22 @@ async function migGastosSemana27Sep2026(){
   await markMig(migKey);
   logAudit('compras_registradas',{lote:'semana 27-sep-2026',gastos:nuevos,sinCostear:omitidos,total:6747.64});
   if(nuevos.length) toast(`✓ Semana 27-sep: ${nuevos.length} gastos por ${fmt(6747.64)}`,5000);
+}
+// ══ Brócoli fuera del inventario (pedido de Iván) ══
+// Venía en el CFDI de Costco del 27-sep, así que el GASTO se queda tal cual
+// ($3,234.45 es el total facturado). Lo que sale es el artículo: Iván no lo
+// lleva en inventario.
+async function migQuitaBrocoliSep2026(){
+  const migKey='h5brocoli_sep26';
+  if(await migDone(migKey)) return;
+  const br=D.inventario.find(i=>normInvNombre(i.nombre)==='brocoli');
+  if(br){
+    await fsDel('inventario',br.id);
+    const ix=D.inventario.findIndex(i=>i.id===br.id); if(ix>=0) D.inventario.splice(ix,1);
+    logAudit('inventario_correccion',{articulo:'Brócoli',accion:'eliminado a pedido de Iván'});
+    toast('✓ Brócoli fuera del inventario',3500);
+  }
+  await markMig(migKey);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
