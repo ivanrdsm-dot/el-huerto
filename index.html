@@ -3048,12 +3048,11 @@ async function migEscalaPreciosSep2026(){
 // Costos que dio Iván: café $340 el kilo, popote $1, salsa chipotle $43,
 // servitoallas $40 el rollo. Y fuera el chocolate en polvo: ya no se vende.
 //
-// Dos equivalencias son SUPUESTOS documentados, no datos de factura, porque
-// Iván dio el precio del envase y la receta mide por hoja/ml:
+// Dos equivalencias, porque Iván dio el precio del ENVASE y la receta mide
+// por hoja/ml. Las asumí al cargar y él las CONFIRMÓ el 27-sep-2026:
 //   · rollo de servitoallas = 100 hojas  → $0.40 por hoja
 //   · envase de salsa chipotle = 250 ml  → $0.172 por ml
-// Impacto si me equivoco: ±$0.20 en un producto de $99 (0.2%) y ±$1.30 en un
-// panini de $89 (1.4%). Se corrigen cambiando solo estos dos números.
+// Ya no son supuestos: los costos cargados quedan como definitivos.
 const SERVITOALLAS_HOJAS=100, SALSA_ML=250;
 async function migMenuCostosSep2026(){
   const migKey='h5menucostos_sep26';
