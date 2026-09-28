@@ -2571,6 +2571,8 @@ async function completeInit(){
   await migEscalaPreciosSep2026();
   await migMenuCostosSep2026();
   await migCafeMolidoSep2026();
+  await migConsolidaMenuSep2026();
+  await migTesDuplicadosSep2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3114,6 +3116,56 @@ async function migCafeMolidoSep2026(){
   if(cm&&!(cm.precio>0)){cm.precio=0.34;await fsSet('inventario',cm);
     logAudit('costo_insumo',{insumo:'Café molido',precio:'$0.34/g ($340 el kilo)'});}
   await markMig(migKey);
+}
+// ══ Consolidación de menú sep-2026 (confirmada por Iván) ══
+// El menú lateral oficial solo lleva "Boba Tea $49" e "Infusiones de
+// Sabores $49": los tés sueltos y las bebidas de matcha/chai dejan de
+// venderse por separado. Pal'Playero tampoco existe ya.
+// Se dan de BAJA (activo:false), no se borran: el historial de ventas de
+// julio-septiembre debe seguir cuadrando en los reportes.
+// Ojo: los insumos matcha y chai SIGUEN en inventario porque los usan los
+// smoothies Pal' Matcha Gains y Pal' Chai Lover.
+const BAJAS_MENU_SEP26=[
+  1036,1037, // Té Negro chico/grande
+  1038,1039, // Té Verde chico/grande
+  1040,1041, // Matcha bebida chico/grande
+  1042,1043, // Chai bebida chico/grande
+  1066,1067, // Hierbabuena chico/grande
+  1068,1069, // Manzanilla chico/grande
+  1007,      // Pal'Playero
+];
+async function migConsolidaMenuSep2026(){
+  const migKey='h5menusep26_bajas';
+  if(await migDone(migKey)) return;
+  const bajas=[];
+  for(const id of BAJAS_MENU_SEP26){
+    const pr=D.productos.find(x=>x.id===id);
+    if(pr&&pr.activo!==false){await fsSet('productos',{...pr,activo:false});bajas.push(pr.nombre);}
+  }
+  await markMig(migKey);
+  logAudit('menu_consolidado',{bajas,motivo:'Menú lateral sep-2026: tés sueltos → Infusiones de Sabores $49'});
+  if(bajas.length) toast(`✓ ${bajas.length} producto(s) fuera del menú`,4500);
+}
+// ══ Tés duplicados creados a mano (ids de timestamp) ══
+// La baja anterior iba por id y dejó vivos un 'Té negro chico' y un
+// 'Té Negro Grande' que Iván había dado de alta desde la app. Esta va por
+// NOMBRE, así atrapa cualquier duplicado presente o futuro.
+// Boba Tea e Infusión de Sabores NO entran: siguen en el menú.
+const NOMBRES_FUERA_MENU=[/^t[ée]\s*negro/i,/^t[ée]\s*verde/i,/^hierbabuena/i,/^manzanilla/i,
+  /^matcha\s*(chico|grande)/i,/^chai\s*(chico|grande)/i,/playero/i,/^chocolate\s*(chico|grande)/i];
+async function migTesDuplicadosSep2026(){
+  const migKey='h5tesdup_sep26';
+  if(await migDone(migKey)) return;
+  const bajas=[];
+  for(const pr of D.productos){
+    if(pr.activo===false) continue;
+    if(NOMBRES_FUERA_MENU.some(re=>re.test((pr.nombre||'').trim()))){
+      await fsSet('productos',{...pr,activo:false}); bajas.push(`${pr.nombre} (id ${pr.id})`);
+    }
+  }
+  await markMig(migKey);
+  if(bajas.length) logAudit('menu_consolidado',{bajasDuplicadas:bajas});
+  if(bajas.length) toast(`✓ ${bajas.length} duplicado(s) fuera del menú`,4000);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.63'; // Menú oficial sep-26 + costos de café, popote, salsa y servitoallas
+const CACHE_NAME = 'el-huerto-v14.64'; // Consolida menú: tés sueltos y Playero fuera
 const ASSETS = [
   '/',
   '/index.html',
