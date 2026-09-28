@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.65'; // Baja de los 6 productos capturados por error
+const CACHE_NAME = 'el-huerto-v14.66'; // Gastos semana 27-sep: Costco, Zorro y La Chispa
 const ASSETS = [
   '/',
   '/index.html',

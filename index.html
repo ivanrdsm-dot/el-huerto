@@ -2574,6 +2574,7 @@ async function completeInit(){
   await migConsolidaMenuSep2026();
   await migTesDuplicadosSep2026();
   await migQuitaProductosErrorSep2026();
+  await migGastosSemana27Sep2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3187,6 +3188,92 @@ async function migQuitaProductosErrorSep2026(){
   await markMig(migKey);
   if(bajas.length) logAudit('productos_baja',{motivo:'Alta por error, confirmado por Iván',bajas});
   if(bajas.length) toast(`✓ ${bajas.length} producto(s) capturados por error dados de baja`,4500);
+}
+// ══ GASTOS DE LA SEMANA 27-sep-2026 ══
+// Costco CFDI ARG-5900604 ($3,234.45, tarjeta) y Grupo Zorro ticket
+// 326826401 ($1,263.19). Verificado: las 16 bases del CFDI suman exacto el
+// total. En Zorro los precios salen del P.U. del ticket.
+// La Chispa entra como gasto por monto ($1,470 y $780): Iván trae el ticket
+// mañana, igual que los costos de la fruta.
+async function migGastosSemana27Sep2026(){
+  const migKey='h5semana27sep26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const hit=D.inventario.find(i=>normInvNombre(i.nombre)===nn||normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(hit) return hit;
+    }
+    return null;
+  };
+  const omitidos=[];
+  const addC=async(cands,qty,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qty,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;inv.precio=Math.round(precioUnit*(qty/q)*10000)/10000;}
+      else{omitidos.push(`${inv.nombre} (${unit} vs ${inv.unit})`);return;}
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit};D.inventario.push(inv);}
+    await fsSet('inventario',inv);
+  };
+
+  // ── Costco 27-sep (CFDI ARG-5900604) ──
+  await addC(['Leche de almendra','Leche de almendras'],5.676,'L',26.2509,'interna_ivan');   // \$149
+  await addC(['Crutones'],907,'g',0.1643,'abarrotes');                                       // \$149
+  await addC(['Fresa'],1.814,'domo',93.1643,'frutas_verduras');                              // 907 g \$169
+  await addC(['Aceitunas negras','Aceitunas'],3000,'g',0.0597,'frutas_verduras');            // \$179
+  await addC(['Brócoli'],1360,'g',0.0322,'frutas_verduras');                                 // 1.36 kg \$43.85 — NUEVO
+  await addC(['Lechuga','Ensalada italiana'],1816,'g',0.0660,'frutas_verduras');             // 2×908 g \$119.80
+  await addC(['Espinaca'],454,'g',0.2112,'frutas_verduras');                                 // \$95.90
+  await addC(['Tiras de pollo','Pollo'],1360,'g',0.2640,'lacteos_proteinas');                // 1.36 kg \$359
+  await addC(['Leche deslactosada'],12,'L',22.3333,'interna_ivan');                          // 12 L \$268
+  await addC(['Susalias','Susalias horneadas'],20,'pz',14.95,'abarrotes');                   // \$299
+  await addC(['Jitomate uva','Tomate cherry'],907,'g',0.0969,'frutas_verduras');             // Tomate Glory \$87.90
+  await addC(['Crema de cacahuate'],1,'pz',159.00,'lacteos_proteinas');                      // 1.1 kg \$159
+  await addC(['Jamón serrano'],1,'paq',649.00,'lacteos_proteinas');                          // \$649
+  await addC(['Queso parmesano'],908,'g',0.1641,'lacteos_proteinas');                        // \$149
+  await addC(['Blueberry','Moras azules'],1360,'g',0.1390,'frutas_verduras');                // 1.36 kg \$189
+  await addC(['Crema de almendras'],1,'pz',169.00,'lacteos_proteinas');                      // 765 g \$169
+
+  // ── Grupo Zorro (ticket 326826401) ──
+  await addC(['Avena'],2,'kg',19.30,'abarrotes');
+  await addC(['Azúcar'],1,'kg',24.50,'abarrotes');
+  await addC(['Bolsas de basura'],1,'rollo',40.80,'desechables');                            // paquete de 10
+  await addC(['Cuchara desechable'],100,'pz',0.54,'desechables');                            // 4×25 pz \$54
+  await addC(['Tenedor desechable'],100,'pz',0.54,'desechables');                            // 4×25 pz \$54
+  await addC(['Fabuloso'],1,'L',29.90,'abarrotes');                                          // limpieza
+  await addC(['Pechuga de pavo'],1.025,'kg',130.90,'lacteos_proteinas');
+  await addC(['Queso mozzarella','Mozzarella'],5,'kg',85.914,'lacteos_proteinas');           // \$429.57
+  await addC(['Servilleta'],400,'pz',0.05625,'desechables');                                 // 12-400 pz \$22.50
+  await addC(['Servitoallas'],1,'paq',28.90,'desechables');                                  // Pétalo 180 hojas
+  await addC(['Valentina'],10,'pz',36.53,'abarrotes');                                       // caja de 10 × 900 g
+  await addC(['Yogurth natural','Yogurt natural'],1,'pz',43.83,'lacteos_proteinas');
+
+  // ── Gastos ──
+  const gastos=[
+    {fecha:'2026-09-27',cat:'costco',prov:'Costco',monto:3234.45,ticket:'ARG-5900604',metodo:'tarjeta',
+     notas:'16 partidas: leche almendra, crutones, fresa 907g, aceitunas 3kg, brócoli, ensalada italiana, espinaca, pechuga de pollo 1.36kg, leche deslactosada 12L, totopos, tomate cherry, crema de cacahuate, jamón serrano, parmesano, moras azules, crema de almendras'},
+    {fecha:'2026-09-27',cat:'proveedor',prov:'Grupo El Zorro',monto:1263.19,ticket:'ZORRO-326826401',metodo:'efectivo',
+     notas:'12 partidas: avena 2kg, azúcar, bolsas basura, cucharas, Fabuloso, pechuga de pavo, mozzarella 5kg, servilletas 400pz, servitoallas, tenedores, Valentina caja 10, yoghurt natural'},
+    {fecha:'2026-09-27',cat:'proveedor',prov:'La Chispa',monto:1470.00,ticket:'CHISPA-27SEP26-A',metodo:'efectivo',
+     notas:'TICKET PENDIENTE — monto dado por Iván, comprobante llega mañana'},
+    {fecha:'2026-09-27',cat:'proveedor',prov:'La Chispa',monto:780.00,ticket:'CHISPA-27SEP26-B',metodo:'efectivo',
+     notas:'TICKET PENDIENTE — monto dado por Iván, comprobante llega mañana'},
+  ];
+  const nuevos=[];
+  for(const g of gastos){
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      await fsSet('gastos',{id:++nid,tipoEstrategico:'general',...g}); nuevos.push(`${g.prov} ${fmt(g.monto)}`);
+    }
+  }
+  for(const nombre of ['Grupo El Zorro','La Chispa']){
+    if(!D.provDir.find(x=>normInvNombre(x.nombre)===normInvNombre(nombre)))
+      await fsSet('provDir',{id:++nid,nombre,contacto:'',tel:'',entrega:'',notas:'Alta automática desde compras'});
+  }
+  await markMig(migKey);
+  logAudit('compras_registradas',{lote:'semana 27-sep-2026',gastos:nuevos,sinCostear:omitidos,total:6747.64});
+  if(nuevos.length) toast(`✓ Semana 27-sep: ${nuevos.length} gastos por ${fmt(6747.64)}`,5000);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
