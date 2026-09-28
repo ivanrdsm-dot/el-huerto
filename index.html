@@ -1267,8 +1267,8 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
   <div class="card" style="padding:12px;margin-bottom:10px;">
     <div style="display:grid;grid-template-columns:1fr 130px;gap:8px;">
-      <div class="fg" style="margin:0;"><label>Proveedor</label><input id="mc-prov" placeholder="Ej: El Zorro" list="pvdl" oninput="MC.prov=this.value;mcSave()"></div>
-      <div class="fg" style="margin:0;"><label>Pago</label><select id="mc-metodo" onchange="MC.metodo=this.value;mcSave()"><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta</option></select></div>
+      <div class="fg" style="margin:0;"><label>Proveedor</label><input id="mc-prov" placeholder="Ej: El Zorro" list="pvdl" oninput="mcSetProv(this.value)"></div>
+      <div class="fg" style="margin:0;"><label>Pago</label><select id="mc-metodo" onchange="mcSetMetodo(this.value)"><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta</option></select></div>
     </div>
   </div>
   <div class="card" style="padding:12px;margin-bottom:10px;">
@@ -1833,6 +1833,9 @@ nav{padding-top:env(safe-area-inset-top);}
       <span class="ct" style="margin-bottom:0;">🧮 Food Cost por Producto</span>
       <span id="fc-resumen" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;"></span>
     </div>
+    <div id="fc-alerta-escala"></div>
+    <div style="display:none;">
+    </div>
     <p style="font-size:11px;color:var(--text2);margin:4px 0 8px;">Costo real de insumos por producto según su receta y los precios de tus facturas. Verde ≥60% margen · Amarillo 40-59% · Rojo &lt;40%.</p>
     <div class="tw" id="fc-tabla"></div>
   </div>
@@ -1863,6 +1866,8 @@ nav{padding-top:env(safe-area-inset-top);}
   <div class="g4" style="margin-bottom:10px;" id="rp-fin2"></div>
   <!-- KPIs de dirección: los números que un inversionista pide primero -->
   <div class="g4" style="margin-bottom:10px;" id="rp-dir"></div>
+  <!-- Upsell: cuánto dinero trajeron los extras sugeridos en el POS -->
+  <div class="card" style="margin-bottom:10px;" id="rp-upsell"></div>
   <div class="g2" style="gap:10px;margin-bottom:10px;">
     <div class="card"><div class="ct">Estado de Resultados (P&L)</div><div id="rp-est"></div><div id="rp-waterfall" style="margin-top:12px;"></div></div>
     <div class="card"><div class="ct">Top Productos del Período</div><div id="rp-top-prods"></div></div>
@@ -2562,6 +2567,8 @@ async function completeInit(){
   await migEmpleadosAgo2026_v2();
   await migAltaValeGerente();
   await migCompraCostco23Ago2026();
+  await migSaneoCosteoSep2026();
+  await migEscalaPreciosSep2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -2927,6 +2934,111 @@ async function migCompraCostco23Ago2026(){
   logAudit('compras_registradas',{lote:'Costco 23-ago-2026',ticket:'ARG-5854506',monto:4503.90,partidas:15,sinCostear:omitidos,
     nota:'Fresa recosteada a \$40.26/domo (Costco) desde \$100/domo (mercado)'});
   if(nuevo) toast('✓ Costco 23-ago cargado: \$4,503.90 · 15 partidas',5000);
+}
+// ══ SANEO DE COSTEO sep-2026: solo 5 de 84 productos costeaban completo ══
+// Dos causas distintas, las dos con evidencia, ninguna adivinada:
+//
+// 1) unit MAL PUESTO. Matcha, Chai y Proteína tenían unidadOf 'gramos' y el
+//    precio guardado POR GRAMO, pero unit decía 'bote'. La aritmética lo
+//    confirma contra las facturas: matcha $319/800 g = 0.3988 (guardado
+//    0.3988), chai $255.20/700 g = 0.3646 (0.3646), proteína $1599/2480 g =
+//    0.6448 (0.6448). Se corrige unit a 'g'; el precio NO se toca.
+//
+// 2) RECETA EN GRAMOS contra inventario POR ENVASE. Se reexpresa la receta
+//    en la unidad del inventario (no se cambia cómo compra Iván):
+//    · Crema de almendras: frasco Costco de 765 g  → 1 g = 1/765 pz
+//    · Hielos: la bolsa cuesta $13.60 y el duplicado 'Hielo' está a
+//      $0.00798/g; 13.60/0.00798 = 1704 g, o sea es el mismo producto
+//    · Limón agrio: se compra por kg ($15) y la receta pide piezas;
+//      100 g por limón (supuesto estándar, igual que el resto de la fruta)
+//
+// Como siempre: solo se toca lo que HOY está roto (qtyToInvUnit === null).
+const UNIT_CORRECTO={'matcha':'g','chai':'g','proteina':'g'};
+const CONV_RECETA_V2={
+  // nombre normalizado del inventario: [unidad receta, unidad inventario, factor, nota]
+  'cremadealmendras':['g','pz',1/765,   'frasco Costco de 765 g'],
+  'hielos':          ['g','pz',1/1704,  'bolsa de ~1704 g (13.60 / 0.00798 por g)'],
+  'limonagrio':      ['pz','kg',0.10,   'limón ≈ 100 g'],
+};
+async function migSaneoCosteoSep2026(){
+  const migKey='h5costeo_sep26';
+  if(await migDone(migKey)) return;
+  const arreglos=[];
+
+  // 1. unit mal puesto
+  for(const inv of D.inventario){
+    const n=normInvNombre(inv.nombre); const target=UNIT_CORRECTO[n];
+    if(target && inv.unit!==target && (inv.precio||0)>0){
+      arreglos.push(`${inv.nombre}: unidad ${inv.unit} → ${target}`);
+      inv.unit=target; await fsSet('inventario',inv);
+    }
+  }
+
+  // 2. recetas en unidad incompatible
+  let lineas=0;
+  for(const rec of D.recetas){
+    if(!Array.isArray(rec.ings)) continue;
+    let dirty=false;
+    for(const ing of rec.ings){
+      const inv=D.inventario.find(i=>i.id===ing.invId)
+             ||D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre||''));
+      if(!inv) continue;
+      const qty=parseFloat(ing.qty); if(!(qty>0)) continue;
+      if(qtyToInvUnit(qty,ing.unit,inv.unit)!=null) continue;   // ya funciona
+      const r=CONV_RECETA_V2[normInvNombre(inv.nombre)];
+      if(!r||normUnit(ing.unit)!==normUnit(r[0])||normUnit(inv.unit)!==normUnit(r[1])) continue;
+      ing.qty=String(Math.round(qty*r[2]*1000000)/1000000); ing.unit=r[1];
+      dirty=true; lineas++;
+    }
+    if(dirty) await fsSet('recetas',rec);
+  }
+  await markMig(migKey);
+  logAudit('costeo_saneado',{unidadesCorregidas:arreglos,lineasReceta:lineas});
+  if(arreglos.length||lineas) toast(`✓ Costeo saneado: ${arreglos.length} insumo(s) y ${lineas} línea(s) de receta`,5000);
+}
+// ══ ERRORES DE ESCALA sep-2026: precio de PAQUETE guardado POR GRAMO ══
+// Es el mismo bug que ya envenenó el COGS en agosto. Dos insumos lo tenían:
+//  · Perlas explosivas (boba): 180 en unidad 'g'. El Boba Tea de $49 costaba
+//    $5,429.50 (margen −10,980%): 30 g × 180 = $5,400. Debe ser 0.18/g,
+//    o sea los $180 del kilo — es el valor que ya traía documentado.
+//  · Cacahuate japonés: 75.80 en 'gramos'. A $75.80/kg son $0.0758/g, que
+//    cuadra con el 'Cacahuate natural' del mismo inventario ($0.069/g).
+// Se corrige solo si el valor sigue siendo el malo, para no pisar un precio
+// que Iván haya ajustado a mano después.
+const ESCALA_MIL={'perlasexplosivasboba':[180,0.18],'cacahuatejapones':[75.8,0.0758]};
+// La receta de Papas Susalias pide 'bolsa' y el inventario está en piezas:
+// la caja Costco trae 20 piezas de 50 g, así que 1 bolsa = 1 pieza.
+const CONV_RECETA_V3={'susalias':['bolsa','pz',1,'la pieza ES la bolsa de 50 g']};
+async function migEscalaPreciosSep2026(){
+  const migKey='h5escala_sep26';
+  if(await migDone(migKey)) return;
+  const fixes=[];
+  for(const inv of D.inventario){
+    const r=ESCALA_MIL[normInvNombre(inv.nombre)];
+    if(r && Math.abs((inv.precio||0)-r[0])<0.01){
+      fixes.push(`${inv.nombre}: ${fmt(r[0])} → ${r[1]} por ${inv.unit}`);
+      inv.precio=r[1]; await fsSet('inventario',inv);
+    }
+  }
+  let lineas=0;
+  for(const rec of D.recetas){
+    if(!Array.isArray(rec.ings)) continue;
+    let dirty=false;
+    for(const ing of rec.ings){
+      const inv=D.inventario.find(i=>i.id===ing.invId)
+             ||D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre||''));
+      if(!inv) continue;
+      const qty=parseFloat(ing.qty); if(!(qty>0)) continue;
+      if(qtyToInvUnit(qty,ing.unit,inv.unit)!=null) continue;
+      const r=CONV_RECETA_V3[normInvNombre(inv.nombre)];
+      if(!r||normUnit(ing.unit)!==normUnit(r[0])||normUnit(inv.unit)!==normUnit(r[1])) continue;
+      ing.qty=String(Math.round(qty*r[2]*1000000)/1000000); ing.unit=r[1]; dirty=true; lineas++;
+    }
+    if(dirty) await fsSet('recetas',rec);
+  }
+  await markMig(migKey);
+  logAudit('precio_escala_corregido',{insumos:fixes,lineasReceta:lineas});
+  if(fixes.length||lineas) toast(`✓ ${fixes.length} precio(s) de escala corregidos`,5000);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
@@ -6297,6 +6409,12 @@ window.reprintComanda=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printComanda
 // ═══════════════════════════════════════════════════════════════
 let MC={prov:'',metodo:'efectivo',items:[]};
 function mcSave(){try{localStorage.setItem('h5compra_draft',JSON.stringify(MC));}catch(e){}}
+// Los oninput/onchange del HTML corren en scope global: ahí ni MC ni mcSave
+// existen, así que escribir el proveedor o cambiar el método de pago en Modo
+// Mercado lanzaba ReferenceError y el borrador NO se guardaba.
+// Se exponen setters (no el objeto: MC se reasigna al limpiar la compra).
+window.mcSetProv=v=>{MC.prov=v;mcSave();};
+window.mcSetMetodo=v=>{MC.metodo=v;mcSave();};
 try{const d=localStorage.getItem('h5compra_draft');if(d)MC=JSON.parse(d);}catch(e){}
 
 window.mcAddInv=id=>{
@@ -10895,6 +11013,21 @@ function renderFoodCost(){
   });
   const completos=prods.filter(x=>x.fc.completo).length;
   if($('fc-resumen'))$('fc-resumen').textContent=`${completos}/${prods.length} con costeo completo`;
+  // ── Guardián de escala ──
+  // Ya pasó dos veces: se guarda el precio del PAQUETE en un insumo medido
+  // por gramo/ml y el food cost se dispara (perlas de boba a $180/g hacían
+  // que un Boba Tea de $49 "costara" $5,429). Un insumo a granel por encima
+  // de $5 por gramo o ml casi siempre es el precio del envase mal capturado.
+  const sospechosos=D.inventario.filter(i=>{
+    const u=normUnit(i.unit||''); return (u==='g'||u==='ml')&&(i.precio||0)>5;
+  });
+  const al=$('fc-alerta-escala');
+  if(al) al.innerHTML=!sospechosos.length?'':`
+    <div style="background:color-mix(in srgb, var(--red) 10%, var(--surface));border:1px solid var(--red);border-radius:var(--rsm);padding:9px 11px;margin:8px 0;">
+      <div style="font-size:11.5px;font-weight:800;color:var(--red);margin-bottom:4px;">⚠ Precio sospechoso: parece el del paquete, no el del gramo</div>
+      ${sospechosos.map(i=>`<div class="sr" style="font-size:12px;"><span>${i.nombre}</span><span class="mono ar">${fmt(i.precio)} por ${i.unit}</span></div>`).join('')}
+      <div style="font-size:10.5px;color:var(--text3);margin-top:5px;">Si el envase trae 1 kg, el precio por gramo es ese monto entre 1000. Corrígelo en Inventario → Administrar.</div>
+    </div>`;
   cont.innerHTML=`<table class="tbl"><thead><tr><th>Producto</th><th>Precio</th><th>Costo insumos</th><th>Utilidad</th><th>Margen</th><th>Estado</th></tr></thead><tbody>`+
     prods.map(({p,fc,margen})=>{
       let mHtml='—', estado='';
@@ -11854,6 +11987,56 @@ window.plPDF=()=>{
   toast('📄 P&L descargado — listo para compartir',3000);
 };
 
+// ═══════════════════════════════════════════════════════════════
+// REPORTE DE UPSELL — cuánto trajeron los extras sugeridos
+// Mide solo lo marcado con sug:true (aceptado desde un chip del POS),
+// no los extras que la cajera agregó por su cuenta: la pregunta es si la
+// función sirve, no cuántos extras se venden en total.
+// ═══════════════════════════════════════════════════════════════
+const UPSELL_DESDE='2026-09-27'; // día que se publicó la función (v14.61)
+function calcUpsell(ventas){
+  const vv=ventas.filter(v=>!v.anulada);
+  let monto=0, unidades=0; const porProd={}; const conUpsell=new Set();
+  vv.forEach(v=>{
+    (v.items||[]).forEach(i=>{
+      if(!i.sug) return;
+      const q=i.qty||1, imp=(i.precio||0)*q;
+      monto+=imp; unidades+=q; conUpsell.add(v.id);
+      const k=i.nombre||'—';
+      porProd[k]=porProd[k]||{q:0,$:0}; porProd[k].q+=q; porProd[k].$+=imp;
+    });
+  });
+  const nCon=conUpsell.size, nTot=vv.length;
+  const ticketsCon=vv.filter(v=>conUpsell.has(v.id));
+  const ticketsSin=vv.filter(v=>!conUpsell.has(v.id));
+  const prom=a=>a.length?a.reduce((s,v)=>s+(v.total||0),0)/a.length:0;
+  return {monto,unidades,nCon,nTot,
+    attach: nTot?Math.round(nCon/nTot*100):0,
+    promCon:prom(ticketsCon), promSin:prom(ticketsSin),
+    top:Object.entries(porProd).sort((a,b)=>b[1].$-a[1].$).slice(0,4)};
+}
+function renderUpsell(ventas,label){
+  const box=$('rp-upsell'); if(!box) return;
+  const u=calcUpsell(ventas);
+  const head=`<div class="ct">💡 Upsell — extras sugeridos en el POS</div>`;
+  if(!u.unidades){
+    box.innerHTML=head+`<p style="font-size:12px;color:var(--text3);margin:8px 0 0;">
+      Sin extras vendidos por sugerencia en ${label}. La función se publicó el
+      <b>${UPSELL_DESDE}</b>: solo cuenta lo aceptado desde un chip a partir de esa fecha.</p>`;
+    return;
+  }
+  const dif=u.promCon-u.promSin;
+  box.innerHTML=head+`
+    <div class="g4" style="margin:8px 0 10px;">
+      <div style="text-align:center;"><div class="kv ag">${fmt(u.monto)}</div><div style="font-size:10px;color:var(--text3);">ingreso extra · ${u.unidades} pza(s)</div></div>
+      <div style="text-align:center;"><div class="kv gold">${u.attach}%</div><div style="font-size:10px;color:var(--text3);">de los tickets (${u.nCon} de ${u.nTot})</div></div>
+      <div style="text-align:center;"><div class="kv">${fmt(u.promCon)}</div><div style="font-size:10px;color:var(--text3);">ticket CON extra</div></div>
+      <div style="text-align:center;"><div class="kv ${dif>=0?'at':'ar'}">${dif>=0?'+':''}${fmt(dif)}</div><div style="font-size:10px;color:var(--text3);">vs ${fmt(u.promSin)} sin extra</div></div>
+    </div>
+    <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Lo que más se acepta:</div>
+    ${u.top.map(([n,d])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${d.q}× · ${fmt(d.$)}</span></div>`).join('')}`;
+}
+
 function renderReportes(){
   const {p,fechas,label}=getReportePeriodo();
   const cm=curM(); const td=today();
@@ -11875,6 +12058,7 @@ function renderReportes(){
   if($('rp-util-sub'))$('rp-util-sub').textContent=p==='mes'?`nóm. ${fmt(nomEst)}`:'';
   if($('rp-margen')){$('rp-margen').textContent=margen+'%';$('rp-margen').className='kv '+(margen>=0?'gold':'red');}
   if($('rp-label'))$('rp-label').textContent=label;
+  renderUpsell(ventas,label);
   // Estado de resultados
   const ingSubs=p==='mes'?D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0):0;
   // ══ P&L PROFESIONAL (devengado) ══

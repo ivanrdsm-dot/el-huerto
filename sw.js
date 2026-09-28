@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.61'; // Sugeridos para subir el ticket + arregla las ✕ de los modales
+const CACHE_NAME = 'el-huerto-v14.62'; // Reporte de upsell + saneo de costeo y errores de escala
 const ASSETS = [
   '/',
   '/index.html',
