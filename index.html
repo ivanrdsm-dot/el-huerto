@@ -2569,6 +2569,8 @@ async function completeInit(){
   await migCompraCostco23Ago2026();
   await migSaneoCosteoSep2026();
   await migEscalaPreciosSep2026();
+  await migMenuCostosSep2026();
+  await migCafeMolidoSep2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3039,6 +3041,79 @@ async function migEscalaPreciosSep2026(){
   await markMig(migKey);
   logAudit('precio_escala_corregido',{insumos:fixes,lineasReceta:lineas});
   if(fixes.length||lineas) toast(`✓ ${fixes.length} precio(s) de escala corregidos`,5000);
+}
+// ══ MENÚ Y COSTOS sep-2026 (menú lateral oficial + precios de Iván) ══
+// Costos que dio Iván: café $340 el kilo, popote $1, salsa chipotle $43,
+// servitoallas $40 el rollo. Y fuera el chocolate en polvo: ya no se vende.
+//
+// Dos equivalencias son SUPUESTOS documentados, no datos de factura, porque
+// Iván dio el precio del envase y la receta mide por hoja/ml:
+//   · rollo de servitoallas = 100 hojas  → $0.40 por hoja
+//   · envase de salsa chipotle = 250 ml  → $0.172 por ml
+// Impacto si me equivoco: ±$0.20 en un producto de $99 (0.2%) y ±$1.30 en un
+// panini de $89 (1.4%). Se corrigen cambiando solo estos dos números.
+const SERVITOALLAS_HOJAS=100, SALSA_ML=250;
+async function migMenuCostosSep2026(){
+  const migKey='h5menucostos_sep26';
+  if(await migDone(migKey)) return;
+  const hechos=[];
+  const setPrecioInv=async(nombreCanon,precio,nota)=>{
+    const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(nombreCanon));
+    if(!inv) return;
+    if(inv.precio!==precio){inv.precio=precio;await fsSet('inventario',inv);hechos.push(`${inv.nombre}: ${fmt(precio)} por ${inv.unit}${nota?' ('+nota+')':''}`);}
+  };
+  await setPrecioInv('Café',0.34,'$340 el kilo');
+  await setPrecioInv('Popote',1.00);
+  await setPrecioInv('Salsa chipotle',43.00,'envase');
+  await setPrecioInv('Servitoallas',40.00,'el rollo');
+
+  // Recetas que miden por hoja/ml contra inventario por envase
+  const CONV={'servitoallas':['pz','paq',1/SERVITOALLAS_HOJAS],'salsachipotle':['ml','pz',1/SALSA_ML]};
+  let lineas=0;
+  for(const rec of D.recetas){
+    if(!Array.isArray(rec.ings)) continue;
+    let dirty=false;
+    for(const ing of rec.ings){
+      const inv=D.inventario.find(i=>i.id===ing.invId)
+             ||D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre||''));
+      if(!inv) continue;
+      const qty=parseFloat(ing.qty); if(!(qty>0)) continue;
+      if(qtyToInvUnit(qty,ing.unit,inv.unit)!=null) continue;
+      const r=CONV[normInvNombre(inv.nombre)];
+      if(!r||normUnit(ing.unit)!==normUnit(r[0])||normUnit(inv.unit)!==normUnit(r[1])) continue;
+      ing.qty=String(Math.round(qty*r[2]*1000000)/1000000); ing.unit=r[1]; dirty=true; lineas++;
+    }
+    if(dirty) await fsSet('recetas',rec);
+  }
+
+  // Chocolate fuera: el insumo y las dos bebidas que lo usaban
+  const choco=D.inventario.find(i=>normInvNombre(i.nombre)==='chocolateenpolvo');
+  if(choco){await fsDel('inventario',choco.id);
+    const ix=D.inventario.findIndex(i=>i.id===choco.id); if(ix>=0)D.inventario.splice(ix,1);
+    hechos.push('Chocolate en polvo eliminado del inventario');}
+  for(const id of [1034,1035]){
+    const pr=D.productos.find(x=>x.id===id);
+    if(pr&&pr.activo!==false){await fsSet('productos',{...pr,activo:false});hechos.push(`${pr.nombre} dado de baja`);}
+  }
+  // Papas Locas: el menú oficial dice $79
+  const papas=D.productos.find(x=>x.id===1015);
+  if(papas&&papas.precio!==79){await fsSet('productos',{...papas,precio:79});hechos.push(`Papas Locas ${fmt(papas.precio)} → ${fmt(79)}`);}
+
+  await markMig(migKey);
+  logAudit('menu_costos_actualizados',{cambios:hechos,lineasReceta:lineas,
+    supuestos:{servitoallasHojasPorRollo:SERVITOALLAS_HOJAS,salsaMlPorEnvase:SALSA_ML}});
+  if(hechos.length||lineas) toast(`✓ Menú y costos: ${hechos.length} cambio(s), ${lineas} línea(s) de receta`,5000);
+}
+// ══ Duplicado de café: 2 recetas apuntan al item 'Café molido' ══
+// El alias manda 'Café molido' → 'Café', pero dos recetas guardan el invId
+// del duplicado y por eso seguían sin costear. Mismo producto, mismo precio.
+async function migCafeMolidoSep2026(){
+  const migKey='h5cafedup_sep26';
+  if(await migDone(migKey)) return;
+  const cm=D.inventario.find(i=>normInvNombre(i.nombre)==='cafemolido');
+  if(cm&&!(cm.precio>0)){cm.precio=0.34;await fsSet('inventario',cm);
+    logAudit('costo_insumo',{insumo:'Café molido',precio:'$0.34/g ($340 el kilo)'});}
+  await markMig(migKey);
 }
 // Migración de menú Abril 2026 — actualiza precios, nombres y agrega productos nuevos
 async function migrateMenuAbril2026(){
