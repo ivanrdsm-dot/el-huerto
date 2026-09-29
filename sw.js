@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.67'; // Brócoli fuera del inventario
+const CACHE_NAME = 'el-huerto-v14.68'; // Gasto base semanal ($7,700) en márgenes
 const ASSETS = [
   '/',
   '/index.html',

@@ -2158,6 +2158,19 @@ nav{padding-top:env(safe-area-inset-top);}
     <div id="prod-list"></div>
   </div>
   <div class="card">
+    <div class="ct">Gasto operativo promedio</div>
+    <div style="font-size:11.5px;color:var(--text2);line-height:1.55;margin-bottom:9px;">
+      Lo que sale cada semana <b>sin contar nómina</b>: fruta, Costco, El Zorro, La Chispa, limpieza, servicios.
+      Cuando una semana no alcanza a capturarse ticket por ticket, los reportes usan este promedio como piso
+      y marcan la diferencia como estimada — así el margen nunca sale inflado.
+    </div>
+    <div class="ii">
+      <div class="fg"><label>Promedio por semana (sin nómina)</label><input type="number" id="cfg-gasto-base" placeholder="7700"></div>
+      <div class="fg"><label>Equivale por día hábil</label><input type="text" id="cfg-gasto-dia" readonly style="background:var(--surface3);color:var(--text2);"></div>
+    </div>
+    <button class="btn bp bfull" onclick="saveConfig()">Guardar</button>
+  </div>
+  <div class="card">
     <div class="ct">Ticket / Impresora</div>
     <div class="ii"><div class="fg"><label>Nombre en ticket</label><input type="text" id="cfg-neg" placeholder="El Huerto"></div><div class="fg"><label>Teléfono</label><input type="text" id="cfg-tel" placeholder="+52 56 4666 5718"></div></div>
     <div class="fg"><label>RFC del patrón (sale en el registro de asistencia del contador)</label><input type="text" id="cfg-rfc" placeholder="Ej: CARI0209052V0" style="text-transform:uppercase;"></div>
@@ -2445,6 +2458,7 @@ let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
+  gastoBaseSem:7700, // promedio de gasto operativo por semana SIN nómina (Iván, 28-sep-2026)
   waReporte:'525646665718',waHora:'21:00',
   ordTiempos:{warn:7,urgent:12}, // minutos: verde → ámbar → rojo en Órdenes
   comandaAuto:true, // comanda a cocina al cobrar (Bluetooth ESC/POS)
@@ -6056,6 +6070,89 @@ function getWDays7(ref){
   return r;
 }
 function getMonday(ds){const d=new Date(ds+'T12:00:00');const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return localDate(d);}
+// ══════════════════════════════════════════════════════════════
+// GASTO OPERATIVO BASE POR SEMANA
+// Iván (28-sep-2026): "nuestros gastos en promedio a la semana es de
+// 7,700 todas las semanas más las nóminas". No todas las semanas se
+// capturan ticket por ticket (la fruta y La Chispa llegan días
+// después), y esas semanas mostraban un margen irreal: 90% de
+// utilidad nada más porque el gasto estaba en cero.
+// El piso arregla eso sin inventar registros: si el período captura
+// menos que su promedio, el reporte usa el promedio y deja la
+// diferencia MARCADA como estimada, a la vista.
+// ══════════════════════════════════════════════════════════════
+const r2=v=>Math.round(v*100)/100;
+const GASTO_SEM_DEFAULT=7700;
+const gastoSemBase=()=>{const v=Number(CFG.gastoBaseSem);return Number.isFinite(v)&&v>0?v:GASTO_SEM_DEFAULT;};
+// La semana operativa son 5 días (lun-vie), así que el promedio diario
+// es base/5. Prorratear por día hábil deja que 'hoy' y 'mes' usen la
+// misma regla que 'semana', sin tablas paralelas.
+function diasHabilesPeriodo(p,fechas){
+  if(p==='hoy') return 1;
+  if(p==='semana'){
+    // La semana en curso solo ha gastado lo que lleva corrido: cobrarle
+    // el promedio completo el lunes dejaba el margen en rojo sin razón.
+    const wd=getWDays((fechas&&fechas._sem)||today()), td=today();
+    return Math.max(1,wd.filter(d=>d<=td).length);
+  }
+  const cm=(fechas&&fechas._mes)||curM();
+  const [Y,M]=cm.split('-').map(Number);
+  const ultimo=new Date(Y,M,0).getDate();
+  const tope=(cm===curM())?Math.min(ultimo,Number(today().slice(8))):ultimo;
+  let n=0;
+  for(let d=1;d<=tope;d++) if(DIAS_OPERACION.includes(new Date(Y,M-1,d).getDay())) n++;
+  return n||1;
+}
+function gastoBasePeriodo(p,fechas){
+  return r2(gastoSemBase()/DIAS_OPERACION.length*diasHabilesPeriodo(p,fechas));
+}
+// Un gasto cae en una de tres piezas y cada reporte necesita distinguirlas:
+//  · nomina  → ya se cuenta por separado (D.nomPagos); sumarla aquí la duplica
+//  · insumos → salida de caja; en el P&L devengado el costo real es el COGS
+//  · opex    → renta, servicios, mantenimiento, marketing, suscripciones, varios
+// Antes el P&L solo restaba renta y servicios: mantenimiento, marketing,
+// suscripciones y varios NUNCA aparecían en la utilidad operativa.
+// ── NÓMINA DEVENGADA ──
+// El sueldo se causa se haya pagado o no. Antes el mes solo sumaba
+// D.nomPagos: septiembre mostraba $1,100 de nómina contra $95 mil de
+// ventas (Labor Cost 1%) nada más porque nadie marcó las semanas como
+// pagadas. Ahora cada semana aporta su pago real si existe, y si no,
+// lo devengado — prorrateado por los días hábiles que caen dentro del
+// período y ya transcurrieron.
+function nomSemanaProrrateada(mon,diasValidos){
+  const pago=D.nomPagos.find(x=>x.semana===mon);
+  const base=pago?pago.total:getNominaSemanal(mon).reduce((s,e)=>s+e.totalSem,0);
+  return base*Math.min(1,Math.max(0,diasValidos)/DIAS_OPERACION.length);
+}
+function nominaDevengada(dias){
+  const td=today(), porSem={};
+  (dias||[]).forEach(f=>{ if(esDiaDescanso(f)||f>td) return; const m=getMonday(f); porSem[m]=(porSem[m]||0)+1; });
+  return r2(Object.entries(porSem).reduce((s,[mon,n])=>s+nomSemanaProrrateada(mon,n),0));
+}
+const nomDevengadaSemana=mon=>nominaDevengada(getWDays(mon));
+// Todos los días de un mes 'YYYY-MM', para devengar nómina y gasto base.
+function diasDelMes(cm){
+  const [Y,M]=cm.split('-').map(Number), ult=new Date(Y,M,0).getDate(), r=[];
+  for(let d=1;d<=ult;d++) r.push(`${cm}-${String(d).padStart(2,'0')}`);
+  return r;
+}
+// Gasto operativo de UNA semana (lun→dom, porque las compras caen en
+// sábado) con el piso del promedio aplicado. Sin nómina: esa va aparte.
+function gastoOperSemana(mon){
+  const gd=desgloseGastos(D.gastos.filter(g=>getWDays7(mon).includes(g.fecha)));
+  const td=today(), corridos=getWDays(mon).filter(d=>d<=td).length;
+  const base=gastoSemBase()/DIAS_OPERACION.length*Math.max(1,corridos);
+  return r2(Math.max(gd.sinNomina,base));
+}
+function desgloseGastos(gastos){
+  const suma=arr=>r2(arr.reduce((s,g)=>s+(g.monto||0),0));
+  const esNom=g=>g.cat==='nomina';
+  const esIns=g=>g.cat==='proveedor'||g.cat==='costco';
+  const nomina=suma(gastos.filter(esNom));
+  const insumos=suma(gastos.filter(esIns));
+  const opex=suma(gastos.filter(g=>!esNom(g)&&!esIns(g)));
+  return {nomina,insumos,opex,sinNomina:r2(insumos+opex),total:suma(gastos)};
+}
 function getRecentWeeks(n=8){const weeks=[];const now=new Date();for(let i=n-1;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i*7);weeks.push(getMonday(localDate(d)));}return[...new Set(weeks)];}
 function closeModal(id,e){if(e.target===$(id))$(id).style.display='none';}
 window.closeModal=closeModal;
@@ -8694,9 +8791,11 @@ function renderGastos(){
   let filtDates=null; // null = sin filtro de fecha (todo)
   let periodoLabel='';
   if(periodo==='semana'){
-    const wd=getWDays(td);
+    // Semana COMPLETA: las compras grandes (Costco, El Zorro) caen en
+    // sábado y con 5 días quedaban fuera de esta pantalla.
+    const wd=getWDays7(td);
     filtDates=new Set(wd);
-    periodoLabel=`Semana ${wd[0]} → ${wd[4]}`;
+    periodoLabel=`Semana ${wd[0]} → ${wd[6]}`;
   } else if(periodo==='mes'){
     const cm=curM();
     filtDates={_mes:cm}; // especial para filtrar por mes
@@ -8710,6 +8809,7 @@ function renderGastos(){
   } else if(filtDates){
     rows=rows.filter(r=>filtDates.has(r.fecha));
   }
+  const rowsPeriodo=rows; // antes del filtro de categoría: base para comparar contra el promedio
   if(fc) rows=rows.filter(r=>r.cat===fc);
 
   // KPIs
@@ -8717,12 +8817,22 @@ function renderGastos(){
   const totEf=rows.filter(r=>r.metodo==='efectivo').reduce((s,r)=>s+r.monto,0);
   const totTc=rows.filter(r=>r.metodo==='tarjeta'||r.metodo==='transferencia').reduce((s,r)=>s+r.monto,0);
   const topCat=Object.entries(rows.reduce((a,r)=>{a[r.cat]=(a[r.cat]||0)+r.monto;return a;},{})).sort((a,b)=>b[1]-a[1])[0];
+  // Avance contra el promedio declarado: enseña de un vistazo cuánto
+  // falta por capturar de la semana/mes antes de mirar el margen.
+  const gdP=desgloseGastos(rowsPeriodo);
+  const baseG=periodo==='todo'?0:gastoBasePeriodo(periodo==='semana'?'semana':'mes',{_mes:curM()});
+  const faltaG=baseG>0?Math.max(0,r2(baseG-gdP.sinNomina)):0;
+  const pctG=baseG>0?Math.min(100,Math.round(gdP.sinNomina/baseG*100)):0;
 
   if($('g-kpis'))$('g-kpis').innerHTML=`
     <div class="card" style="text-align:center;"><div class="ct">${periodo==='semana'?'Gastos Semana':periodo==='mes'?'Gastos Mes':'Total Gastos'}</div><div class="kv red">${fmt(totPeriodo)}</div><div style="font-size:10px;color:var(--text2);margin-top:3px;">${rows.length} registros</div></div>
     <div class="card" style="text-align:center;"><div class="ct">💵 Efectivo</div><div class="kv blue">${fmt(totEf)}</div></div>
     <div class="card" style="text-align:center;"><div class="ct">💳 TC / Transfer</div><div class="kv gold">${fmt(totTc)}</div></div>
-    <div class="card" style="text-align:center;"><div class="ct">Mayor categoría</div><div style="font-size:13px;font-weight:700;margin-top:4px;color:var(--red);">${topCat?catL[topCat[0]]||topCat[0]:'—'}</div>${topCat?`<div style="font-size:10px;color:var(--text2);margin-top:2px;">${fmt(topCat[1])}</div>`:''}</div>`;
+    ${baseG>0?`<div class="card" style="text-align:center;"><div class="ct">📋 vs promedio</div>
+      <div class="kv ${faltaG>0?'gold':'teal'}">${pctG}%</div>
+      <div style="font-size:10px;color:var(--text2);margin-top:3px;">${faltaG>0?`faltan ${fmt(faltaG)} de ${fmt(baseG)}`:`completo · base ${fmt(baseG)}`}</div>
+      <div class="prog" style="margin-top:5px;"><div class="pf" style="background:${faltaG>0?'var(--gold)':'var(--accent)'};width:${pctG}%;"></div></div></div>`:
+    `<div class="card" style="text-align:center;"><div class="ct">Mayor categoría</div><div style="font-size:13px;font-weight:700;margin-top:4px;color:var(--red);">${topCat?catL[topCat[0]]||topCat[0]:'—'}</div>${topCat?`<div style="font-size:10px;color:var(--text2);margin-top:2px;">${fmt(topCat[1])}</div>`:''}</div>`}`;
 
   if($('ghist-titulo'))$('ghist-titulo').textContent=periodoLabel||'Historial completo';
   if($('gcats-titulo'))$('gcats-titulo').textContent='Distribución — '+(periodo==='semana'?'Semana':periodo==='mes'?'Mes':'Total');
@@ -10835,8 +10945,12 @@ function renderKpiFinancieros(fechas){
     });
   });
   const margenBruto=totalVentas>0?((totalVentas-costoProductos)/totalVentas*100):0;
-  // Gastos del período
-  const gastos=D.gastos.filter(g=>fechas.includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
+  // Gastos del período: sin nómina (va aparte) y con piso en el promedio
+  // semanal declarado, para que las semanas a medio capturar no finjan
+  // un punto de equilibrio bajísimo.
+  const gdK=desgloseGastos(D.gastos.filter(g=>fechas.includes(g.fecha)));
+  const habilesK=fechas.filter(f=>!esDiaDescanso(f)).length||1;
+  const gastos=r2(Math.max(gdK.sinNomina,gastoSemBase()/DIAS_OPERACION.length*habilesK));
   // Punto de equilibrio (gastos fijos / margen contribución)
   const prodsConCosto=D.productos.filter(p=>p.activo&&(p.costo??0)>0);
   const margenContribProm=prodsConCosto.length>0?
@@ -11733,15 +11847,21 @@ function renderDashboard(){
   const cajaManualExtra=0; // ya incluido en calcDiaDB
   const ingSubs=D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0);
   const ingT=ingCajaMes+ingSubs;
-  const gasT=D.gastos.filter(g=>mOf(g.fecha)===cm).reduce((s,g)=>s+g.monto,0);
+  // Gasto operativo del mes: sin nómina (se cuenta aparte, si no se
+  // cobraba dos veces) y con piso en el promedio semanal declarado.
+  const gdMes=desgloseGastos(D.gastos.filter(g=>mOf(g.fecha)===cm));
+  const baseMes=gastoBasePeriodo('mes',{_mes:cm});
+  const gasNoCapMes=Math.max(0,r2(baseMes-gdMes.sinNomina));
+  const gasT=r2(gdMes.sinNomina+gasNoCapMes);
   // ── Nómina: suma semanas pagadas del mes + estimación semana actual
   const nomPagadaMes=D.nomPagos.filter(p=>p.semana&&mOf(p.semana)===cm).reduce((s,p)=>s+p.total,0);
   const monSem=getMonday(td);
   const nomSemActual=getNominaSemanal(monSem);
   const nomSemTotal=nomSemActual.reduce((s,e)=>s+e.totalSem,0);
   const semPagada=!!D.nomPagos.find(p=>p.semana===monSem);
-  const nomEst=nomPagadaMes+(semPagada?0:nomSemTotal);
-  const util=ingT-gasT-nomEst;
+  const nomSemDev=nomDevengadaSemana(monSem);
+  const nomEst=nominaDevengada(diasDelMes(cm));
+  const util=r2(ingT-gasT-nomEst);
   const margen=ingT>0?Math.round(util/ingT*100):0;
   const dias=new Set([...D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha),...D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha)]).size;
   const retHoy=getEnCaja(td);
@@ -11762,7 +11882,7 @@ function renderDashboard(){
     <div class="card db-kpi">
       <div class="ct">Gastos + Nómina Mes</div>
       <div class="kv red">${fmt(gasT+nomEst)}</div>
-      <div class="ks">Op: ${fmt(gasT)} · Nóm: ${fmt(nomEst)}</div>
+      <div class="ks">Op: ${fmt(gasT)}${gasNoCapMes>0?` (${fmt(gasNoCapMes)} est.)`:''} · Nóm: ${fmt(nomEst)}${nomEst>nomPagadaMes?' (devengada)':''}</div>
     </div>
     <div class="card db-kpi">
       <div class="ct">Utilidad Neta</div>
@@ -11775,7 +11895,7 @@ function renderDashboard(){
   const wdata=weeks.map(w=>{
     const wd=getWDays(w);
     const ing=wd.reduce((s,d)=>s+calcDiaDB(d).total,0);
-    const gas=D.gastos.filter(g=>getWDays7(w).includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
+    const gas=gastoOperSemana(w);
     const nomW=D.nomPagos.find(p=>p.semana===w);
     const nomWt=nomW?nomW.total:getNominaSemanal(w).reduce((s,e)=>s+e.totalSem,0);
     return {l:w.slice(5),ing,gas,nom:nomWt};
@@ -11788,7 +11908,7 @@ function renderDashboard(){
       <div class="bv" style="height:${Math.max(Math.round(w.nom/maxV*100),2)}%;flex:1;background:var(--gold);" data-v="${fmt(w.nom)}"></div>
     </div><span class="bl">${w.l}</span></div>`).join('');
 
-  const nomPendienteMes=semPagada?0:nomSemTotal;
+  const nomPendienteMes=Math.max(0,r2(nomEst-nomPagadaMes));
   if($('db-resultado'))$('db-resultado').innerHTML=`
     <div class="ct">Resultado del Mes — ${cm}</div>
     <div class="sr"><span style="font-size:12px;">🛒 Ventas POS</span><span class="mono ag">${fmt(ventasMes)}</span></div>
@@ -11797,8 +11917,9 @@ function renderDashboard(){
     <div class="sr fw7"><span style="font-size:12px;">= Total ingresos</span><span class="mono ag">${fmt(ingT)}</span></div>
     <div class="div"></div>
     <div class="sr"><span style="font-size:12px;">📉 Gastos operativos</span><span class="mono ar">−${fmt(gasT)}</span></div>
+    ${gasNoCapMes>0?`<div class="sr"><span style="font-size:11px;color:var(--text3);padding-left:14px;">↳ incluye ${fmt(gasNoCapMes)} estimados (promedio ${fmt(gastoSemBase())}/sem)</span><span></span></div>`:''}
     <div class="sr"><span style="font-size:12px;">👩 Nómina pagada</span><span class="mono ay">−${fmt(nomPagadaMes)}</span></div>
-    ${nomPendienteMes>0?`<div class="sr"><span style="font-size:12px;">👩 Nómina est. pendiente</span><span class="mono ao">−${fmt(nomPendienteMes)}</span></div>`:''}
+    ${nomPendienteMes>0?`<div class="sr"><span style="font-size:12px;">👩 Nómina devengada sin pagar</span><span class="mono ao">−${fmt(nomPendienteMes)}</span></div>`:''}
     <div class="div"></div>
     <div class="sr fw7"><span>UTILIDAD NETA</span><span class="mono ${util>=0?'at':'ar'}" style="font-size:17px;">${fmt(util)}</span></div>
     <div class="sr"><span style="font-size:11px;color:var(--text2);">Margen</span><span class="mono ${margen>=0?'ay':'ar'}">${margen}%</span></div>`;
@@ -11807,12 +11928,13 @@ function renderDashboard(){
   const wd=getWDays(td);
   const weekDataDB=wd.map(d=>({fecha:d,...calcDiaDB(d)}));
   const wTot=weekDataDB.reduce((s,d)=>s+d.total,0);
-  const wGastosSem=D.gastos.filter(g=>getWDays7(td).includes(g.fecha)).reduce((s,g)=>s+g.monto,0);
-  const wUtilSem=wTot-wGastosSem;
+  const wGastosSem=gastoOperSemana(td);
+  const wNomSem=nomSemDev; // la nómina corre se haya pagado o no (prorrateada a lo corrido)
+  const wUtilSem=r2(wTot-wGastosSem-wNomSem);
   if($('db-semana'))$('db-semana').innerHTML=`<div class="ct">Semana Actual</div>
     <div style="font-family:'Playfair Display',serif;font-size:20px;font-weight:700;color:var(--accent);margin-bottom:2px;">${fmt(wTot)}</div>
     <div style="font-size:10.5px;color:var(--text2);margin-bottom:8px;">
-      Gastos: <span class="mono ar">${fmt(wGastosSem)}</span> · Util: <span class="mono ${wUtilSem>=0?'ag':'ar'}">${fmt(wUtilSem)}</span>
+      Gastos: <span class="mono ar">${fmt(wGastosSem)}</span> · Nómina: <span class="mono ay">${fmt(wNomSem)}</span> · Util: <span class="mono ${wUtilSem>=0?'ag':'ar'}">${fmt(wUtilSem)}</span>
     </div>
     ${weekDataDB.map((dd,i)=>{
       const gd=D.gastos.filter(g=>g.fecha===dd.fecha).reduce((s,g)=>s+g.monto,0);
@@ -12174,20 +12296,25 @@ window.plPDF=()=>{
   const cobert=ventas.length?Math.round(conCosto.length/ventas.length*100):0;
   const bruta=ing-cogs;
   const gcat=c=>gastos.filter(g=>g.cat===c).reduce((s,g)=>s+g.monto,0);
-  const renta=gcat('renta'), serv=gcat('servicios'), insumosCash=gcat('proveedor')+gcat('costco');
-  const nomPagada=gcat('nomina');
-  const nomSemT=getNominaSemanal(getMonday(today())).reduce((s,e)=>s+e.totalSem,0);
-  const semPag=!!D.nomPagos.find(x=>x.semana===getMonday(today()));
-  const nomPend=(p==='hoy')?Math.round(nomSemT/5):((!semPag)?nomSemT:0);
-  const nom=nomPagada+nomPend;
-  const oper=bruta-nom-renta-serv;
+  const gd=desgloseGastos(gastos);
+  const renta=gcat('renta'), serv=gcat('servicios'), insumosCash=gd.insumos;
+  const otros=r2(gd.opex-renta-serv);
+  const nomPagada=gd.nomina;
+  const diasP=p==='hoy'?[today()]:p==='semana'?getWDays(fechas._sem||today()):diasDelMes(fechas._mes||curM());
+  const nom=nominaDevengada(diasP);
+  const nomPend=Math.max(0,r2(nom-nomPagada));
+  // Piso del gasto promedio, sin duplicar el insumo que ya cobra el COGS
+  const baseP=gastoBasePeriodo(p,fechas);
+  const opexNoCap=Math.max(0,r2(Math.max(0,baseP-Math.max(insumosCash,cogs))-gd.opex));
+  const opex=r2(gd.opex+opexNoCap);
+  const oper=r2(bruta-nom-opex);
   const pc=v=>ing>0?(v/ing*100).toFixed(1)+'%':'—';
   const dias=new Set(ventas.map(v=>v.fecha)).size||1;
   const ticket=ventas.length?ing/ventas.length:0;
   const primePct=ing>0?Math.round((cogs+nom)/ing*100):0;
   const laborPct=ing>0?Math.round(nom/ing*100):0;
   const mBruta=ing>0?Math.round(bruta/ing*100):0;
-  const breakEven=mBruta>0?((nom+renta+serv)/dias)/(mBruta/100):null;
+  const breakEven=mBruta>0?((nom+opex)/dias)/(mBruta/100):null;
 
   const doc=new J(); const W=doc.internal.pageSize.getWidth();
   doc.setFont('helvetica','bold');doc.setFontSize(16);doc.setTextColor(26,46,24);
@@ -12206,6 +12333,8 @@ window.plPDF=()=>{
       ['(−) Nómina'+(nomPend>0?' (incluye pendiente estimada)':''),'−'+fmt(nom),pc(nom)],
       ...(renta>0?[['(−) Renta','−'+fmt(renta),pc(renta)]]:[]),
       ...(serv>0?[['(−) Servicios','−'+fmt(serv),pc(serv)]]:[]),
+      ...(otros>0?[['(−) Mantenimiento, marketing y varios','−'+fmt(otros),pc(otros)]]:[]),
+      ...(opexNoCap>0?[['(−) Gasto promedio no capturado (estimado)','−'+fmt(opexNoCap),pc(opexNoCap)]]:[]),
       [{content:'= UTILIDAD OPERATIVA',styles:{fontStyle:'bold',fontSize:11}},{content:fmt(oper),styles:{fontStyle:'bold',fontSize:11,textColor:oper>=0?[46,125,50]:[198,40,40]}},{content:pc(oper),styles:{fontStyle:'bold'}}],
     ],
     theme:'grid',headStyles:{fillColor:[26,46,24],textColor:[126,200,80],fontStyle:'bold',fontSize:9},
@@ -12232,6 +12361,7 @@ window.plPDF=()=>{
   doc.setFont('helvetica','normal');doc.setFontSize(7.5);doc.setTextColor(120);
   doc.text(`Notas: COGS por consumo real (costo congelado al momento de cada venta; cobertura de costeo ${cobert}%). Las compras de`,14,y);
   doc.text(`inventario del período (${fmt(insumosCash)}) son salida de caja, no costo devengado. Registros auditables en bitácora inmutable.`,14,y+4);
+  doc.text(`Gasto operativo base declarado: ${fmt(gastoSemBase())} por semana sin nómina (${fmt(baseP)} en este período).${opexNoCap>0?` Se estimaron ${fmt(opexNoCap)} sin capturar.`:' Período capturado completo.'}`,14,y+8);
   doc.setFontSize(7);doc.setTextColor(150);
   doc.text(`El Huerto · Universidad Panamericana Ciudad UP · sistema el-huerto.vercel.app`,W/2,doc.internal.pageSize.getHeight()-8,{align:'center'});
   doc.save(`ElHuerto_PL_${p}_${today()}.pdf`);
@@ -12299,15 +12429,28 @@ function renderReportes(){
   const nomPagadaMes=D.nomPagos.filter(x=>x.semana&&mOf(x.semana)===cm).reduce((s,x)=>s+x.total,0);
   const nomSemAct=getNominaSemanal(getMonday(td)).reduce((s,e)=>s+e.totalSem,0);
   const semPagada=!!D.nomPagos.find(x=>x.semana===getMonday(td));
-  const nomEst=p==='mes'?nomPagadaMes+(semPagada?0:nomSemAct):0;
-  const util=ingVentas-gasT-nomEst;
+  const diasPeriodo=p==='hoy'?[td]:p==='semana'?getWDays(fechas._sem||td):diasDelMes(fechas._mes||cm);
+  const nomEst=nominaDevengada(diasPeriodo);
+  // ── Gasto del período con piso en el promedio semanal ──
+  // Dos correcciones aquí: (1) la nómina PAGADA también vive en gastos
+  // con cat 'nomina', así que restar gasT + nomEst la cobraba dos veces
+  // y hundía el margen del mes; (2) las semanas sin capturar mostraban
+  // gasto casi en cero. Ahora: gasto operativo = max(capturado, promedio).
+  const gd=desgloseGastos(gastos);
+  const baseP=gastoBasePeriodo(p,fechas);
+  const gasNoCap=Math.max(0,r2(baseP-gd.sinNomina));
+  const gasOper=r2(gd.sinNomina+gasNoCap);
+  // La nómina corre aunque no se haya pagado todavía: si la semana ya se
+  // pagó vive en gastos (gd.nomina), si no, se devenga de getNominaSemanal.
+  const nomPeriodo=nomEst;
+  const util=r2(ingVentas-gasOper-nomPeriodo);
   const margen=ingVentas>0?Math.round(util/ingVentas*100):0;
   if($('rp-ing')){$('rp-ing').textContent=fmt(ingVentas);$('rp-ing').className='kv ag';}
   if($('rp-ing-sub'))$('rp-ing-sub').textContent=ventas.length+' ventas';
-  if($('rp-gas')){$('rp-gas').textContent=fmt(gasT);$('rp-gas').className='kv red';}
-  if($('rp-gas-sub'))$('rp-gas-sub').textContent=gastos.length+' registros';
+  if($('rp-gas')){$('rp-gas').textContent=fmt(gasOper);$('rp-gas').className='kv red';}
+  if($('rp-gas-sub'))$('rp-gas-sub').textContent=gastos.length+' registros'+(gasNoCap>0?` · +${fmt(gasNoCap)} est.`:'');
   if($('rp-util')){$('rp-util').textContent=fmt(util);$('rp-util').className='kv '+(util>=0?'at':'ar');}
-  if($('rp-util-sub'))$('rp-util-sub').textContent=p==='mes'?`nóm. ${fmt(nomEst)}`:'';
+  if($('rp-util-sub'))$('rp-util-sub').textContent=`nóm. ${fmt(nomPeriodo)}`;
   if($('rp-margen')){$('rp-margen').textContent=margen+'%';$('rp-margen').className='kv '+(margen>=0?'gold':'red');}
   if($('rp-label'))$('rp-label').textContent=label;
   renderUpsell(ventas,label);
@@ -12324,15 +12467,26 @@ function renderReportes(){
   const _bruta=_ing-_cogs;
   const _gcat=c=>gastos.filter(g=>g.cat===c).reduce((s,g)=>s+g.monto,0);
   const _renta=_gcat('renta'), _serv=_gcat('servicios');
-  const _insumosCash=_gcat('proveedor')+_gcat('costco');
-  const _nomPagada=_gcat('nomina');
-  const _nomPend=(p==='hoy')?Math.round(nomSemAct/5):((!semPagada)?nomSemAct:0);
-  const _nom=_nomPagada+_nomPend;
-  const _opex=_renta+_serv;
-  const _oper=_bruta-_nom-_opex;
+  const _insumosCash=gd.insumos;
+  const _nomPagada=gd.nomina;
+  const _nom=nomPeriodo;
+  const _nomPend=Math.max(0,r2(_nom-_nomPagada)); // parte aún no desembolsada
+  // Gastos de operación = TODO lo que no es nómina ni insumos.
+  // (Antes solo renta + servicios: mantenimiento, marketing,
+  //  suscripciones y varios se caían del estado de resultados.)
+  const _opexReal=gd.opex;
+  const _otros=r2(_opexReal-_renta-_serv);
+  // Piso del promedio SIN duplicar insumos: el consumo ya está en el
+  // COGS, así que del promedio semanal se descuenta la parte de insumo
+  // —la más grande entre lo comprado y lo consumido— y el resto es el
+  // piso del opex.
+  const _opexPiso=Math.max(0,r2(baseP-Math.max(_insumosCash,_cogs)));
+  const _opexNoCap=Math.max(0,r2(_opexPiso-_opexReal));
+  const _opex=r2(_opexReal+_opexNoCap);
+  const _oper=r2(_bruta-_nom-_opex);
   const _mBruta=_ing>0?Math.round(_bruta/_ing*100):0;
   const _mOper=_ing>0?Math.round(_oper/_ing*100):0;
-  const _flujo=_ing-gasT-_nomPend;
+  const _flujo=r2(_ing-gasOper-_nomPend);
   const _pct=v=>_ing>0?(v/_ing*100).toFixed(1)+'%':'—';
   if($('rp-est'))$('rp-est').innerHTML=`
     <div class="sr"><span style="font-size:12px;">🛒 Ventas POS</span><span class="mono ag">${fmt(ingVentas)}</span></div>
@@ -12346,12 +12500,16 @@ function renderReportes(){
     <div class="sr"><span style="font-size:12px;">👩 Nómina${_nomPend>0?' (incl. pendiente est.)':''}</span><span class="mono ay">−${fmt(_nom)} <span style="color:var(--text3);font-size:10px;">${_pct(_nom)}</span></span></div>
     ${_renta>0?`<div class="sr"><span style="font-size:12px;">🏢 Renta</span><span class="mono ar">−${fmt(_renta)}</span></div>`:''}
     ${_serv>0?`<div class="sr"><span style="font-size:12px;">💡 Servicios</span><span class="mono ar">−${fmt(_serv)}</span></div>`:''}
+    ${_otros>0?`<div class="sr"><span style="font-size:12px;">🔧 Mant., marketing y varios</span><span class="mono ar">−${fmt(_otros)}</span></div>`:''}
+    ${_opexNoCap>0?`<div class="sr"><span style="font-size:12px;" title="Promedio de ${fmt(gastoSemBase())}/semana menos lo capturado">📋 Gasto promedio no capturado <span style="font-size:9.5px;color:var(--text3);">(est.)</span></span><span class="mono ao">−${fmt(_opexNoCap)}</span></div>`:''}
     <div class="div"></div>
     <div class="sr fw7" style="font-size:14px;"><span>UTILIDAD OPERATIVA</span><span class="mono ${_oper>=0?'at':'ar'}" style="font-size:17px;">${fmt(_oper)}</span></div>
     <div class="sr"><span style="font-size:11px;color:var(--text2);">Margen operativo</span><span class="mono ${_mOper>=0?'ay':'ar'}">${_mOper}%</span></div>
     <div style="border-top:1px dashed var(--border);margin-top:8px;padding-top:7px;font-size:10.5px;color:var(--text3);line-height:1.6;">
       🛒 Compras de inventario del período (caja): <b>${fmt(_insumosCash)}</b> — no se restan aquí: el consumo real ya está en COGS<br>
-      💵 Flujo de caja del período (todo lo pagado): <b class="${_flujo>=0?'ag':'ar'}">${fmt(_flujo)}</b>
+      💵 Flujo de caja del período (todo lo pagado): <b class="${_flujo>=0?'ag':'ar'}">${fmt(_flujo)}</b><br>
+      ${(()=>{const sn=empsActivos().filter(e=>!(e.base>0)&&!(e.bonoCierre>0));return sn.length?`⚠️ <b class="ao">${sn.map(e=>e.nombre).join(', ')}</b> ${sn.length>1?'siguen activos y no tienen':'sigue en el equipo y no tiene'} sueldo capturado: el costo laboral sale más bajo de lo real.<br>`:'';})()}
+      📋 Gasto base: <b>${fmt(gastoSemBase())}/semana</b> sin nómina → ${fmt(baseP)} para este período (${diasHabilesPeriodo(p,fechas)} día(s) hábil(es)). Capturado: <b>${fmt(gd.sinNomina)}</b>.${gasNoCap>0?` Faltan <b class="ao">${fmt(gasNoCap)}</b> por capturar.`:' Período completo ✓'}
     </div>`;
   // Cascada visual del P&L (barras horizontales animadas)
   if($('rp-waterfall')){
@@ -12360,7 +12518,7 @@ function renderReportes(){
       ['− COGS',-_cogs,'var(--red)'],
       ['Utilidad bruta',_bruta,'#2e7d32'],
       ['− Nómina',-_nom,'var(--red)'],
-      ..._opex>0?[['− Renta y servicios',-_opex,'var(--red)']]:[],
+      ..._opex>0?[['− Gastos de operación',-_opex,'var(--red)']]:[],
       ['UTILIDAD OPERATIVA',_oper,_oper>=0?'var(--orange)':'var(--red)'],
     ];
     const maxAbs=Math.max(_ing,1);
@@ -12404,7 +12562,7 @@ function renderReportes(){
     Object.entries(bC).sort((a,b)=>b[1]-a[1]).map(([c,v])=>{const pct=gasT?Math.round(v/gasT*100):0;return `<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:12px;">${catL[c]||c}</span><span class="mono ar" style="font-size:11px;">${pct}% — ${fmt(v)}</span></div><div class="prog"><div class="pf" style="background:var(--red);width:${pct}%;"></div></div></div>`;}).join('');
   // Gráfica 6 semanas
   const weeks=getRecentWeeks(6);
-  const wdata=weeks.map(w=>{const wd=getWDays(w);const vw=D.ventas.filter(v=>wd.includes(v.fecha)&&!v.anulada).reduce((s,v)=>s+v.total,0);const cw=D.caja.filter(c=>wd.includes(c.fecha)).reduce((s,c)=>s+c.total,0);const ing=Math.max(vw,cw);const gas=D.gastos.filter(g=>getWDays7(w).includes(g.fecha)).reduce((s,g)=>s+g.monto,0);return {l:w.slice(5),ing,gas};});
+  const wdata=weeks.map(w=>{const wd=getWDays(w);const vw=D.ventas.filter(v=>wd.includes(v.fecha)&&!v.anulada).reduce((s,v)=>s+v.total,0);const cw=D.caja.filter(c=>wd.includes(c.fecha)).reduce((s,c)=>s+c.total,0);const ing=Math.max(vw,cw);const gas=gastoOperSemana(w);return {l:w.slice(5),ing,gas};});
   const maxV=Math.max(...wdata.map(w=>Math.max(w.ing,w.gas)),1);
   if($('rp-chart'))$('rp-chart').innerHTML=wdata.map(w=>`<div class="bc"><div style="display:flex;gap:3px;align-items:flex-end;height:120px;width:100%;"><div class="bv bi" style="height:${Math.max(Math.round(w.ing/maxV*100),2)}%;flex:1;" title="${fmt(w.ing)}"></div><div class="bv be" style="height:${Math.max(Math.round(w.gas/maxV*100),2)}%;flex:1;" title="${fmt(w.gas)}"></div></div><span class="bl">${w.l}</span></div>`).join('');
 
@@ -12481,6 +12639,8 @@ function renderConfig(){
   if($('cfg-tel')&&CFG.tel)$('cfg-tel').value=CFG.tel;
   if($('cfg-msg')&&CFG.msg)$('cfg-msg').value=CFG.msg;
   if($('cfg-rfc'))$('cfg-rfc').value=CFG.rfc||'';
+  if($('cfg-gasto-base'))$('cfg-gasto-base').value=gastoSemBase();
+  if($('cfg-gasto-dia'))$('cfg-gasto-dia').value=fmt(gastoSemBase()/DIAS_OPERACION.length)+' / día (lun-vie)';
   if($('cfg-autoprint'))$('cfg-autoprint').checked=CFG.ticketAuto===true;
   if($('cfg-comanda-auto'))$('cfg-comanda-auto').checked=CFG.comandaAuto!==false;
   btEstadoUI();
@@ -12527,6 +12687,7 @@ window.saveConfig=()=>{
     tel:$('cfg-tel').value.trim(),
     msg:$('cfg-msg').value.trim()||'¡Gracias!',
     rfc:$('cfg-rfc')?$('cfg-rfc').value.trim().toUpperCase():(CFG.rfc||''),
+    gastoBaseSem:(()=>{const v=parseFloat($('cfg-gasto-base')?.value);return Number.isFinite(v)&&v>0?v:gastoSemBase();})(),
     ticketAuto:$('cfg-autoprint')?$('cfg-autoprint').checked:false,
     comandaAuto:$('cfg-comanda-auto')?$('cfg-comanda-auto').checked:true,
     comandaUSB:CFG.comandaUSB===true,
@@ -12536,7 +12697,8 @@ window.saveConfig=()=>{
     kpiTargets:prevTargets
   };
   try{localStorage.setItem('h5cfg',JSON.stringify(CFG));}catch(e){}
-  toast('✓ Config guardada');
+  renderConfig();
+  toast('✓ Config guardada — gasto base '+fmt(gastoSemBase())+'/semana');
 };
 
 // ══ A0: RESPALDO COMPLETO DE DATOS ══
