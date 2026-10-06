@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.68'; // Gasto base semanal ($7,700) en márgenes
+const CACHE_NAME = 'el-huerto-v14.69'; // Ventas por día de la semana + semana lun-vie
 const ASSETS = [
   '/',
   '/index.html',

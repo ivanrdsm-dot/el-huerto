@@ -1868,6 +1868,19 @@ nav{padding-top:env(safe-area-inset-top);}
   <div class="g4" style="margin-bottom:10px;" id="rp-dir"></div>
   <!-- Upsell: cuánto dinero trajeron los extras sugeridos en el POS -->
   <div class="card" style="margin-bottom:10px;" id="rp-upsell"></div>
+  <!-- Día más flojo de la semana: dónde conviene meter promoción -->
+  <div class="card" style="margin-bottom:10px;">
+    <div class="sh">
+      <span class="ct" style="margin-bottom:0;">📅 Ventas por día de la semana</span>
+      <select id="rp-dow-rango" onchange="renderVentasPorDia()" style="width:auto;padding:5px 8px;font-size:11.5px;">
+        <option value="4">Últimas 4 semanas</option>
+        <option value="8" selected>Últimas 8 semanas</option>
+        <option value="12">Últimas 12 semanas</option>
+        <option value="todo">Todo el histórico</option>
+      </select>
+    </div>
+    <div id="rp-dow"></div>
+  </div>
   <div class="g2" style="gap:10px;margin-bottom:10px;">
     <div class="card"><div class="ct">Estado de Resultados (P&L)</div><div id="rp-est"></div><div id="rp-waterfall" style="margin-top:12px;"></div></div>
     <div class="card"><div class="ct">Top Productos del Período</div><div id="rp-top-prods"></div></div>
@@ -8791,11 +8804,12 @@ function renderGastos(){
   let filtDates=null; // null = sin filtro de fecha (todo)
   let periodoLabel='';
   if(periodo==='semana'){
-    // Semana COMPLETA: las compras grandes (Costco, El Zorro) caen en
-    // sábado y con 5 días quedaban fuera de esta pantalla.
+    // La semana operativa es lun→vie, pero las compras grandes (Costco,
+    // El Zorro) caen en sábado: se filtran los 7 días para no perderlas
+    // y la etiqueta dice a qué semana de trabajo pertenecen.
     const wd=getWDays7(td);
     filtDates=new Set(wd);
-    periodoLabel=`Semana ${wd[0]} → ${wd[6]}`;
+    periodoLabel=`Semana ${wd[0]} → ${wd[4]} (con compras del fin de semana)`;
   } else if(periodo==='mes'){
     const cm=curM();
     filtDates={_mes:cm}; // especial para filtrar por mes
@@ -11993,7 +12007,7 @@ function getReportePeriodo(){
   else if(p==='semana'){
     const wd=getWDays(td); fechas=new Set(wd);
     fechas._sem=td; // marca la semana para que los GASTOS usen los 7 días
-    label=`${wd[0]} → ${getWDays7(td)[6]}`;
+    label=`${wd[0]} → ${wd[4]}`; // lun→vie: la semana operativa de El Huerto
   }
   else { const cm=curM(); fechas={_mes:cm}; label=cm; }
   return {p, fechas, label};
@@ -12172,14 +12186,18 @@ window.pdfDashboard=()=>{
   const top=getTopProductos(ventas);
   const gastos=getGastosFiltrados(fechas);
   const ingT=ventas.reduce((s,v)=>s+v.total,0);
-  const gasT=gastos.reduce((s,g)=>s+g.monto,0);
   const cm=curM();
-  const nomPagadaMes=D.nomPagos.filter(x=>x.semana&&mOf(x.semana)===cm).reduce((s,x)=>s+x.total,0);
-  const nomSem=getNominaSemanal(getMonday(today())).reduce((s,e)=>s+e.totalSem,0);
-  const semPagada=!!D.nomPagos.find(x=>x.semana===getMonday(today()));
-  const nomEst=p==='mes'?nomPagadaMes+(semPagada?0:nomSem):0;
-  const util=ingT-gasT-nomEst;
+  // Mismo criterio que Reportes: gasto sin nómina con piso en el promedio
+  // semanal, y nómina devengada (no solo las semanas marcadas pagadas).
+  const gd=desgloseGastos(gastos);
+  const baseP=gastoBasePeriodo(p,fechas);
+  const gasNoCap=Math.max(0,r2(baseP-gd.sinNomina));
+  const gasT=r2(gd.sinNomina+gasNoCap);
+  const diasP=p==='hoy'?[today()]:p==='semana'?getWDays(fechas._sem||today()):diasDelMes(fechas._mes||cm);
+  const nomEst=nominaDevengada(diasP);
+  const util=r2(ingT-gasT-nomEst);
   const margen=ingT>0?Math.round(util/ingT*100):0;
+  const dow=calcVentasPorDia(8);
   const {jsPDF}=window.jspdf;
   const doc=new jsPDF({orientation:'portrait',unit:'mm',format:'letter'});
   const W=doc.internal.pageSize.getWidth();
@@ -12192,15 +12210,34 @@ window.pdfDashboard=()=>{
   doc.text(`Período: ${label}  |  Generado: ${today()}`,W-14,14,{align:'right'});
   y=42;
   // KPIs 2x2
-  const kpis2=[{l:'Ingresos Ventas POS',v:fmt(ingT),s:ventas.length+' ventas',c:[126,200,80]},{l:'Gastos Operativos',v:fmt(gasT),s:gastos.length+' registros',c:[232,122,106]},{l:'Nómina Estimada',v:fmt(nomEst),s:p==='mes'?'del mes':'N/A período',c:[232,201,106]},{l:'Utilidad Neta',v:fmt(util),s:`Margen ${margen}%`,c:util>=0?[90,232,200]:[232,122,106]}];
+  const kpis2=[{l:'Ingresos Ventas POS',v:fmt(ingT),s:ventas.length+' ventas',c:[126,200,80]},{l:'Gastos Operativos',v:fmt(gasT),s:gastos.length+' reg.'+(gasNoCap>0?' +est.':''),c:[232,122,106]},{l:'Nómina Devengada',v:fmt(nomEst),s:p==='mes'?'del mes':'del período',c:[232,201,106]},{l:'Utilidad Neta',v:fmt(util),s:`Margen ${margen}%`,c:util>=0?[90,232,200]:[232,122,106]}];
   const bw2=(W-28)/2;
   kpis2.forEach((k,i)=>{const col=i%2;const row=Math.floor(i/2);const x=14+col*bw2;const ky=y+row*22;doc.setFillColor(20,38,18);doc.roundedRect(x,ky,bw2-4,18,2,2,'F');doc.setFontSize(7.5);doc.setTextColor(150,150,150);doc.setFont('helvetica','normal');doc.text(k.l,x+6,ky+6);doc.setFontSize(14);doc.setTextColor(...k.c);doc.setFont('helvetica','bold');doc.text(k.v,x+6,ky+13);doc.setFontSize(7);doc.setTextColor(140,140,140);doc.setFont('helvetica','normal');doc.text(k.s,x+(bw2-4)-4,ky+6,{align:'right'});});
   y+=50;
   // Estado de resultados
   doc.setTextColor(126,200,80); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text('Estado de Resultados',14,y); y+=4;
-  doc.autoTable({startY:y,head:[['Concepto','Monto']],body:[['🛒 Ventas POS',fmt(ingT)],['📉 Gastos operativos','−'+fmt(gasT)],...(nomEst>0?[['👩 Nómina (est.)','−'+fmt(nomEst)]]:[]),['UTILIDAD NETA',fmt(util)],['Margen',margen+'%']],theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},bodyStyles:{fontSize:9,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},columnStyles:{0:{cellWidth:120},1:{cellWidth:45,halign:'right'}},margin:{left:14,right:14},didParseCell:(d)=>{if(d.row.index>=d.table.body.length-2){d.cell.styles.fillColor=[11,30,9];d.cell.styles.textColor=[232,201,106];d.cell.styles.fontStyle='bold';}}});
+  doc.autoTable({startY:y,head:[['Concepto','Monto']],body:[['🛒 Ventas POS',fmt(ingT)],['📉 Gastos operativos','−'+fmt(gasT)],...(gasNoCap>0?[['    ↳ estimado sin capturar','−'+fmt(gasNoCap)]]:[]),...(nomEst>0?[['👩 Nómina devengada','−'+fmt(nomEst)]]:[]),['UTILIDAD NETA',fmt(util)],['Margen',margen+'%']],theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},bodyStyles:{fontSize:9,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},columnStyles:{0:{cellWidth:120},1:{cellWidth:45,halign:'right'}},margin:{left:14,right:14},didParseCell:(d)=>{if(d.row.index>=d.table.body.length-2){d.cell.styles.fillColor=[11,30,9];d.cell.styles.textColor=[232,201,106];d.cell.styles.fontStyle='bold';}}});
   y=doc.lastAutoTable.finalY+10;
+  // Ventas por día de la semana — dónde meter promoción
+  if(dow.flojo){
+    if(y>215){doc.addPage();y=20;}
+    doc.setTextColor(126,200,80);doc.setFontSize(11);doc.setFont('helvetica','bold');
+    doc.text('Ventas por Día de la Semana (últimas 8 semanas)',14,y);y+=4;
+    doc.autoTable({startY:y,head:[['Día','Días medidos','Venta promedio','Tickets/día','Ticket prom.','']],
+      body:dow.dias.map(d=>[d.nombre,d.n||'—',d.n?fmt(d.prom):'—',d.n?d.ticketsProm:'—',d.n?fmt(d.ticketProm):'—',
+        d.dw===dow.flojo.dw?'<< MAS FLOJO':(dow.fuerte&&d.dw===dow.fuerte.dw?'mas fuerte':'')]),
+      theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},
+      bodyStyles:{fontSize:8.5,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},
+      columnStyles:{0:{cellWidth:18},1:{cellWidth:26,halign:'right'},2:{cellWidth:34,halign:'right'},3:{cellWidth:24,halign:'right'},4:{cellWidth:28,halign:'right'},5:{cellWidth:34,halign:'center'}},
+      margin:{left:14,right:14},
+      didParseCell:d=>{if(d.row.index>=0&&dow.dias[d.row.index]&&dow.dias[d.row.index].dw===dow.flojo.dw){d.cell.styles.textColor=[232,150,80];d.cell.styles.fontStyle='bold';}}});
+    y=doc.lastAutoTable.finalY+4;
+    doc.setFontSize(8);doc.setTextColor(232,150,80);doc.setFont('helvetica','bold');
+    doc.text(`Promocion sugerida: ${dow.flojo.nombre} — vende ${fmt(dow.brecha)} menos que el promedio (${dow.brechaPct}% abajo). Subirlo al promedio: +${fmt(dow.potencialMes)}/mes.`,14,y);
+    y+=10;
+  }
   // Top productos
+  if(y>215){doc.addPage();y=20;}
   doc.setTextColor(126,200,80); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text('Top Productos del Período',14,y); y+=4;
   doc.autoTable({startY:y,head:[['#','Producto','Cantidad','Total','%']],body:top.slice(0,15).map((pr,i)=>[i+1,pr.nombre,pr.qty,fmt(pr.total),(ingT>0?Math.round(pr.total/ingT*100):0)+'%']),theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},bodyStyles:{fontSize:8.5,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},columnStyles:{0:{cellWidth:8,halign:'center'},1:{cellWidth:80},2:{cellWidth:20,halign:'right'},3:{cellWidth:28,halign:'right'},4:{cellWidth:20,halign:'right'}},margin:{left:14,right:14}});
   y=doc.lastAutoTable.finalY+10;
@@ -12419,6 +12456,88 @@ function renderUpsell(ventas,label){
     ${u.top.map(([n,d])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${d.q}× · ${fmt(d.$)}</span></div>`).join('')}`;
 }
 
+// ══════════════════════════════════════════════════════════════
+// VENTAS POR DÍA DE LA SEMANA
+// Para decidir dónde meter promoción: qué día vende menos y cuánto
+// dinero hay en esa brecha contra el promedio de la semana.
+// Reglas: solo lun-vie (los días que abre El Huerto) y solo días con
+// venta — un puente o un día cerrado no debe hundir el promedio.
+// ══════════════════════════════════════════════════════════════
+function calcVentasPorDia(semanas){
+  const td=today();
+  let desde=null;
+  if(semanas){const d=new Date(td+'T12:00:00');d.setDate(d.getDate()-semanas*7);desde=localDate(d);}
+  const enRango=f=>!!f&&f<=td&&(!desde||f>=desde);
+  // Un renglón por FECHA, no por venta: así se promedia por día operado
+  const porFecha={};
+  const slot=f=>porFecha[f]||(porFecha[f]={total:0,tickets:0});
+  let finde=0; // ventas capturadas en sábado o domingo (no deberían existir)
+  D.ventas.forEach(v=>{
+    if(v.anulada||!enRango(v.fecha)) return;
+    if(esDiaDescanso(v.fecha)){finde+=v.total||0;return;}
+    const f=slot(v.fecha); f.total+=v.total||0; f.tickets++;
+  });
+  // Días viejos sin POS: la caja manual es el único registro de venta
+  D.caja.forEach(c=>{
+    if(!enRango(c.fecha)||esDiaDescanso(c.fecha)) return;
+    const f=slot(c.fecha); if((c.total||0)>f.total) f.total=c.total;
+  });
+  const dias=DIAS_OPERACION.map(dw=>({dw,nombre:dayN[dw-1],fechas:[],total:0,tickets:0}));
+  Object.entries(porFecha).forEach(([f,x])=>{
+    if(x.total<=0) return;
+    const row=dias.find(d=>d.dw===new Date(f+'T12:00:00').getDay());
+    if(!row) return;
+    row.fechas.push(f); row.total=r2(row.total+x.total); row.tickets+=x.tickets;
+  });
+  dias.forEach(d=>{
+    d.n=d.fechas.length;
+    d.prom=d.n?r2(d.total/d.n):0;
+    d.ticketsProm=d.n?Math.round(d.tickets/d.n):0;
+    d.ticketProm=d.tickets?r2(d.total/d.tickets):0;
+  });
+  const conDatos=dias.filter(d=>d.n>0);
+  const promSemana=conDatos.length?r2(conDatos.reduce((s,d)=>s+d.prom,0)/conDatos.length):0;
+  const flojo=conDatos.length?conDatos.reduce((a,b)=>b.prom<a.prom?b:a):null;
+  const fuerte=conDatos.length?conDatos.reduce((a,b)=>b.prom>a.prom?b:a):null;
+  const brecha=flojo?r2(promSemana-flojo.prom):0;
+  return {dias,conDatos,promSemana,flojo,fuerte,desde,finde,brecha,
+    brechaPct:flojo&&promSemana>0?Math.round(brecha/promSemana*100):0,
+    // 4.33 semanas por mes: lo que entraría al mes si ese día llegara al promedio
+    potencialMes:r2(brecha*4.33)};
+}
+function renderVentasPorDia(){
+  const cont=$('rp-dow'); if(!cont) return;
+  const rango=$('rp-dow-rango')?.value||'8';
+  const r=calcVentasPorDia(rango==='todo'?null:Number(rango));
+  if(!r.conDatos.length){cont.innerHTML='<p style="font-size:12px;color:var(--text3);padding:10px 0;">Todavía no hay ventas en este rango.</p>';return;}
+  const max=Math.max(...r.conDatos.map(d=>d.prom),1);
+  const barras=r.dias.map(d=>{
+    const esFlojo=r.flojo&&d.dw===r.flojo.dw, esFuerte=r.fuerte&&d.dw===r.fuerte.dw&&!esFlojo;
+    const color=esFlojo?'var(--orange)':esFuerte?'var(--accent)':'var(--blue)';
+    return `<div style="display:flex;align-items:center;gap:9px;margin-bottom:7px;">
+      <span style="font-size:12px;font-weight:${esFlojo?'800':'600'};width:34px;flex-shrink:0;${esFlojo?'color:var(--orange);':''}">${d.nombre}</span>
+      <div class="prog" style="flex:1;height:17px;"><div class="pf" style="background:${color};width:${d.n?Math.max(2,Math.round(d.prom/max*100)):0}%;"></div></div>
+      <span class="mono" style="font-size:11.5px;font-weight:700;width:86px;text-align:right;">${d.n?fmt(d.prom):'—'}</span>
+      <span style="font-size:10px;color:var(--text3);width:78px;text-align:right;">${d.n?`${d.n} día${d.n>1?'s':''} · ${d.ticketsProm} tickets`:'sin datos'}</span>
+    </div>`;
+  }).join('');
+  const ventana=r.desde?`desde el ${fmtFecha(r.desde)}`:'todo el histórico';
+  cont.innerHTML=`${barras}
+    <div class="div"></div>
+    <div style="background:#fff6ec;border:1px solid var(--orange);border-radius:var(--rsm);padding:11px 12px;margin-top:4px;">
+      <div style="font-size:13px;font-weight:800;color:var(--orange);margin-bottom:4px;">💡 Mete la promoción el ${r.flojo.nombre==='Mié'?'miércoles':{Lun:'lunes',Mar:'martes',Jue:'jueves',Vie:'viernes'}[r.flojo.nombre]}</div>
+      <div style="font-size:12px;color:var(--text);line-height:1.6;">
+        Vende <b>${fmt(r.flojo.prom)}</b> en promedio: <b class="ar">${fmt(r.brecha)} menos</b> que el promedio de la semana (${fmt(r.promSemana)}), un <b>${r.brechaPct}%</b> abajo.
+        Tu día fuerte es el <b>${r.fuerte.nombre}</b> con ${fmt(r.fuerte.prom)}.<br>
+        Si lo subes al promedio son <b class="ag">+${fmt(r.potencialMes)} al mes</b>.
+      </div>
+    </div>
+    <div style="font-size:10px;color:var(--text3);margin-top:7px;line-height:1.5;">
+      Promedio por día operado (${ventana}) · solo lunes a viernes · los días cerrados no cuentan.${r.finde>0?`<br>⚠️ Hay <b class="ao">${fmt(r.finde)}</b> en ventas capturadas en sábado o domingo: revisa la fecha de esos tickets, quedan fuera de la semana operativa.`:''}
+    </div>`;
+}
+window.renderVentasPorDia=renderVentasPorDia;
+
 function renderReportes(){
   const {p,fechas,label}=getReportePeriodo();
   const cm=curM(); const td=today();
@@ -12454,6 +12573,7 @@ function renderReportes(){
   if($('rp-margen')){$('rp-margen').textContent=margen+'%';$('rp-margen').className='kv '+(margen>=0?'gold':'red');}
   if($('rp-label'))$('rp-label').textContent=label;
   renderUpsell(ventas,label);
+  renderVentasPorDia();
   // Estado de resultados
   const ingSubs=p==='mes'?D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0):0;
   // ══ P&L PROFESIONAL (devengado) ══
