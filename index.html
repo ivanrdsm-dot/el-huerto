@@ -1901,6 +1901,12 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div class="tw" id="rp-prod-tabla"></div>
   </div>
+  <!-- Salud de los datos: lo que ensucia los reportes, a la vista -->
+  <div class="card" style="margin-bottom:10px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">🩺 Salud de los datos</span>
+      <button class="btn bs bsm" onclick="renderSaludDatos()">↻ Revisar</button></div>
+    <div id="rp-salud"></div>
+  </div>
   <div class="card" style="margin-bottom:10px;">
     <div class="sh">
       <span class="ct" style="margin-bottom:0;">Reporte PDF Completo</span>
@@ -2603,6 +2609,7 @@ async function completeInit(){
   await migQuitaProductosErrorSep2026();
   await migGastosSemana27Sep2026();
   await migQuitaBrocoliSep2026();
+  await migFinDeSemanaOct2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3316,6 +3323,49 @@ async function migQuitaBrocoliSep2026(){
     const ix=D.inventario.findIndex(i=>i.id===br.id); if(ix>=0) D.inventario.splice(ix,1);
     logAudit('inventario_correccion',{articulo:'Brócoli',accion:'eliminado a pedido de Iván'});
     toast('✓ Brócoli fuera del inventario',3500);
+  }
+  await markMig(migKey);
+}
+// ══ VENTAS EN FIN DE SEMANA (oct-2026) ══
+// El Huerto no abre sábado ni domingo, así que una venta con fecha de
+// fin de semana es siempre una fecha mal capturada. Quedaba una del
+// 7-mar-2026 (sábado): ticket de prueba del día que se instaló el POS
+// —sin vendedor asignado y con 6 hermanas del mismo día YA anuladas—.
+// Se anula en vez de borrarse: queda el rastro y se puede revertir.
+// De paso se normalizan las 10 ventas con hora en formato "05:38 p.m.":
+// el resto del histórico usa 24 h y ordenar por texto las mandaba al
+// lugar equivocado en los reportes por hora.
+async function migFinDeSemanaOct2026(){
+  const migKey='h5finde_oct26';
+  if(await migDone(migKey)) return;
+  const esFinde=f=>{const d=new Date(f+'T12:00:00').getDay();return d===0||d===6;};
+  let anuladas=0, horas=0;
+  for(const v of D.ventas){
+    if(!v.fecha) continue;
+    let patch=null;
+    // Solo las de la etapa de instalación (primera semana de marzo 2026).
+    // Una venta de fin de semana más reciente se revisa a mano, no a ciegas.
+    if(!v.anulada&&esFinde(v.fecha)&&v.fecha<='2026-03-08'){
+      patch={...v,anulada:true,anuladaMotivo:'Ticket de prueba de la instalación (sábado, El Huerto no abre fin de semana)',
+        anuladaPor:0,anuladaPorNombre:'Sistema',anuladaTs:Date.now()};
+      anuladas++;
+    }
+    // "05:38 p.m." → "17:38"
+    const m=/^(\d{1,2}):(\d{2})\s*([ap])\.?\s?m\.?$/i.exec((v.hora||'').trim());
+    if(m){
+      let h=parseInt(m[1],10)%12; if(m[3].toLowerCase()==='p') h+=12;
+      patch={...(patch||v),hora:String(h).padStart(2,'0')+':'+m[2]};
+      horas++;
+    }
+    if(patch){
+      await fsSet('ventas',patch);
+      const ix=D.ventas.findIndex(x=>x.id===v.id); if(ix>=0) D.ventas[ix]=patch;
+    }
+  }
+  if(anuladas||horas){
+    logAudit('ventas_saneadas',{anuladasFinDeSemana:anuladas,horasNormalizadas:horas,
+      motivo:'El Huerto opera lunes a viernes'});
+    toast(`✓ Saneo: ${anuladas} venta(s) de fin de semana anulada(s), ${horas} hora(s) corregida(s)`,5000);
   }
   await markMig(migKey);
 }
@@ -7442,6 +7492,7 @@ async function descontarInventario(ventaItemsRaw){
 }
 
 let cobrandoEnProceso=false;
+let _ultCobro=null; // {firma,ts} del último cobro — detecta doble cobro
 async function cobrar(metodo,recibido=0){
   if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return;}
   if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
@@ -7460,6 +7511,26 @@ async function cobrar(metodo,recibido=0){
     const fechaVenta = ($('op-fecha-venta')?.value && $('op-fecha-venta').value !== today())
       ? $('op-fecha-venta').value : today();
     const esRetroactiva = fechaVenta !== today();
+    // ── Guarda 1: día de descanso ──
+    // El Huerto abre lunes a viernes. Una venta con fecha de sábado o
+    // domingo siempre fue un error de captura (hubo una del 7-mar-2026
+    // que se coló al instalar el POS y ensució los reportes por día).
+    if(esDiaDescanso(fechaVenta)){
+      const dn=new Date(fechaVenta+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long'});
+      if(!confirm(`⚠️ ${fechaVenta} es ${dn} y El Huerto no abre fin de semana.\n\nSi es un error, cancela y corrige la fecha de la venta.\n\n¿Registrar de todos modos?`)){
+        cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return;
+      }
+    }
+    // ── Guarda 2: ticket idéntico recién cobrado ──
+    // Mismo carrito, mismo total, mismo método en menos de 45 s casi
+    // siempre es un doble cobro. En el histórico hay 7 pares así.
+    const firmaOrden=order.map(o=>`${o.id}x${o.qty||1}|${(o.prep||[]).join('/')}`).sort().join(',')+`|${total}|${metodo}`;
+    if(_ultCobro && _ultCobro.firma===firmaOrden && Date.now()-_ultCobro.ts<45000){
+      const seg=Math.round((Date.now()-_ultCobro.ts)/1000);
+      if(!confirm(`⚠️ Hace ${seg} s se cobró un ticket IDÉNTICO (${fmt(total)}).\n\n¿Es otro cliente con lo mismo, o se cobró dos veces por error?\n\nAceptar = sí es otra venta real.`)){
+        cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return;
+      }
+    }
     const venta={
       id:tid, fecha:fechaVenta,
       hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
@@ -7542,6 +7613,7 @@ async function cobrar(metodo,recibido=0){
     try{await registrarSelloLealtad(venta);}catch(e){console.warn('lealtad:',e);}
     order=[]; orderStartedAt=null; ventaVendedorOk=false; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
     if($('op-cliente'))$('op-cliente').value='';
+    _ultCobro={firma:firmaOrden,ts:Date.now()};
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
     renderOrder();
   }catch(e){
@@ -7714,6 +7786,9 @@ function renderHistorial(){
 
 window.anularVenta=async id=>{
   const v=D.ventas.find(x=>x.id===id); if(!v) return;
+  // Anular dos veces repondría el inventario otra vez y volvería a
+  // restar de la caja: el ticket quedaría pagando el doble de la nada.
+  if(v.anulada){toast('Esta venta ya está anulada'+(v.anuladaMotivo?` — ${v.anuladaMotivo}`:''),3800,'warn');return;}
   // A4: motivo OBLIGATORIO — sin motivo no hay anulación
   const motivo=prompt(`Anular venta ${v.ticket} de ${fmt(v.total)}\n\n¿Cuál es el MOTIVO? (obligatorio)\nEj: cliente se arrepintió, error de captura, producto mal preparado…`);
   if(motivo===null) return; // canceló
@@ -8116,7 +8191,9 @@ window.openVentaModal=id=>{
     <div style="display:flex;gap:8px;margin-top:8px;">
       <button class="btn bp" onclick="saveVentaNota(${v.id})">💾 Guardar</button>
       <button class="btn bs" onclick="reprintTicket(${v.id})">🖨 Reimprimir</button>
-      <button class="btn bd" onclick="anularVenta(${v.id});$('venta-modal').style.display='none'">Anular</button>
+      ${v.anulada
+        ?`<span class="badge xr" style="align-self:center;">Anulada${v.anuladaMotivo?' · '+v.anuladaMotivo:''}</span>`
+        :`<button class="btn bd" onclick="anularVenta(${v.id});$('venta-modal').style.display='none'">Anular</button>`}
     </div>`;
   $('venta-modal').style.display='flex';
 };
@@ -12538,6 +12615,92 @@ function renderVentasPorDia(){
 }
 window.renderVentasPorDia=renderVentasPorDia;
 
+// ══════════════════════════════════════════════════════════════
+// SALUD DE LOS DATOS
+// Los reportes solo valen lo que vale lo capturado. Este panel pone
+// a la vista lo que los ensucia, en vez de que alguien lo descubra
+// meses después revisando a mano (así apareció la venta del sábado
+// 7-mar-2026 y los 63 insumos sin precio que topaban el food cost).
+// ══════════════════════════════════════════════════════════════
+function calcSaludDatos(){
+  const td=today();
+  const vivas=D.ventas.filter(v=>!v.anulada&&v.fecha);
+  const isig=v=>(v.items||[]).map(i=>`${i.id}x${i.qty||1}|${i.nota||''}|${(i.prep||[]).join('/')}`).sort().join(',');
+  // Dobles cobros probables: mismo minuto, mismo total, mismo carrito y
+  // menos de 60 s entre ticket y ticket.
+  const g={}; vivas.forEach(v=>{const k=`${v.fecha}@${v.hora||''}|${v.total}|${isig(v)}`;(g[k]=g[k]||[]).push(v);});
+  const dobles=[];
+  Object.values(g).forEach(a=>{
+    if(a.length<2) return;
+    const ids=a.map(v=>Number(v.id)).sort((x,y)=>x-y);
+    if(ids[ids.length-1]-ids[0]>60000) return; // separados: clientes distintos
+    dobles.push({fecha:a[0].fecha,hora:a[0].hora,total:a[0].total,n:a.length,
+      seg:Math.round((ids[ids.length-1]-ids[0])/1000),monto:r2(a[0].total*(a.length-1))});
+  });
+  dobles.sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  // Food cost: últimos 30 días (lo viejo es de antes del costeo, no cuenta)
+  const hace30=(()=>{const d=new Date(td+'T12:00:00');d.setDate(d.getDate()-30);return localDate(d);})();
+  const recientes=vivas.filter(v=>v.fecha>=hace30);
+  const activos=D.productos.filter(p=>p.activo!==false);
+  return {
+    finde:vivas.filter(v=>esDiaDescanso(v.fecha)).map(v=>({id:v.id,fecha:v.fecha,total:v.total})),
+    dobles,
+    sinVendedor:vivas.filter(v=>!v.vendedorId).length,
+    sinVendedorReciente:recientes.filter(v=>!v.vendedorId).length,
+    sinFoodCost:recientes.filter(v=>v.foodCost==null).length,
+    ventasRecientes:recientes.length,
+    insumosSinPrecio:D.inventario.filter(i=>!(i.precio>0)).map(i=>i.nombre),
+    insumosTotal:D.inventario.length,
+    prodsSinReceta:activos.filter(p=>!COMBO_FIJOS[p.id]&&!D.recetas.find(r=>r.prodId===p.id)).map(p=>p.nombre),
+    prodsActivos:activos.length,
+    futuras:vivas.filter(v=>v.fecha>td).length+D.gastos.filter(x=>x.fecha&&x.fecha>td).length,
+    invNegativo:D.inventario.filter(i=>(i.qty||0)<0).map(i=>i.nombre)
+  };
+}
+function renderSaludDatos(){
+  const c=$('rp-salud'); if(!c) return;
+  const h=calcSaludDatos();
+  const fila=(icono,titulo,mal,detalle,accion)=>`
+    <div class="sr" style="align-items:flex-start;">
+      <span style="font-size:12.5px;display:flex;gap:7px;align-items:flex-start;">
+        <span>${mal?'⚠️':'✅'}</span>
+        <span><b>${titulo}</b><br><span style="font-size:11px;color:var(--text3);line-height:1.5;">${detalle}</span></span>
+      </span>
+      <span style="flex-shrink:0;margin-left:10px;">${mal&&accion?accion:''}</span>
+    </div>`;
+  const lista=(a,n=6)=>a.slice(0,n).join(', ')+(a.length>n?` y ${a.length-n} más`:'');
+  const montoDobles=r2(h.dobles.reduce((s,d)=>s+d.monto,0));
+  c.innerHTML=
+    fila('','Ventas en sábado o domingo',h.finde.length,
+      h.finde.length?`${h.finde.length} venta(s) por ${fmt(h.finde.reduce((s,v)=>s+v.total,0))} — El Huerto abre lunes a viernes, revisa la fecha: ${h.finde.map(v=>v.fecha).join(', ')}`
+        :'Ninguna. Todo el histórico cae en días de operación.',
+      `<button class="btn bs bxs" onclick="go('historial')">Ver</button>`)+
+    fila('','Posibles dobles cobros',h.dobles.length,
+      h.dobles.length?`${h.dobles.length} par(es) con el mismo carrito y total en menos de 60 s — ${fmt(montoDobles)} en juego. Último: ${h.dobles[0].fecha} ${h.dobles[0].hora} (${h.dobles[0].seg} s de diferencia). Si fueron dos clientes con lo mismo, déjalo; si no, anula el repetido.`
+        :'Ninguno en el histórico.',
+      `<button class="btn bs bxs" onclick="go('historial')">Revisar</button>`)+
+    fila('','Ventas sin vendedora asignada',h.sinVendedorReciente,
+      h.sinVendedorReciente?`${h.sinVendedorReciente} en los últimos 30 días (${h.sinVendedor} en todo el histórico) — sin esto no se puede repartir propina ni medir productividad.`
+        :`Todas las ventas recientes tienen vendedora.${h.sinVendedor?` (${h.sinVendedor} antiguas sin asignar)`:''}`)+
+    fila('','Ventas sin costo de insumos',h.sinFoodCost,
+      h.ventasRecientes?`${h.sinFoodCost} de ${h.ventasRecientes} en los últimos 30 días (${Math.round((1-h.sinFoodCost/h.ventasRecientes)*100)}% costeado) — las que faltan no entran al COGS ni al margen.`
+        :'Sin ventas en los últimos 30 días.',
+      `<button class="btn bs bxs" onclick="go('recetas')">Recetas</button>`)+
+    fila('','Insumos sin precio',h.insumosSinPrecio.length,
+      h.insumosSinPrecio.length?`${h.insumosSinPrecio.length} de ${h.insumosTotal} artículos — cada uno tapa el food cost de todo lo que lo usa: ${lista(h.insumosSinPrecio)}`
+        :'Todos los insumos tienen precio.',
+      `<button class="btn bs bxs" onclick="go('inventario')">Capturar</button>`)+
+    fila('','Productos activos sin receta',h.prodsSinReceta.length,
+      h.prodsSinReceta.length?`${h.prodsSinReceta.length} de ${h.prodsActivos} — no descuentan inventario ni costean: ${lista(h.prodsSinReceta)}`
+        :'Todos los productos activos tienen receta.',
+      `<button class="btn bs bxs" onclick="go('recetas')">Crear</button>`)+
+    (h.invNegativo.length?fila('','Inventario en negativo',1,
+      `${h.invNegativo.length} artículo(s) bajo cero: ${lista(h.invNegativo)} — revisa la receta o haz conteo físico.`,
+      `<button class="btn bs bxs" onclick="go('inventario')">Ver</button>`):'')+
+    (h.futuras?fila('','Registros con fecha futura',1,`${h.futuras} venta(s) o gasto(s) con fecha posterior a hoy.`):'');
+}
+window.renderSaludDatos=renderSaludDatos;
+
 function renderReportes(){
   const {p,fechas,label}=getReportePeriodo();
   const cm=curM(); const td=today();
@@ -12574,6 +12737,7 @@ function renderReportes(){
   if($('rp-label'))$('rp-label').textContent=label;
   renderUpsell(ventas,label);
   renderVentasPorDia();
+  renderSaludDatos();
   // Estado de resultados
   const ingSubs=p==='mes'?D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0):0;
   // ══ P&L PROFESIONAL (devengado) ══

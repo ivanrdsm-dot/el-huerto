@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.69'; // Ventas por día de la semana + semana lun-vie
+const CACHE_NAME = 'el-huerto-v14.70'; // Saneo fin de semana + guardas de cobro + salud de datos
 const ASSETS = [
   '/',
   '/index.html',
