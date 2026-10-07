@@ -2810,6 +2810,7 @@ async function completeInit(){
   await migComprasSemana5Oct2026();
   await migServitoallas5Oct2026();
   await migQuitaBonelesOct2026();
+  await migBajasOct2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3612,7 +3613,8 @@ async function migComprasSemana5Oct2026(){
   // ── Costco tickets 8756 y 8757 (domingo 4-oct) ──
   // Sin peso en el ticket: se guardan por PAQUETE para no inventar un
   // precio por gramo (ese invento ya envenenó el COGS tres veces).
-  await addC(['Pechuga de pollo (Costco)'],1,'paq',389.00,'lacteos_proteinas');     // KS PECHUGAS POLLO
+  // Pechuga KS: Iván confirmó que es suya. Con eso el ticket 8756
+  // (pechuga + arena de gato) es personal completo y no deja gasto.
   // Boneles de pollo: Iván confirmó que son suyos. Con eso, el ticket 8757
   // (boneles + alimento de gato) es personal completo y no deja gasto.
 
@@ -3652,8 +3654,6 @@ async function migComprasSemana5Oct2026(){
   const gastos=[
     {fecha:'2026-10-04',cat:'costco',prov:'Costco',monto:1805.65,ticket:'COSTCO-8755',metodo:'tarjeta',
      notas:'10 partidas: susalitas 20/50g, leche deslactosada 12L, bebida de almendra, espinaca 454g, 2× ensalada italiana 908g, PAM oliva 2×198g, moras azules, crema de almendras, tiras de pechuga'},
-    {fecha:'2026-10-04',cat:'costco',prov:'Costco',monto:389.00,ticket:'COSTCO-8756',metodo:'tarjeta',
-     notas:'KS pechugas de pollo. Ticket facturado $684.20: los $295.20 de ARENA PARA GATO son gasto personal de Iván y no entran al negocio. Falta el peso del paquete de pollo'},
     {fecha:'2026-10-04',cat:'proveedor',prov:'Coffee Shop 2',monto:388.98,ticket:'A18199',metodo:'efectivo',
      notas:'Perlas de tapioca brown sugar 2kg, popotes de tapioca, bolsa de papel estraza #2'},
     {fecha:'2026-10-04',cat:'proveedor',prov:'Plastidoro',monto:598.99,ticket:'AG-40458',metodo:'efectivo',
@@ -3681,10 +3681,68 @@ async function migComprasSemana5Oct2026(){
   }
   await markMig(migKey);
   logAudit('compras_registradas',{lote:'semana 5-oct-2026',tickets:10,gastos:nuevos,
-    totalNegocio:4906.64,totalFacturado:5807.84,
-    excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20,bonelesPollo:209.25},
+    totalNegocio:4517.64,totalFacturado:5807.84,
+    excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20,bonelesPollo:209.25,pechugaKS:389.00},
     articulosNuevos:creados,sinCostear:omitidos});
-  if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(4906.64)} · ${creados.length} artículos nuevos`,6000);
+  if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(4517.64)} · ${creados.length} artículos nuevos`,6000);
+}
+// ══ BAJAS DEL 7-OCT-2026 (pedido de Iván) ══
+// Cuatro cosas distintas que dejaron de ser del negocio:
+//  · Vale ya no trabaja aquí. Se marca inactiva, NO se borra: ventas,
+//    asistencias y nómina cuelgan de su id 2006.
+//  · La pechuga KS del ticket Costco 8756 tampoco era del Huerto. Como
+//    el otro renglón de ese ticket era arena de gato, el 8756 queda
+//    personal COMPLETO y su gasto se borra entero, igual que el 8757.
+//  · El sobre de infusión sale del inventario.
+//  · "Infusión de Sabores" se da de baja del menú: 0 ventas en 45 días
+//    y Iván confirma que ya no venden té. Boba Tea NO se toca — lleva
+//    32 vendidos y usa lata, no sobre.
+async function migBajasOct2026(){
+  const migKey='h5bajas_07oct26';
+  if(await migDone(migKey)) return;
+  const hecho=[];
+  // 1. Vale
+  const vale=D.empleados.find(e=>e.id===2006);
+  if(vale&&vale.activo!==false){
+    const upd={...vale,activo:false,baja:today(),bajaMotivo:'Ya no trabaja en El Huerto'};
+    await fsSet('empleados',upd);
+    const ix=D.empleados.findIndex(e=>e.id===2006); if(ix>=0) D.empleados[ix]=upd;
+    hecho.push('Vale dada de baja');
+  }
+  // 2. Pechuga de Costco: artículo y gasto del ticket 8756
+  const pech=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Pechuga de pollo (Costco)'));
+  if(pech){
+    await fsDel('inventario',pech.id);
+    const ix=D.inventario.findIndex(i=>i.id===pech.id); if(ix>=0) D.inventario.splice(ix,1);
+    hecho.push('Pechuga KS fuera del inventario');
+  }
+  const g=D.gastos.find(x=>x.ticket==='COSTCO-8756');
+  if(g){
+    await fsDel('gastos',g.id);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos.splice(ix,1);
+    hecho.push('Gasto Costco 8756 ($389) fuera: ticket personal completo');
+  }
+  // 3. Sobre de infusión
+  const sobre=D.inventario.find(i=>/infusi[óo]n de sabores \(sobre\)/i.test(i.nombre||''));
+  if(sobre){
+    await fsDel('inventario',sobre.id);
+    const ix=D.inventario.findIndex(i=>i.id===sobre.id); if(ix>=0) D.inventario.splice(ix,1);
+    hecho.push('Sobre de infusión fuera del inventario');
+  }
+  // 4. Producto Infusión de Sabores
+  const inf=D.productos.find(p=>p.id===1072);
+  if(inf&&inf.activo!==false){
+    const upd={...inf,activo:false};
+    await fsSet('productos',upd);
+    const ix=D.productos.findIndex(p=>p.id===1072); if(ix>=0) D.productos[ix]=upd;
+    hecho.push('Infusión de Sabores fuera del menú');
+  }
+  if(hecho.length){
+    logAudit('bajas_registradas',{fecha:'2026-10-07',detalle:hecho,
+      motivo:'Vale ya no trabaja; pechuga KS y ticket 8756 son compra personal de Iván; ya no se vende té'});
+    toast(`✓ ${hecho.length} baja(s) aplicadas`,5000);
+  }
+  await markMig(migKey);
 }
 // ══ BONELES DE POLLO FUERA (pedido de Iván) ══
 // Los boneles del ticket 8757 son suyos, no del Huerto. Como el otro

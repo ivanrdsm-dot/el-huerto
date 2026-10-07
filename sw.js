@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.78'; // Menú QR: apartar lugar en la fila
+const CACHE_NAME = 'el-huerto-v14.79'; // Bajas 7-oct: Vale, pechuga KS, té
 const ASSETS = [
   '/',
   '/index.html',
