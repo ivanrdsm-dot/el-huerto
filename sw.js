@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.76'; // División de cuentas y pago mixto
+const CACHE_NAME = 'el-huerto-v14.77'; // Órdenes de compra por WhatsApp
 const ASSETS = [
   '/',
   '/index.html',
