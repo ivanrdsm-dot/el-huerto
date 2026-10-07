@@ -424,6 +424,27 @@ body.kds-mode .st{font-size:20px;}
 .cr-total.naranja .mono{color:var(--orange);}
 /* Modo tarjeta pública: solo se ve la tarjeta del cliente */
 body.modo-tarjeta nav,body.modo-tarjeta .mnav,body.modo-tarjeta #lock-screen,body.modo-tarjeta #loader,body.modo-tarjeta .fab,body.modo-tarjeta main{display:none!important;}
+/* Pantalla a cliente: segunda vista, de cara al mostrador */
+body.modo-pantalla nav,body.modo-pantalla .mnav,body.modo-pantalla #lock-screen,body.modo-pantalla #loader,body.modo-pantalla .fab,body.modo-pantalla main{display:none!important;}
+#pantalla-view{position:fixed;inset:0;z-index:99998;background:linear-gradient(160deg,#12240f,#1a2e18 55%,#0d1a0b);color:#f4f1e8;display:none;flex-direction:column;padding:clamp(18px,3vw,40px);font-family:'DM Sans',sans-serif;overflow:hidden;}
+#pantalla-view .pv-marca{font-family:'Playfair Display',serif;font-size:clamp(26px,3.4vw,46px);font-weight:700;color:#7ec850;letter-spacing:-.5px;}
+#pantalla-view .pv-sub{font-size:clamp(12px,1.2vw,16px);color:#9db394;letter-spacing:3px;text-transform:uppercase;margin-top:2px;}
+#pantalla-view .pv-items{flex:1;overflow-y:auto;margin:clamp(14px,2vw,26px) 0;}
+#pantalla-view .pv-row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:clamp(9px,1.2vw,15px) 0;border-bottom:1px solid rgba(244,241,232,.12);font-size:clamp(16px,1.9vw,26px);animation:pvIn .25s ease;}
+@keyframes pvIn{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+#pantalla-view .pv-q{color:#7ec850;font-weight:800;min-width:2.2em;}
+#pantalla-view .pv-n{flex:1;}
+#pantalla-view .pv-prep{display:block;font-size:.62em;color:#9db394;margin-top:2px;}
+#pantalla-view .pv-p{font-variant-numeric:tabular-nums;font-weight:700;}
+#pantalla-view .pv-tot{display:flex;justify-content:space-between;align-items:baseline;border-top:3px solid #7ec850;padding-top:clamp(10px,1.4vw,18px);}
+#pantalla-view .pv-tot b{font-size:clamp(38px,6.5vw,86px);font-weight:800;font-variant-numeric:tabular-nums;letter-spacing:-2px;}
+#pantalla-view .pv-centro{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:clamp(10px,1.6vw,22px);}
+#pantalla-view .pv-sug{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px;}
+#pantalla-view .pv-chip{background:rgba(126,200,80,.14);border:1px solid rgba(126,200,80,.45);color:#cfe8b8;border-radius:999px;padding:7px 15px;font-size:clamp(12px,1.3vw,17px);}
+#pantalla-view .pv-prop{display:flex;gap:clamp(8px,1.4vw,18px);justify-content:center;flex-wrap:wrap;}
+#pantalla-view .pv-propb{background:rgba(244,241,232,.08);border:1px solid rgba(244,241,232,.25);border-radius:14px;padding:clamp(10px,1.4vw,20px) clamp(14px,2vw,30px);text-align:center;}
+#pantalla-view .pv-propb span{display:block;font-size:clamp(11px,1.1vw,15px);color:#9db394;}
+#pantalla-view .pv-propb b{font-size:clamp(20px,2.6vw,36px);font-variant-numeric:tabular-nums;}
 /* Chips de toppings (selector de preparación) */
 .prep-chip{padding:11px 14px;border-radius:20px;border:2px solid var(--border);background:var(--surface2);color:var(--text);font-size:13px;font-weight:700;cursor:pointer;transition:all .15s ease;min-height:44px;}
 .prep-chip.on{border-color:var(--accent);background:color-mix(in srgb, var(--accent) 16%, var(--surface));color:var(--accent);transform:scale(1.05);}
@@ -2177,6 +2198,19 @@ nav{padding-top:env(safe-area-inset-top);}
     <div id="prod-list"></div>
   </div>
   <div class="card">
+    <div class="ct">Pantalla a cliente</div>
+    <div style="font-size:11.5px;color:var(--text2);line-height:1.55;margin-bottom:10px;">
+      Una segunda pantalla de cara al mostrador con la orden en vivo: el cliente la corrige
+      <b>antes</b> de pagar, ve los extras sugeridos y, al cobrar, cuánto sería la propina.
+      Úsala en un segundo monitor o en una tablet conectada al wifi.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn bp" onclick="abrirPantallaCliente()">🖥 Abrir en otra ventana</button>
+      <button class="btn bs" onclick="mostrarQRPantalla()">📱 QR para tablet</button>
+    </div>
+    <div id="cfg-pantalla-qr" style="margin-top:12px;display:none;text-align:center;"></div>
+  </div>
+  <div class="card">
     <div class="ct">Gasto operativo promedio</div>
     <div style="font-size:11.5px;color:var(--text2);line-height:1.55;margin-bottom:9px;">
       Lo que sale cada semana <b>sin contar nómina</b>: fruta, Costco, El Zorro, La Chispa, limpieza, servicios.
@@ -2404,6 +2438,8 @@ nav{padding-top:env(safe-area-inset-top);}
 
 <!-- Tarjeta pública del cliente (?tarjeta=EH-XXXXXX) — diseño estilo Wallet -->
 <div id="tarjeta-view" style="display:none;position:fixed;inset:0;z-index:99999;background:#e9e4da;overflow-y:auto;"></div>
+<!-- Pantalla a cliente (?pantalla=1): espejo de la orden en vivo -->
+<div id="pantalla-view"></div>
 
 <!-- Selección de toppings/preparación al agregar producto (va a la comanda) -->
 <div class="modal-bg" id="prep-modal" style="display:none;">
@@ -2451,11 +2487,30 @@ nav{padding-top:env(safe-area-inset-top);}
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
-const app=initializeApp(FB); const db=getFirestore(app);
+const app=initializeApp(FB);
+// ══════════════════════════════════════════════════════════════
+// OPERAR SIN INTERNET
+// Antes: `getFirestore(app)` a secas. Mientras la pestaña seguía
+// abierta aguantaba, pero si alguien recargaba con el internet caído
+// la app arrancaba vacía — sin productos, sin precios, sin caja.
+// En Ciudad UP eso es media hora de venta perdida.
+// Ahora el caché vive en IndexedDB: la app abre con los últimos datos
+// aunque no haya red, las ventas se encolan y suben solas al volver.
+// multipleTabManager permite caja + pantalla de cocina a la vez.
+// ══════════════════════════════════════════════════════════════
+let db;
+try{
+  db=initializeFirestore(app,{localCache:persistentLocalCache({tabManager:persistentMultipleTabManager()})});
+  console.log('✓ Firestore con caché local (opera sin internet)');
+}catch(e){
+  // Navegador sin IndexedDB o en modo privado: se sigue sin caché
+  console.warn('Caché local no disponible, Firestore en modo online:',e?.code||e);
+  db=getFirestore(app);
+}
 const auth=getAuth(app);
 // A0-SEGURIDAD: sesión anónima de Firebase Auth.
 // Permite cerrar las reglas de Firestore a "solo usuarios autenticados"
@@ -2499,7 +2554,29 @@ let activeVend=null; // {id, nombre, color}
 
 const colRef=c=>collection(db,c);
 const docRef=(c,id)=>doc(db,c,String(id));
-const fsSet=async(c,item)=>{try{await setDoc(docRef(c,item.id),item);return true;}catch(e){toast('⚠ '+e.message,4000,'error');console.error('fsSet error:',c,e);return false;}};
+// ══════════════════════════════════════════════════════════════
+// ESCRITURAS CON CACHÉ LOCAL
+// Con `persistentLocalCache`, setDoc() NO resuelve hasta que el
+// SERVIDOR confirma. Sin internet la promesa queda pendiente para
+// siempre: cualquier `await fsSet(...)` congelaba la pantalla justo
+// cuando más urge vender. Pero el dato YA quedó en IndexedDB en cuanto
+// se encoló, y Firestore lo sube solo al volver la red.
+// Así que: offline no esperamos, y online esperamos con tope de tiempo
+// por si la red se cae a media escritura.
+// ══════════════════════════════════════════════════════════════
+const ESPERA_ESCRITURA=8000;
+const escrituraOk=async p=>{
+  if(!navigator.onLine){ p.catch(e=>console.warn('escritura encolada sin red:',e?.code||e)); return 'encolada'; }
+  let t;
+  const r=await Promise.race([p.then(()=>'ok'), new Promise(res=>{t=setTimeout(()=>res('encolada'),ESPERA_ESCRITURA);})]);
+  clearTimeout(t);
+  if(r==='encolada') p.catch(e=>console.warn('escritura encolada:',e?.code||e));
+  return r;
+};
+const fsSet=async(c,item)=>{
+  try{ await escrituraOk(setDoc(docRef(c,item.id),item)); return true; }
+  catch(e){ toast('⚠ '+e.message,4000,'error'); console.error('fsSet error:',c,e); return false; }
+};
 
 // ══════════════════════════════════════════════════════════════
 // A2 — MIGRACIONES VERSIONADAS EN FIRESTORE (no localStorage)
@@ -2563,8 +2640,11 @@ function logAudit(accion, detalle){
 }
 window.logAudit=logAudit;
 // Versión que SÍ tira error — para flujos críticos como ventas que NO pueden silenciarse
-const fsSetCritical=async(c,item)=>{await setDoc(docRef(c,item.id),item);return true;};
-const fsDel=async(c,id)=>{try{await deleteDoc(docRef(c,String(id)));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
+// Crítico: si Firestore RECHAZA (permisos, cuota), lanza y el carrito se
+// queda para reintentar. Si solo falta red, la venta ya está guardada
+// localmente y se da por buena.
+const fsSetCritical=async(c,item)=>{await escrituraOk(setDoc(docRef(c,item.id),item));return true;};
+const fsDel=async(c,id)=>{try{await escrituraOk(deleteDoc(docRef(c,String(id))));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
 
 async function completeInit(){
   READY=true;
@@ -7248,6 +7328,92 @@ async function registrarSelloLealtad(venta){
   lealtadActual=null;canjeActivo=false;_canjeDesc=false;
   renderOpLealtad();
 }
+// ══════════════════════════════════════════════════════════════
+// PANTALLA A CLIENTE  (?pantalla=1)
+// Una segunda pantalla de cara al mostrador que refleja la orden
+// mientras la capturan. Sirve para tres cosas, en este orden:
+//  1. El cliente CORRIGE antes de pagar — menos devoluciones y menos
+//     discusiones en la barra.
+//  2. Ve los extras sugeridos, no solo la cajera: el motor de sugeridos
+//     ya existía pero solo lo veía quien cobra.
+//  3. Al cobrar aparece cuánto sería la propina del 10/15/20%. Es un
+//     empujón visual, no toca la venta ni el corte.
+// La caja PUBLICA en sistema/pantallaCliente (con freno para no escribir
+// en cada tecla) y la pantalla ESCUCHA. Así funciona lo mismo en un
+// segundo monitor que en una tablet aparte.
+// ══════════════════════════════════════════════════════════════
+const MODO_PANTALLA=new URLSearchParams(location.search).get('pantalla')==='1';
+if(MODO_PANTALLA) document.body.classList.add('modo-pantalla');
+const pantallaRef=()=>doc(db,'sistema','pantallaCliente');
+let _pvTimer=null, _pvUltima='';
+function publicarPantalla(estado){
+  if(MODO_PANTALLA) return; // la pantalla solo lee
+  const {sub,desc,total}=(typeof getDescuento==='function')?getDescuento():{sub:0,desc:0,total:0};
+  const payload={
+    estado: estado||(order.length?'orden':'vacio'),
+    items: order.map(o=>({n:o.nombre,q:o.qty,p:o.precio,prep:(typeof prepTexto==='function')?(prepTexto(o)||''):''})),
+    sub, desc, total,
+    sugeridos: (typeof calcSugerencias==='function')?calcSugerencias().map(id=>{
+      const pr=D.productos.find(x=>x.id===id); return pr?{n:pr.nombre,p:pr.precio}:null;
+    }).filter(Boolean).slice(0,3):[],
+    ts: Date.now()
+  };
+  const firma=JSON.stringify(payload.items)+'|'+payload.total+'|'+payload.estado;
+  if(firma===_pvUltima && estado!=='gracias') return;
+  _pvUltima=firma;
+  clearTimeout(_pvTimer);
+  // Freno de 350 ms: agregar 5 productos seguidos es UNA escritura, no 5
+  _pvTimer=setTimeout(()=>{ fsSet('sistema',{id:'pantallaCliente',...payload}); },350);
+}
+window.publicarPantalla=publicarPantalla;
+
+function renderPantallaCliente(d){
+  const el=$('pantalla-view'); if(!el) return;
+  el.style.display='flex';
+  const marca=`<div><div class="pv-marca">El Huerto</div><div class="pv-sub">${CFG.negocio&&CFG.negocio!=='El Huerto'?CFG.negocio:'Comida real, rápido'}</div></div>`;
+  if(!d || d.estado==='vacio' || !(d.items||[]).length){
+    el.innerHTML=marca+`<div class="pv-centro">
+      <div style="font-size:clamp(30px,4.6vw,62px);font-weight:800;">Bienvenido 🌱</div>
+      <div style="font-size:clamp(14px,1.7vw,24px);color:#9db394;max-width:22ch;">Tu orden aparece aquí mientras la preparamos</div>
+    </div>`;
+    return;
+  }
+  if(d.estado==='gracias'){
+    el.innerHTML=marca+`<div class="pv-centro">
+      <div style="font-size:clamp(44px,7vw,96px);">🌿</div>
+      <div style="font-size:clamp(30px,4.6vw,62px);font-weight:800;">¡Gracias!</div>
+      <div style="font-size:clamp(14px,1.7vw,24px);color:#9db394;">Que lo disfrutes · Pide tu tarjeta de sellos</div>
+    </div>`;
+    return;
+  }
+  const filas=(d.items||[]).map(i=>`<div class="pv-row">
+      <span class="pv-q">${i.q}×</span>
+      <span class="pv-n">${i.n}${i.prep?`<span class="pv-prep">${i.prep}</span>`:''}</span>
+      <span class="pv-p">${fmt(i.p*i.q)}</span>
+    </div>`).join('');
+  const cobrando=d.estado==='cobro';
+  const prop=p=>Math.round((d.total||0)*p/100*100)/100;
+  el.innerHTML=marca+
+    `<div class="pv-items">${filas}</div>`+
+    (d.desc>0?`<div class="pv-row" style="border:0;color:#e8c96a;"><span class="pv-n">Descuento</span><span class="pv-p">−${fmt(d.desc)}</span></div>`:'')+
+    `<div class="pv-tot"><span style="font-size:clamp(16px,1.9vw,26px);color:#9db394;letter-spacing:2px;text-transform:uppercase;">Total</span><b>${fmt(d.total)}</b></div>`+
+    (cobrando
+      ? `<div style="margin-top:clamp(12px,1.8vw,24px);text-align:center;">
+           <div style="font-size:clamp(13px,1.4vw,19px);color:#9db394;margin-bottom:9px;">¿Gustas dejar propina? Puedes darla en efectivo</div>
+           <div class="pv-prop">
+             ${[10,15,20].map(x=>`<div class="pv-propb"><span>${x}%</span><b>${fmt(prop(x))}</b></div>`).join('')}
+           </div>
+         </div>`
+      : ((d.sugeridos||[]).length
+          ? `<div class="pv-sug">${d.sugeridos.map(sg=>`<span class="pv-chip">+ ${sg.n} · ${fmt(sg.p)}</span>`).join('')}</div>`
+          : ''));
+}
+if(MODO_PANTALLA){
+  onSnapshot(pantallaRef(), snap=>{ try{ renderPantallaCliente(snap.data()); }catch(e){ console.warn('pantalla:',e); } },
+    err=>console.warn('pantalla sin datos:',err?.code||err));
+  renderPantallaCliente(null);
+}
+
 // ── Tarjeta pública (?tarjeta=EH-XXXXXX) — se actualiza EN VIVO ──
 const _tarjetaCode=new URLSearchParams(location.search).get('tarjeta');
 if(_tarjetaCode)document.body.classList.add('modo-tarjeta');
@@ -7540,6 +7706,7 @@ function renderOrder(){
   $('op-desc-show').textContent=desc>0?'−'+fmt(desc):'−$0.00';
   $('op-tot').textContent=fmt(total);
   const fab=$('fab-order'); if(fab) fab.textContent=cnt>0?cnt:'🛒';
+  if(typeof publicarPantalla==='function') publicarPantalla();
   if(typeof renderOpLealtad==='function') renderOpLealtad();
   renderSugerencias();
   $('op-items').innerHTML=order.length===0?`<p style="color:var(--text3);font-size:12px;padding:14px 0;text-align:center;">🛒 Toca un producto para agregar</p>`:
@@ -7573,6 +7740,7 @@ window.abrirCobro=()=>{
   if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return;}
   if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
   if(!ventaVendedorOk){pedirVendedorVenta(()=>abrirCobro());return;}
+  publicarPantalla('cobro');
   const {total}=getDescuento();
   $('cobro-total').textContent=fmt(total);
   $('cobro-recibido').value='';
@@ -7802,6 +7970,8 @@ async function cobrar(metodo,recibido=0){
     order=[]; orderStartedAt=null; ventaVendedorOk=false; $('op-nota').value=''; if($('op-desc-val'))$('op-desc-val').value='';
     if($('op-cliente'))$('op-cliente').value='';
     _ultCobro={firma:firmaOrden,ts:Date.now()};
+    publicarPantalla('gracias');
+    setTimeout(()=>{ if(!order.length) publicarPantalla('vacio'); },6000);
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
     renderOrder();
   }catch(e){
@@ -12889,6 +13059,26 @@ function renderSaludDatos(){
 }
 window.renderSaludDatos=renderSaludDatos;
 
+// ── Abrir la pantalla a cliente ──
+window.abrirPantallaCliente=()=>{
+  const url=location.origin+location.pathname+'?pantalla=1';
+  const w=window.open(url,'pantallaCliente','width=1280,height=800');
+  if(!w){toast('⚠ El navegador bloqueó la ventana. Permite pop-ups de este sitio',4500,'warn');return;}
+  publicarPantalla(); // que arranque con lo que hay en la orden
+  toast('🖥 Pantalla abierta — muévela al monitor del cliente y ponla en pantalla completa (F11)',6000);
+};
+window.mostrarQRPantalla=()=>{
+  const cont=$('cfg-pantalla-qr'); if(!cont) return;
+  const url=location.origin+location.pathname+'?pantalla=1';
+  if(cont.style.display==='block'){cont.style.display='none';return;}
+  cont.style.display='block';
+  cont.innerHTML='<div id="pv-qr" style="display:inline-block;padding:10px;background:#fff;border-radius:10px;"></div>'+
+    `<div style="font-size:11px;color:var(--text2);margin-top:7px;word-break:break-all;">${url}</div>`+
+    '<div style="font-size:11px;color:var(--text3);margin-top:4px;">Escanéalo desde la tablet y déjala en esa página</div>';
+  try{ new QRCode(document.getElementById('pv-qr'),{text:url,width:150,height:150,correctLevel:QRCode.CorrectLevel.M}); }
+  catch(e){ cont.innerHTML='<div style="font-size:12px;color:var(--text2);">Abre esta dirección en la tablet:<br><b>'+url+'</b></div>'; }
+};
+
 function renderReportes(){
   const {p,fechas,label}=getReportePeriodo();
   const cm=curM(); const td=today();
@@ -13720,12 +13910,14 @@ function updateConnStatus(){
     el.textContent='🟢';
     el.title='Conectado — las ventas se registran en tiempo real';
   } else {
-    el.textContent='🔴';
-    el.title='SIN CONEXIÓN — NO REGISTRES VENTAS hasta que vuelva';
+    el.textContent='🟡';
+    el.title='Sin internet — SIGUE VENDIENDO: las ventas se guardan aquí y suben solas al volver la red';
   }
 }
-window.addEventListener('online',()=>{updateConnStatus();toast('🟢 Conexión restaurada',2400);});
-window.addEventListener('offline',()=>{updateConnStatus();toast('🔴 SIN CONEXIÓN — No se pueden registrar ventas',6000,'error');});
+window.addEventListener('online',()=>{updateConnStatus();toast('🟢 Conexión restaurada — lo de sin red ya se está subiendo',3000);});
+// Antes decía "No se pueden registrar ventas" y el equipo paraba de vender.
+// Con caché local eso ya no es cierto: se cobra igual y sube solo.
+window.addEventListener('offline',()=>{updateConnStatus();toast('🟡 Sin internet — sigue vendiendo normal, todo se guarda y sube al volver la red',7000,'warn');});
 updateConnStatus();
 startRelojTick();
 // A0: autenticar primero (con fallback), luego escuchar datos

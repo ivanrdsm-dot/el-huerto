@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.73'; // Boneles de pollo fuera: ticket 8757 era personal
+const CACHE_NAME = 'el-huerto-v14.74'; // Opera sin internet + pantalla a cliente
 const ASSETS = [
   '/',
   '/index.html',
