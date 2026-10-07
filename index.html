@@ -2610,6 +2610,8 @@ async function completeInit(){
   await migGastosSemana27Sep2026();
   await migQuitaBrocoliSep2026();
   await migFinDeSemanaOct2026();
+  await migComprasSemana5Oct2026();
+  await migServitoallas5Oct2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3323,6 +3325,168 @@ async function migQuitaBrocoliSep2026(){
     const ix=D.inventario.findIndex(i=>i.id===br.id); if(ix>=0) D.inventario.splice(ix,1);
     logAudit('inventario_correccion',{articulo:'Brócoli',accion:'eliminado a pedido de Iván'});
     toast('✓ Brócoli fuera del inventario',3500);
+  }
+  await markMig(migKey);
+}
+// ══ COMPRAS DE LA SEMANA 5-oct-2026 (10 tickets) ══
+// Surtido grande: Central de Abasto + Costco el domingo 4-oct, y la
+// fruta/verdura de Reyes Ramiro el lunes 5. Los tickets impresos se
+// registran con SU fecha (4-oct, domingo) porque es lo que dice el
+// comprobante; los dos manuscritos de Reyes Ramiro no traen fecha y van
+// al lunes 5, que es cuando Iván dice que se compraron.
+//
+// OJO: dos tickets de Costco traen artículos de MASCOTA (alimento de
+// gato $396.75 y arena de gato $295.20 ya netos de cupón). Son gasto
+// personal de Iván, no del negocio: NO entran al gasto ni al inventario,
+// y la nota de cada gasto deja constancia del total facturado para que
+// el ticket siga siendo rastreable.
+async function migComprasSemana5Oct2026(){
+  const migKey='h5semana5oct26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  // Dos pasadas a propósito: primero el nombre EXACTO y solo después el
+  // alias. Con una sola pasada, 'Servitoallas' caía en "Servilleta"
+  // (ALIAS_INV['servilleta']='Servitoallas') porque va antes en el arreglo.
+  const buscar=cands=>{
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const exacto=D.inventario.find(i=>normInvNombre(i.nombre)===nn);
+      if(exacto) return exacto;
+    }
+    for(const c of cands){
+      const nn=normInvNombre(c);
+      const porAlias=D.inventario.find(i=>normInvNombre(ALIAS_INV[normInvNombre(i.nombre)]||'')===nn);
+      if(porAlias) return porAlias;
+    }
+    return null;
+  };
+  const omitidos=[], creados=[];
+  const addC=async(cands,qty,unit,precioUnit,catOf)=>{
+    let inv=buscar(cands);
+    if(inv){
+      const q=qtyToInvUnit(qty,unit,inv.unit);
+      if(q!=null){inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;inv.precio=Math.round(precioUnit*(qty/q)*10000)/10000;}
+      else{omitidos.push(`${inv.nombre} (${unit} vs ${inv.unit})`);return;}
+    }else{inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit};D.inventario.push(inv);creados.push(cands[0]);}
+    await fsSet('inventario',inv);
+  };
+
+  // ── Reyes Ramiro, bodega I-49 (lunes 5-oct) — $78 + $468 ──
+  await addC(['Zanahoria'],5,'kg',15,'frutas_verduras');
+  await addC(['Papa'],2,'kg',23,'frutas_verduras');
+  await addC(['Jitomate'],3,'kg',25,'frutas_verduras');
+  await addC(['Calabaza'],1,'kg',15,'frutas_verduras');
+  await addC(['Jícama'],8,'kg',20,'frutas_verduras');
+  await addC(['Piña'],1,'pz',15,'frutas_verduras');
+  await addC(['Pepino'],8,'kg',20,'frutas_verduras');
+
+  // ── Costco ticket 8755 (domingo 4-oct) — $1,805.65 ──
+  // Precios ya netos del descuento global de $41.51 (factor 0.977527).
+  await addC(['Susalias','Susalias horneadas'],20,'pz',14.9495,'abarrotes');        // SUSALITAS 20/50 G
+  await addC(['Leche deslactosada'],12,'L',22.0830,'interna_ivan');                 // KS LECHE DESL LIGHT
+  await addC(['Leche de almendra','Leche de almendras'],6,'pz',24.8325,'lacteos_proteinas');
+  await addC(['Espinaca'],454,'g',0.19580,'frutas_verduras');
+  await addC(['Lechuga','Ensalada italiana'],1816,'g',0.059352,'frutas_verduras');  // 2 × ENS. ITALIANA 908 G
+  await addC(['Aceite en aerosol PAM'],2,'lata',89.498,'abarrotes');                // PAM OLIVA 2/198 G
+  await addC(['Blueberry','Moras azules'],1360,'g',0.138967,'frutas_verduras');
+  await addC(['Crema de almendras'],1,'pz',168.996,'lacteos_proteinas');
+  await addC(['Tiras de pollo','Pollo'],1360,'g',0.263969,'lacteos_proteinas');     // TIRAS PECHUGA
+
+  // ── Costco tickets 8756 y 8757 (domingo 4-oct) ──
+  // Sin peso en el ticket: se guardan por PAQUETE para no inventar un
+  // precio por gramo (ese invento ya envenenó el COGS tres veces).
+  await addC(['Pechuga de pollo (Costco)'],1,'paq',389.00,'lacteos_proteinas');     // KS PECHUGAS POLLO
+  await addC(['Boneles de pollo (Costco)'],1,'paq',209.25,'lacteos_proteinas');     // BONELES POLLO
+
+  // ── Coffee Shop 2, Central de Abasto (4-oct) — $388.98 ──
+  await addC(['Perlas de tapioca brown sugar'],2000,'g',0.11500,'abarrotes');       // 2 kg $229.99
+  await addC(['Popote de tapioca (boba)'],1,'paq',104.99,'desechables');            // piezas por paquete: pendiente
+  await addC(['Bolsa de papel estraza #2'],1,'paq',53.998,'desechables');           // piezas por paquete: pendiente
+
+  // ── Plastidoro (4-oct) — $598.99 ──
+  await addC(['Contenedor papel 8 oz'],100,'pz',1.560003,'desechables');
+  await addC(['Bowl papel kraft 32 oz'],50,'pz',2.720073,'desechables');
+  await addC(['Tapa p/bowl kraft'],50,'pz',1.760074,'desechables');
+  await addC(['Aderezo miel mostaza'],1,'pz',219.00,'abarrotes');                   // 3.78 L
+
+  // ── La Molinera de Abastos, folio 22632 (4-oct) — $575.02 ──
+  // El chipotle resultó ser McCormick squeeze de 310 G a $32.17, no el
+  // envase de 250 ml a $43 que habíamos supuesto: manda el comprobante.
+  await addC(['Salsa chipotle'],6,'pz',32.17,'abarrotes');
+  await addC(['Aderezo guacamole'],3,'pz',35.00,'abarrotes');                       // MCC GUACAMOLE SQ 305 G
+  await addC(['Aderezo César'],1,'pz',142.00,'abarrotes');
+  await addC(['Aderezo Mil Islas'],1,'pz',135.00,'abarrotes');
+
+  // ── Materias Primas "La Nueva" (4-oct) — $549.00 ──
+  await addC(['Vaso plástico 16 oz'],150,'pz',1.08,'desechables');
+  await addC(['Tapa 16 oz'],100,'pz',0.94,'desechables');
+  await addC(['Cucharas','Cuchara desechable'],100,'pz',0.36,'desechables');
+  await addC(['Tenedores','Tenedor desechable'],100,'pz',0.36,'desechables');
+  await addC(['Bolsas de basura'],1,'rollo',43.00,'interna_ivan');                  // rollo negro 60×90
+  await addC(['Vaso degustador'],100,'pz',0.30,'desechables');                      // PRIMO VASO 2 onz
+  await addC(['Vaso expreso'],100,'pz',0.80,'desechables');                         // V BLANCO 4 onz
+  await addC(['Servitoallas'],2,'paq',34.00,'desechables');                         // Kleenex
+
+  // ── La Molinera de Abastos, folio 22633 (4-oct) — $54.00 ──
+  await addC(['Cacahuate japonés','Cacahuates japoneses'],1000,'g',0.054,'abarrotes'); // $50 + $4 IEPS
+
+  // ── Gastos ──
+  const gastos=[
+    {fecha:'2026-10-04',cat:'costco',prov:'Costco',monto:1805.65,ticket:'COSTCO-8755',metodo:'tarjeta',
+     notas:'10 partidas: susalitas 20/50g, leche deslactosada 12L, bebida de almendra, espinaca 454g, 2× ensalada italiana 908g, PAM oliva 2×198g, moras azules, crema de almendras, tiras de pechuga'},
+    {fecha:'2026-10-04',cat:'costco',prov:'Costco',monto:389.00,ticket:'COSTCO-8756',metodo:'tarjeta',
+     notas:'KS pechugas de pollo. Ticket facturado $684.20: los $295.20 de ARENA PARA GATO son gasto personal de Iván y no entran al negocio. Falta el peso del paquete de pollo'},
+    {fecha:'2026-10-04',cat:'costco',prov:'Costco',monto:209.25,ticket:'COSTCO-8757',metodo:'tarjeta',
+     notas:'Boneles de pollo. Ticket facturado $606.00: los $396.75 de ALIMENTO GATO 9KG son gasto personal de Iván y no entran al negocio. Confirmar si los boneles son del Huerto'},
+    {fecha:'2026-10-04',cat:'proveedor',prov:'Coffee Shop 2',monto:388.98,ticket:'A18199',metodo:'efectivo',
+     notas:'Perlas de tapioca brown sugar 2kg, popotes de tapioca, bolsa de papel estraza #2'},
+    {fecha:'2026-10-04',cat:'proveedor',prov:'Plastidoro',monto:598.99,ticket:'AG-40458',metodo:'efectivo',
+     notas:'Contenedor papel 8oz ×100, bowl kraft 32oz ×50, tapa p/bowl ×50, aderezo honey mustard 3.78L'},
+    {fecha:'2026-10-04',cat:'proveedor',prov:'La Molinera de Abastos',monto:575.02,ticket:'MOLINERA-22632',metodo:'efectivo',
+     notas:'Aderezos: chipotle MCC ×6, guacamole MCC ×3, César Clemente Jacques, Mil Islas Clemente Jacques'},
+    {fecha:'2026-10-04',cat:'proveedor',prov:'Materias Primas La Nueva',monto:549.00,ticket:'LANUEVA-216170',metodo:'efectivo',
+     notas:'Vaso 16oz ×150, tapas ×100, cucharas ×100, tenedores ×100, bolsa basura 60×90, vaso 2oz ×100, vaso 4oz ×100, servitoallas Kleenex ×2'},
+    {fecha:'2026-10-04',cat:'proveedor',prov:'La Molinera de Abastos',monto:54.00,ticket:'MOLINERA-22633',metodo:'efectivo',
+     notas:'Cacahuate japonés 1 kg ($50 + $4 IEPS)'},
+    {fecha:'2026-10-05',cat:'proveedor',prov:'Reyes Ramiro',monto:78.00,ticket:'REYES-05OCT26-A',metodo:'efectivo',
+     notas:'Zanahoria 1kg, papa 1kg, jitomate 1kg, calabaza 1kg'},
+    {fecha:'2026-10-05',cat:'proveedor',prov:'Reyes Ramiro',monto:468.00,ticket:'REYES-05OCT26-B',metodo:'efectivo',
+     notas:'Jícama 8kg, piña 1pz, pepino 8kg, papa 1kg, zanahoria 4kg, jitomate 2kg'},
+  ];
+  const nuevos=[];
+  for(const g of gastos){
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      await fsSet('gastos',{id:++nid,tipoEstrategico:'operacion',...g}); nuevos.push(`${g.prov} ${fmt(g.monto)}`);
+    }
+  }
+  for(const nombre of ['Reyes Ramiro','Coffee Shop 2','Plastidoro','La Molinera de Abastos','Materias Primas La Nueva']){
+    if(!D.provDir.find(x=>normInvNombre(x.nombre)===normInvNombre(nombre)))
+      await fsSet('provDir',{id:++nid,nombre,contacto:'',tel:'',entrega:'',notas:'Alta automática desde compras 4/5-oct-2026'});
+  }
+  await markMig(migKey);
+  logAudit('compras_registradas',{lote:'semana 5-oct-2026',tickets:10,gastos:nuevos,
+    totalNegocio:5115.89,totalFacturado:5807.84,
+    excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20},
+    articulosNuevos:creados,sinCostear:omitidos});
+  if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(5115.89)} · ${creados.length} artículos nuevos`,6000);
+}
+// ══ SERVITOALLAS DEL 4-OCT: las tragó una colisión de alias ══
+// `buscar` daba por bueno el PRIMER artículo cuyo nombre O alias coincidía,
+// y ALIAS_INV tiene 'servilleta' → 'Servitoallas'. Como "Servilleta" va
+// antes en el arreglo, las 2 cajas de Kleenex ($34 c/u) se intentaron
+// sumar a Servilleta [pz]: 'paq' contra 'pz' no convierte, así que
+// qtyToInvUnit devolvió null y la partida se perdió en silencio.
+// Aquí se corrige por nombre EXACTO, sin pasar por el alias.
+async function migServitoallas5Oct2026(){
+  const migKey='h5servitoalla_oct26';
+  if(await migDone(migKey)) return;
+  const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Servitoallas'));
+  if(inv){
+    inv.qty=Math.round(((inv.qty||0)+2)*1000)/1000;
+    inv.precio=34.00; // Kleenex servitoalla, ticket Materias Primas La Nueva 4-oct
+    await fsSet('inventario',inv);
+    logAudit('inventario_correccion',{articulo:'Servitoallas',accion:'+2 paq a $34 (colisión de alias con Servilleta)'});
+    toast('✓ Servitoallas: +2 paq a $34',3500);
   }
   await markMig(migKey);
 }

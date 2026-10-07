@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.70'; // Saneo fin de semana + guardas de cobro + salud de datos
+const CACHE_NAME = 'el-huerto-v14.72'; // Compras 4/5-oct + servitoallas por nombre exacto
 const ASSETS = [
   '/',
   '/index.html',
