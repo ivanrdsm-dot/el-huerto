@@ -1249,6 +1249,7 @@ nav{padding-top:env(safe-area-inset-top);}
           <button class="btn bp bfull" onclick="abrirCobro()" style="gap:6px;">💵 Efectivo</button>
           <button class="btn bbl bfull" onclick="cobrarTarjeta()" style="gap:6px;">💳 Tarjeta</button>
         </div>
+        <button class="btn bs bfull bsm" onclick="abrirDividir()" style="margin-top:6px;">🧾 Dividir cuenta / pago mixto</button>
         <div style="display:flex;gap:6px;">
           <button class="btn bs bfull bsm" onclick="clearOrder()">✕ Limpiar</button>
           <button class="btn bs bfull bsm" onclick="reprintLastTicket()" title="Reimprimir último ticket">🖨 Reimprimir</button>
@@ -1323,7 +1324,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <input type="date" id="vh-fecha" onchange="renderHistorial()" style="width:auto;padding:5px 8px;font-size:12px;">
       <select id="vh-met" onchange="renderHistorial()" style="width:auto;padding:5px 8px;font-size:12px;">
-        <option value="">Todos</option><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta</option>
+        <option value="">Todos</option><option value="efectivo">💵 Efectivo</option><option value="tarjeta">💳 Tarjeta</option><option value="mixto">🧾 Dividida</option>
       </select>
       <select id="vh-vend" onchange="renderHistorial()" style="width:auto;padding:5px 8px;font-size:12px;">
         <option value="">Todos los vendedores</option>
@@ -2418,6 +2419,32 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
 </div>
 
+<!-- MODAL DIVIDIR CUENTA — pagos mixtos y cuentas partidas -->
+<div class="modal-bg" id="div-modal" style="display:none;" onclick="closeModal('div-modal',event)">
+  <div class="modal" style="max-width:430px;">
+    <div class="modal-head">
+      <span class="modal-title">🧾 Dividir la cuenta</span>
+      <button class="btn bs bxs" onclick="$('div-modal').style.display='none'">✕</button>
+    </div>
+    <div style="text-align:center;margin-bottom:12px;">
+      <div style="font-size:11px;color:var(--text3);">TOTAL DE LA CUENTA</div>
+      <div id="div-total" style="font-family:'Playfair Display',serif;font-size:32px;font-weight:900;color:var(--accent2);">$0.00</div>
+    </div>
+    <div style="font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--text3);font-weight:700;margin-bottom:6px;">Partes iguales</div>
+    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;">
+      <button class="btn bs bsm" onclick="divPartesIguales(2)">2</button>
+      <button class="btn bs bsm" onclick="divPartesIguales(3)">3</button>
+      <button class="btn bs bsm" onclick="divPartesIguales(4)">4</button>
+      <button class="btn bs bsm" onclick="divPartesIguales(5)">5</button>
+      <button class="btn bs bsm" onclick="divPartesIguales(6)">6</button>
+      <button class="btn bs bsm" onclick="divAgregarParte()">+ Otra parte</button>
+    </div>
+    <div id="div-partes"></div>
+    <div id="div-resumen" style="background:var(--surface2);border-radius:var(--rsm);padding:11px;text-align:center;margin:12px 0;"></div>
+    <button class="btn bp bfull" id="div-btn" onclick="cobrarDividido()" disabled style="opacity:.4;">✓ Cobrar cuenta dividida</button>
+  </div>
+</div>
+
 <!-- MODAL NOMBRE (cobro con tarjeta: el nombre es lo que canta la cocina) -->
 <div class="modal-bg" id="nombre-modal" style="display:none;" onclick="closeModal('nombre-modal',event)">
   <div class="modal" style="max-width:380px;">
@@ -2580,6 +2607,27 @@ let activeVend=null; // {id, nombre, color}
 
 const colRef=c=>collection(db,c);
 const docRef=(c,id)=>doc(db,c,String(id));
+// ══════════════════════════════════════════════════════════════
+// PAGOS DE UNA VENTA
+// Hasta hoy una venta tenía UN método y `total` entero caía en
+// efectivo o en tarjeta. Con cuentas divididas y pagos mixtos eso deja
+// de ser cierto, así que todo el dinero se lee por aquí.
+// Compatibilidad: una venta vieja sin `pagos` devuelve su único pago,
+// así que el histórico entero sigue sumando exactamente igual.
+// REGLA: ningún reporte debe volver a filtrar por v.metodo para sumar
+// dinero — eso se hace con ventaEf()/ventaTc().
+// ══════════════════════════════════════════════════════════════
+const ventaPagos=v=>(v && v.pagos && v.pagos.length)
+  ? v.pagos
+  : [{metodo:v?.metodo||'efectivo',monto:v?.total||0,recibido:v?.recibido,cambio:v?.cambio}];
+const ventaEf=v=>Math.round(ventaPagos(v).filter(x=>x.metodo==='efectivo').reduce((s,x)=>s+(x.monto||0),0)*100)/100;
+const ventaTc=v=>Math.round(ventaPagos(v).filter(x=>x.metodo!=='efectivo').reduce((s,x)=>s+(x.monto||0),0)*100)/100;
+const sumaEf=arr=>Math.round((arr||[]).reduce((s,v)=>s+ventaEf(v),0)*100)/100;
+const sumaTc=arr=>Math.round((arr||[]).reduce((s,v)=>s+ventaTc(v),0)*100)/100;
+const esMixta=v=>!!(v&&v.pagos&&v.pagos.length>1);
+const etiquetaPago=v=>esMixta(v)?`🧾 Mixto (${ventaPagos(v).map(x=>(x.metodo==='efectivo'?'💵':'💳')+fmt(x.monto)).join(' + ')})`:(v.metodo==='efectivo'?'💵 Efectivo':'💳 Tarjeta');
+const iconoPago=v=>esMixta(v)?'🧾':(v.metodo==='efectivo'?'💵':'💳');
+
 // ══════════════════════════════════════════════════════════════
 // ESCRITURAS CON CACHÉ LOCAL
 // Con `persistentLocalCache`, setDoc() NO resuelve hasta que el
@@ -6013,7 +6061,7 @@ window.toast=toast;
 function showSaleSuccess(venta){
   const el=$('sale-ok'); if(!el) return;
   $('sale-ok-total').textContent=fmt(venta.total);
-  const metodoTxt=venta.metodo==='efectivo'?'💵 Efectivo':'💳 Tarjeta';
+  const metodoTxt=etiquetaPago(venta);
   const cambioTxt=venta.metodo==='efectivo'&&venta.cambio>0?' · Cambio: '+fmt(venta.cambio):'';
   $('sale-ok-detail').textContent=metodoTxt+cambioTxt;
   $('sale-ok-ticket').textContent=venta.ticket+' · '+venta.hora+(venta.vendedorNombre&&venta.vendedorNombre!=='Sin asignar'?' · '+venta.vendedorNombre:'');
@@ -7875,7 +7923,9 @@ async function descontarInventario(ventaItemsRaw){
 
 let cobrandoEnProceso=false;
 let _ultCobro=null; // {firma,ts} del último cobro — detecta doble cobro
-async function cobrar(metodo,recibido=0){
+// `pagos` opcional: [{metodo,monto,recibido}] para cuentas divididas y
+// pagos mixtos. Sin él, la venta se comporta igual que siempre.
+async function cobrar(metodo,recibido=0,pagos=null){
   if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return;}
   if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
   if(!ventaVendedorOk||!activeVend){pedirVendedorVenta(()=>cobrar(metodo,recibido));return;}
@@ -7889,7 +7939,22 @@ async function cobrar(metodo,recibido=0){
     const {sub,desc,total}=getDescuento();
     const nota=$('op-nota').value.trim();
     const tid=Date.now();
-    const cambio=metodo==='efectivo'?recibido-total:0;
+    // Normalizar los pagos: uno solo (como siempre) o la división capturada
+    const listaPagos=(pagos&&pagos.length)
+      ? pagos.map(x=>({metodo:x.metodo,monto:Math.round((x.monto||0)*100)/100,
+          ...(x.metodo==='efectivo'&&x.recibido!=null?{recibido:Math.round(x.recibido*100)/100}:{})}))
+      : [{metodo,monto:total,...(metodo==='efectivo'?{recibido}:{})}];
+    const efTotal=listaPagos.filter(x=>x.metodo==='efectivo').reduce((s2,x)=>s2+x.monto,0);
+    const recTotal=listaPagos.filter(x=>x.metodo==='efectivo').reduce((s2,x)=>s2+(x.recibido??x.monto),0);
+    const cambio=Math.max(0,Math.round((recTotal-efTotal)*100)/100);
+    const esDividida=listaPagos.length>1;
+    // Si la división no cuadra con el total, no se cobra: un peso de
+    // diferencia aquí es un descuadre en el corte de la noche.
+    const sumaPagos=Math.round(listaPagos.reduce((s2,x)=>s2+x.monto,0)*100)/100;
+    if(Math.abs(sumaPagos-total)>0.01){
+      toast(`⚠ Los pagos suman ${fmt(sumaPagos)} y el total es ${fmt(total)}`,5000,'error');
+      cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return;
+    }
     const fechaVenta = ($('op-fecha-venta')?.value && $('op-fecha-venta').value !== today())
       ? $('op-fecha-venta').value : today();
     const esRetroactiva = fechaVenta !== today();
@@ -7906,7 +7971,7 @@ async function cobrar(metodo,recibido=0){
     // ── Guarda 2: ticket idéntico recién cobrado ──
     // Mismo carrito, mismo total, mismo método en menos de 45 s casi
     // siempre es un doble cobro. En el histórico hay 7 pares así.
-    const firmaOrden=order.map(o=>`${o.id}x${o.qty||1}|${(o.prep||[]).join('/')}`).sort().join(',')+`|${total}|${metodo}`;
+    const firmaOrden=order.map(o=>`${o.id}x${o.qty||1}|${(o.prep||[]).join('/')}`).sort().join(',')+`|${total}|${metodo}|${(pagos||[]).length}`;
     if(_ultCobro && _ultCobro.firma===firmaOrden && Date.now()-_ultCobro.ts<45000){
       const seg=Math.round((Date.now()-_ultCobro.ts)/1000);
       if(!confirm(`⚠️ Hace ${seg} s se cobró un ticket IDÉNTICO (${fmt(total)}).\n\n¿Es otro cliente con lo mismo, o se cobró dos veces por error?\n\nAceptar = sí es otra venta real.`)){
@@ -7917,7 +7982,11 @@ async function cobrar(metodo,recibido=0){
       id:tid, fecha:fechaVenta,
       hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
       items:order.map(o=>({...o})),
-      subtotal:sub, descuento:desc, total, metodo, nota, anulada:false,
+      subtotal:sub, descuento:desc, total, nota, anulada:false,
+      // `metodo` se queda por compatibilidad con el histórico y la UI;
+      // el dinero real siempre se lee de `pagos` vía ventaEf()/ventaTc().
+      metodo: esDividida ? 'mixto' : metodo,
+      pagos: listaPagos,
       ticket:'#'+String(tid).slice(-6),
       vendedorId:activeVend?.id||null,
       vendedorNombre:activeVend?.nombre||'Sin asignar',
@@ -7925,8 +7994,8 @@ async function cobrar(metodo,recibido=0){
       lealtadId:lealtadActual?.id||null,
       lealtadCodigo:lealtadActual?.codigo||null,
       premioCanjeado:canjeActivo||false,
-      recibido:metodo==='efectivo'?recibido:total,
-      cambio:Math.max(0,cambio)
+      recibido:recTotal||total,
+      cambio
     };
     // ══ CRÍTICO: usa fsSetCritical que SÍ tira error si Firestore falla ══
     // Antes: si Firebase fallaba, fsSet silenciaba y el carrito se limpiaba igual.
@@ -7961,7 +8030,7 @@ async function cobrar(metodo,recibido=0){
     if(!esRetroactiva){
       try{
         const ex=D.caja.find(c=>c.fecha===fechaVenta);
-        const ef=metodo==='efectivo'?total:0; const tc=metodo==='tarjeta'?total:0;
+        const ef=ventaEf(venta); const tc=ventaTc(venta);
         if(ex){ex.ef=(ex.ef||0)+ef;ex.tc=(ex.tc||0)+tc;ex.total=ex.ef+ex.tc;await fsSetCritical('caja',ex);}
         else{await fsSetCritical('caja',{id:tid+1,fecha:fechaVenta,ef,tc,total,nota:'Auto-POS',dC:false,cC:false,subId:null});}
       }catch(cajaErr){
@@ -7979,7 +8048,7 @@ async function cobrar(metodo,recibido=0){
     // Notif para admin si venta > $500 (solo cuando está en background)
     if(typeof notifPush==='function' && venta.total>=500){
       notifPush(`💰 Venta de ${fmt(venta.total)}`,
-        `${venta.items.length} productos · ${venta.metodo==='efectivo'?'💵 Efectivo':'💳 Tarjeta'}${venta.vendedorNombre&&venta.vendedorNombre!=='Sin asignar'?' · '+venta.vendedorNombre:''}`,
+        `${venta.items.length} productos · ${etiquetaPago(venta)}${venta.vendedorNombre&&venta.vendedorNombre!=='Sin asignar'?' · '+venta.vendedorNombre:''}`,
         {tag:'venta-grande'}
       );
     }
@@ -8037,7 +8106,8 @@ function printTicket(v,auto=false){
     ${v.descuento>0?`<div class="tk-row"><span>Subtotal</span><span>${fmt(v.subtotal)}</span></div>
     <div class="tk-row"><span>Descuento</span><span>-${fmt(v.descuento)}</span></div>`:''}
     <div class="tk-big">TOTAL: ${fmt(v.total)}</div>
-    <div class="tk-row"><span>Método</span><span>${v.metodo==='efectivo'?'EFECTIVO':'TARJETA'}</span></div>
+    <div class="tk-row"><span>Método</span><span>${esMixta(v)?'DIVIDIDA':(v.metodo==='efectivo'?'EFECTIVO':'TARJETA')}</span></div>
+    ${esMixta(v)?ventaPagos(v).map((x,i)=>`<div class="tk-row"><span>  Parte ${i+1} · ${x.metodo==='efectivo'?'efectivo':'tarjeta'}</span><span>${fmt(x.monto)}</span></div>`).join(''):''}
     ${v.metodo==='efectivo'?`<div class="tk-row"><span>Recibido</span><span>${fmt(v.recibido||v.total)}</span></div>
     <div class="tk-row-bold"><span>Cambio</span><span>${fmt(v.cambio||0)}</span></div>`:''}
     <hr class="tk-sep">
@@ -8079,7 +8149,8 @@ function escposTicket(v){
   if(v.descuento>0){txt(`Subtotal ${fmt(v.subtotal)}  Desc -${fmt(v.descuento)}`);NL();}
   push(0x1D,0x21,0x11); txt(`TOTAL ${fmt(v.total)}`); NL();
   push(0x1D,0x21,0x00);
-  txt(v.metodo==='efectivo'?`Efectivo ${fmt(v.recibido||v.total)} · Cambio ${fmt(v.cambio||0)}`:'Tarjeta'); NL();
+  txt(esMixta(v)?`Dividida: ${ventaPagos(v).map(x=>(x.metodo==='efectivo'?'Efec ':'Tarj ')+fmt(x.monto)).join(' + ')}`
+     :(v.metodo==='efectivo'?`Efectivo ${fmt(v.recibido||v.total)} · Cambio ${fmt(v.cambio||0)}`:'Tarjeta')); NL();
   txt(CFG.msg||'¡Gracias!'); NL();
   push(10,10,10,10);
   return new Uint8Array(B);
@@ -8141,8 +8212,8 @@ function renderHistorial(){
   if(vfil) ventas=ventas.filter(v=>v.vendedorId==vfil);
   ventas.sort((a,b)=>(b.hora||'').localeCompare(a.hora||''));
   const activas=ventas.filter(v=>!v.anulada);
-  const totEf=activas.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const totTc=activas.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const totEf=sumaEf(activas);
+  const totTc=sumaTc(activas);
   if($('vh-cnt'))$('vh-cnt').textContent=activas.length;
   if($('vh-total'))$('vh-total').textContent=fmt(totEf+totTc);
   if($('vh-ef'))$('vh-ef').textContent=fmt(totEf);
@@ -8159,7 +8230,7 @@ function renderHistorial(){
         </div>
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
           <span class="mono fw7 ${v.anulada?'ar':'ag'}" style="font-size:15px;">${v.anulada?'ANULADA':fmt(v.total)}</span>
-          <span class="badge ${v.metodo==='efectivo'?'xb':'xy'}">${v.metodo==='efectivo'?'💵':'💳'}</span>
+          <span class="badge ${esMixta(v)?'xg':(v.metodo==='efectivo'?'xb':'xy')}" title="${esMixta(v)?etiquetaPago(v):''}">${iconoPago(v)}</span>
           ${!v.anulada?`<button class="btn bs bxs" onclick="openVentaModal(${v.id})">✏️</button><button class="btn bd bxs" onclick="anularVenta(${v.id})">Anular</button>`:'<span class="badge xr">Anulada</span>'}
         </div>
       </div>
@@ -8181,7 +8252,7 @@ window.anularVenta=async id=>{
   const anuladaPorNombre=SESSION?.nombre||activeVend?.nombre||'—';
   await fsSet('ventas',{...v,anulada:true,anuladaMotivo:motivo.trim(),anuladaPor:SESSION?.id||0,anuladaPorNombre:anuladaPorNombre,anuladaTs:Date.now()});
   const cj=D.caja.find(c=>c.fecha===v.fecha);
-  if(cj){if(v.metodo==='efectivo')cj.ef=Math.max(0,(cj.ef||0)-v.total);else cj.tc=Math.max(0,(cj.tc||0)-v.total);cj.total=(cj.ef||0)+(cj.tc||0);await fsSet('caja',cj);}
+  if(cj){cj.ef=Math.max(0,(cj.ef||0)-ventaEf(v));cj.tc=Math.max(0,(cj.tc||0)-ventaTc(v));cj.total=(cj.ef||0)+(cj.tc||0);await fsSet('caja',cj);}
   // Reponer inventario descontado
   await reponerInventario(v.items);
   // A4: bitácora inmutable
@@ -8320,7 +8391,7 @@ function ordCard(v){
       <span>🕐 Cobro ${hhmm(v.tsCobro||v.id)}</span>
       ${v.cliente?`<span>👤 ${v.cliente}</span>`:''}
       <span>💁 ${v.vendedorNombre||'—'}</span>
-      <span>${v.metodo==='efectivo'?'💵':'💳'}</span>
+      <span title="${esMixta(v)?etiquetaPago(v):''}">${iconoPago(v)}</span>
     </div>
     <div class="ord-hist">${ordHistLinea(v)}</div>
     ${done
@@ -8565,7 +8636,7 @@ window.openVentaModal=id=>{
       <div class="sr"><span>Ticket</span><span class="mono">${v.ticket}</span></div>
       <div class="sr"><span>Fecha / Hora</span><span class="mono">${v.fecha} ${v.hora}</span></div>
       <div class="sr"><span>Vendedor</span><span>${e?`<span class="badge" style="background:${e.color||'var(--accent)'}22;color:${e.color||'var(--accent)'};">${e.nombre}</span>`:'Sin asignar'}</span></div>
-      <div class="sr"><span>Método</span><span class="badge ${v.metodo==='efectivo'?'xb':'xy'}">${v.metodo}</span></div>
+      <div class="sr"><span>Método</span><span class="badge ${esMixta(v)?'xg':(v.metodo==='efectivo'?'xb':'xy')}">${esMixta(v)?etiquetaPago(v):v.metodo}</span></div>
       <div class="sr"><span>Total</span><span class="mono fw7 ag" style="font-size:16px;">${fmt(v.total)}</span></div>
     </div>
     <div class="ct">Productos</div>
@@ -8689,7 +8760,7 @@ function getEnCaja(fecha){
   // Fuente de verdad: colección caja (registro diario), fallback a ventas POS
   const cj=D.caja.find(c=>c.fecha===fecha);
   const ventasPOS=D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
-  const efvPOS=ventasPOS.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
+  const efvPOS=sumaEf(ventasPOS);
   const efv=cj?(cj.ef||0):efvPOS;
   const rets=D.retiros.filter(r=>r.fecha===fecha);
   const retTotal=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
@@ -8711,8 +8782,8 @@ function renderCaja(){
     if(cj){
       return {ef:cj.ef||0, tc:cj.tc||0, total:cj.total||(cj.ef||0)+(cj.tc||0), count:vd.length||1, hasCaja:true};
     }
-    const ef=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-    const tc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+    const ef=sumaEf(vd);
+    const tc=sumaTc(vd);
     return {ef,tc,total:ef+tc,count:vd.length,hasCaja:false};
   };
   const hoyData=calcDia(td);
@@ -8795,8 +8866,8 @@ function renderCaja(){
 function renderCorteInfo(){
   const td=today();
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
-  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const vEf=sumaEf(ventasHoy);
+  const vTc=sumaTc(ventasHoy);
   const rets=D.retiros.filter(r=>r.fecha===td);
   const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
   const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
@@ -8874,8 +8945,8 @@ window.calcCorte=()=>{
   const contado=parseFloat($('corte-contado')?.value)||0;
   const td=today();
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
-  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const vEf=sumaEf(ventasHoy);
+  const vTc=sumaTc(ventasHoy);
   const rets=D.retiros.filter(r=>r.fecha===td);
   const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
   const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
@@ -8903,8 +8974,8 @@ function actualizarVentasReales(){
   const contado=parseFloat($('corte-contado')?.value)||0;
   const tcReal=parseFloat($('corte-tc-real')?.value)||0;
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
-  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const vEf=sumaEf(ventasHoy);
+  const vTc=sumaTc(ventasHoy);
   const rets=D.retiros.filter(r=>r.fecha===td);
   const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
   const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
@@ -8950,7 +9021,7 @@ window.calcCorteTC=()=>{
   const tcVentas=Math.max(0,tcTerm-prop);
   const td=today();
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
-  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const vTc=sumaTc(ventasHoy);
   const diff=tcVentas-vTc;
   const el=$('corte-diff-tc');
   if(el){
@@ -8981,8 +9052,8 @@ window.realizarCorte=async()=>{
   if(!contado&&contado!==0){toast('⚠ Ingresa el efectivo contado',2400,'warn');return;}
   const td=today();
   const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
-  const vEf=ventasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const vTc=ventasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const vEf=sumaEf(ventasHoy);
+  const vTc=sumaTc(ventasHoy);
   const rets=D.retiros.filter(r=>r.fecha===td);
   const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
   const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
@@ -9721,7 +9792,7 @@ function renderVendedores(){
     const e=D.empleados.find(x=>x.id===v.vendedorId);
     if(!stats[vid]) stats[vid]={id:vid,nombre:vnombre,color:e?.color||'var(--text3)',total:0,cnt:0,ef:0,tc:0};
     stats[vid].total+=v.total; stats[vid].cnt++;
-    if(v.metodo==='efectivo') stats[vid].ef+=v.total; else stats[vid].tc+=v.total;
+    stats[vid].ef+=ventaEf(v); stats[vid].tc+=ventaTc(v);
   });
   const arr=Object.values(stats).sort((a,b)=>b.total-a.total);
   const grandTotal=arr.reduce((s,v)=>s+v.total,0);
@@ -11628,8 +11699,8 @@ function renderMiPerfil(){
   // Accesos rápidos — sin dinero para empleadas
   if($('mp-ventas-hoy')){
     if(isAdmin){
-      const ef=misVentasHoy.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-      const tc=misVentasHoy.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+      const ef=sumaEf(misVentasHoy);
+      const tc=sumaTc(misVentasHoy);
       const topProd=Object.entries(misVentasHoy.flatMap(v=>v.items).reduce((a,i)=>{a[i.nombre]=(a[i.nombre]||0)+i.qty;return a;},{})).sort((a,b)=>b[1]-a[1]).slice(0,3);
       $('mp-ventas-hoy').innerHTML=`
         <div class="ct">💼 Ventas Hoy</div>
@@ -11683,7 +11754,7 @@ function renderMiPerfil(){
             <td class="mono" style="font-size:11px;">${v.hora}</td>
             <td class="mono" style="font-size:11px;">${v.ticket}</td>
             <td style="font-size:11px;">${v.items.length} items</td>
-            <td>${v.metodo==='efectivo'?'💵':'💳'}</td>
+            <td title="${esMixta(v)?etiquetaPago(v):''}">${iconoPago(v)}</td>
             <td class="mono fw7 ag">${fmt(v.total)}</td>
           </tr>`).join('')+'</tbody></table>';
       }
@@ -12246,8 +12317,8 @@ function renderDashboard(){
     const cj=D.caja.find(c=>c.fecha===fecha);
     const vd=D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
     if(cj) return {ef:cj.ef||0, tc:cj.tc||0, total:cj.total||(cj.ef||0)+(cj.tc||0), count:vd.length||1};
-    const ef=vd.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-    const tc=vd.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+    const ef=sumaEf(vd);
+    const tc=sumaTc(vd);
     return {ef,tc,total:ef+tc,count:vd.length};
   };
 
@@ -12520,8 +12591,8 @@ window.excelVentasDia=()=>{
   }));
   const topProd=Object.values(prodMap).sort((a,b)=>b.total-a.total);
   const ingT=activas.reduce((s,v)=>s+v.total,0);
-  const ingEf=activas.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const ingTc=activas.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const ingEf=sumaEf(activas);
+  const ingTc=sumaTc(activas);
   const wb=XLSX.utils.book_new();
   // Hoja 1: Resumen del día
   const ws1=XLSX.utils.aoa_to_sheet([
@@ -13158,6 +13229,103 @@ function renderEventosAtencion(){
 }
 window.renderEventosAtencion=renderEventosAtencion;
 
+// ══════════════════════════════════════════════════════════════
+// DIVIDIR CUENTA / PAGO MIXTO
+// Dos casos reales del mostrador: un grupo que paga por separado, y
+// el cliente que paga una parte en efectivo y el resto con tarjeta.
+// Los dos se resuelven igual: UNA venta con varios pagos. Registrarlo
+// como ventas separadas inflaría el conteo de tickets y hundiría el
+// ticket promedio de algo que fue una sola orden.
+// No se cobra si la suma no cuadra al centavo con el total: un peso de
+// diferencia aquí es un descuadre en el corte de la noche.
+// ══════════════════════════════════════════════════════════════
+let DIV=[]; // [{metodo:'efectivo'|'tarjeta', monto, recibido}]
+const divTotal=()=>getDescuento().total;
+window.abrirDividir=()=>{
+  if(order.length===0){toast('⚠ Agrega productos primero',2400,'warn');return;}
+  if(!ventaVendedorOk||!activeVend){pedirVendedorVenta(()=>abrirDividir());return;}
+  divPartesIguales(2);
+  $('div-modal').style.display='flex';
+  publicarPantalla('cobro');
+};
+window.divPartesIguales=n=>{
+  const t=divTotal();
+  // El redondeo sobrante se le carga a la primera parte, no se pierde
+  const base=Math.floor(t/n*100)/100;
+  DIV=Array.from({length:n},(_,i)=>({metodo:'efectivo',monto:base,recibido:null}));
+  DIV[0].monto=Math.round((t-base*(n-1))*100)/100;
+  renderDividir();
+};
+window.divAgregarParte=()=>{
+  const falta=Math.round((divTotal()-DIV.reduce((s,p)=>s+p.monto,0))*100)/100;
+  DIV.push({metodo:'efectivo',monto:Math.max(0,falta),recibido:null});
+  renderDividir();
+};
+window.divQuitarParte=i=>{ DIV.splice(i,1); if(!DIV.length) DIV=[{metodo:'efectivo',monto:divTotal(),recibido:null}]; renderDividir(); };
+window.divSetMonto=(i,v)=>{ DIV[i].monto=Math.max(0,Math.round((parseFloat(v)||0)*100)/100); renderDividir(); };
+window.divSetMetodo=(i,m)=>{ DIV[i].metodo=m; if(m!=='efectivo') DIV[i].recibido=null; renderDividir(); };
+window.divSetRecibido=(i,v)=>{ DIV[i].recibido=v===''?null:Math.max(0,parseFloat(v)||0); renderDividir(); };
+// divAjustar: la última parte absorbe lo que falte para cuadrar exacto
+window.divAjustar=()=>{
+  const t=divTotal(), otros=DIV.slice(0,-1).reduce((s,p)=>s+p.monto,0);
+  DIV[DIV.length-1].monto=Math.max(0,Math.round((t-otros)*100)/100);
+  renderDividir();
+};
+function renderDividir(soloResumen){
+  const t=divTotal();
+  if($('div-total'))$('div-total').textContent=fmt(t);
+  if(!soloResumen && $('div-partes')){
+    $('div-partes').innerHTML=DIV.map((p,i)=>`
+      <div style="border:1px solid var(--border);border-radius:var(--rsm);padding:9px;margin-bottom:7px;background:var(--surface2);">
+        <div style="display:flex;gap:7px;align-items:center;">
+          <span style="font-size:11.5px;font-weight:800;color:var(--text3);min-width:52px;">Parte ${i+1}</span>
+          <input type="number" value="${p.monto}" step="0.01" inputmode="decimal"
+            onchange="divSetMonto(${i},this.value)"
+            style="flex:1;padding:7px 9px;font-family:'DM Mono',monospace;font-size:15px;text-align:right;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+          <button class="btn ${p.metodo==='efectivo'?'bp':'bs'} bsm" onclick="divSetMetodo(${i},'efectivo')">💵</button>
+          <button class="btn ${p.metodo==='tarjeta'?'bp':'bs'} bsm" onclick="divSetMetodo(${i},'tarjeta')">💳</button>
+          ${DIV.length>1?`<button class="btn bd bxs" onclick="divQuitarParte(${i})" title="Quitar">✕</button>`:''}
+        </div>
+        ${p.metodo==='efectivo'?`<div style="display:flex;gap:7px;align-items:center;margin-top:6px;">
+          <span style="font-size:10.5px;color:var(--text3);min-width:52px;">Paga con</span>
+          <input type="number" value="${p.recibido??''}" placeholder="exacto" step="0.01" inputmode="decimal"
+            onchange="divSetRecibido(${i},this.value)"
+            style="flex:1;padding:5px 8px;font-family:'DM Mono',monospace;font-size:13px;text-align:right;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);">
+          <span style="font-size:11.5px;min-width:92px;text-align:right;" class="mono ${(p.recibido??p.monto)-p.monto>0?'at':''}">
+            ${(p.recibido??p.monto)-p.monto>0?'cambio '+fmt((p.recibido??p.monto)-p.monto):''}</span>
+        </div>`:''}
+      </div>`).join('');
+  }
+  const suma=Math.round(DIV.reduce((s,p)=>s+p.monto,0)*100)/100;
+  const falta=Math.round((t-suma)*100)/100;
+  const cuadra=Math.abs(falta)<=0.01;
+  const faltaRec=DIV.some(p=>p.metodo==='efectivo'&&p.recibido!=null&&p.recibido<p.monto);
+  const ok=cuadra&&!faltaRec&&DIV.every(p=>p.monto>0);
+  if($('div-resumen'))$('div-resumen').innerHTML=
+    `<div style="font-size:12px;">Suma de las partes: <b class="mono">${fmt(suma)}</b></div>`+
+    (cuadra
+      ? `<div style="font-size:12.5px;font-weight:800;color:var(--accent2);margin-top:3px;">✓ Cuadra con el total</div>`
+      : `<div style="font-size:12.5px;font-weight:800;color:var(--red);margin-top:3px;">
+           ${falta>0?`Faltan ${fmt(falta)}`:`Sobran ${fmt(-falta)}`}
+           <button class="btn bs bxs" style="margin-left:7px;" onclick="divAjustar()">Ajustar última parte</button>
+         </div>`)+
+    (faltaRec?`<div style="font-size:11.5px;color:var(--red);margin-top:4px;">Alguna parte en efectivo recibe menos de lo que debe pagar</div>`:'')+
+    (DIV.some(p=>p.monto<=0)?`<div style="font-size:11.5px;color:var(--red);margin-top:4px;">Hay partes en cero</div>`:'');
+  const b=$('div-btn');
+  if(b){b.disabled=!ok;b.style.opacity=ok?'1':'.4';
+    b.textContent=ok?`✓ Cobrar ${DIV.length} partes · ${fmt(t)}`:'✓ Cobrar cuenta dividida';}
+}
+window.cobrarDividido=async()=>{
+  const t=divTotal();
+  const suma=Math.round(DIV.reduce((s,p)=>s+p.monto,0)*100)/100;
+  if(Math.abs(suma-t)>0.01){toast('⚠ Las partes no cuadran con el total',3500,'warn');return;}
+  const nombre=$('op-cliente')?.value?.trim()||'';
+  $('div-modal').style.display='none';
+  const dominante=DIV.filter(p=>p.metodo==='efectivo').reduce((s,p)=>s+p.monto,0)>=t/2?'efectivo':'tarjeta';
+  await cobrar(dominante,0,DIV.map(p=>({metodo:p.metodo,monto:p.monto,recibido:p.metodo==='efectivo'?(p.recibido??p.monto):undefined})));
+  if(nombre&&$('op-cliente'))$('op-cliente').value='';
+};
+
 // ── Pestañas de Reportes ──
 // La última pestaña abierta se recuerda: si Iván vive en "Salud", no
 // tiene que volver a buscarla cada vez que entra.
@@ -13552,7 +13720,7 @@ window.csvX=tipo=>{
   else if(tipo==='nomina'){h=['Semana','Emp1','Emp2','Extras','Total','Fecha Pago'];r=D.nomPagos.map(p=>[p.semana,p.e1,p.e2,p.extras||0,p.total,p.fecha]);}
   else if(tipo==='inventario'){h=['Nombre','Categoría','Cantidad','Unidad','Mínimo','Precio'];r=D.inventario.map(x=>[x.nombre,x.cat,x.qty,x.unit,x.min,x.precio]);}
   else if(tipo==='vendedores'){
-    const vmap={};D.ventas.filter(v=>!v.anulada).forEach(v=>{const k=v.vendedorId||'sin';if(!vmap[k])vmap[k]={nombre:v.vendedorNombre||'Sin asignar',total:0,cnt:0,ef:0,tc:0};vmap[k].total+=v.total;vmap[k].cnt++;if(v.metodo==='efectivo')vmap[k].ef+=v.total;else vmap[k].tc+=v.total;});
+    const vmap={};D.ventas.filter(v=>!v.anulada).forEach(v=>{const k=v.vendedorId||'sin';if(!vmap[k])vmap[k]={nombre:v.vendedorNombre||'Sin asignar',total:0,cnt:0,ef:0,tc:0};vmap[k].total+=v.total;vmap[k].cnt++;vmap[k].ef+=ventaEf(v);vmap[k].tc+=ventaTc(v);});
     h=['Vendedor','Ventas','Total','Efectivo','Tarjeta','Ticket Prom'];r=Object.values(vmap).map(x=>[x.nombre,x.cnt,x.total,x.ef,x.tc,x.cnt?Math.round(x.total/x.cnt):0]);
   }
   const csv=[h,...r].map(row=>row.map(c=>`"${(c||'').toString().replace(/"/g,'""')}"`).join(',')).join('\n');
@@ -14115,8 +14283,8 @@ function generarReporteWA(fecha){
   // Ventas del día
   const ventas=D.ventas.filter(v=>v.fecha===fecha&&!v.anulada);
   const cj=D.caja.find(c=>c.fecha===fecha);
-  const ef=cj?cj.ef:ventas.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-  const tc=cj?cj.tc:ventas.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+  const ef=cj?cj.ef:sumaEf(ventas);
+  const tc=cj?cj.tc:sumaTc(ventas);
   const total=ef+tc;
   // Top productos
   const prodCount={};
@@ -14442,8 +14610,8 @@ function rpDatos(tipo, fechas){
     const ventas=D.ventas.filter(v=>inFechas(v.fecha)&&!v.anulada);
     const gastos=D.gastos.filter(g=>inFechas(g.fecha)).reduce((s,g)=>s+g.monto,0);
     const totalV=ventas.reduce((s,v)=>s+v.total,0);
-    const ef=ventas.filter(v=>v.metodo==='efectivo').reduce((s,v)=>s+v.total,0);
-    const tc=ventas.filter(v=>v.metodo==='tarjeta').reduce((s,v)=>s+v.total,0);
+    const ef=sumaEf(ventas);
+    const tc=sumaTc(ventas);
     const cortes=(D.cortes||[]).filter(c=>inFechas(c.fecha));
     const mermas=(D.kpiCaptura||[]).filter(k=>k.tipo==='merma'&&inFechas(k.fecha)).reduce((s,k)=>s+k.valor,0);
     return {

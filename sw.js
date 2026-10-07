@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.75'; // Eventos de atención + Reportes en pestañas
+const CACHE_NAME = 'el-huerto-v14.76'; // División de cuentas y pago mixto
 const ASSETS = [
   '/',
   '/index.html',
