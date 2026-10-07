@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.72'; // Compras 4/5-oct + servitoallas por nombre exacto
+const CACHE_NAME = 'el-huerto-v14.73'; // Boneles de pollo fuera: ticket 8757 era personal
 const ASSETS = [
   '/',
   '/index.html',

@@ -2612,6 +2612,7 @@ async function completeInit(){
   await migFinDeSemanaOct2026();
   await migComprasSemana5Oct2026();
   await migServitoallas5Oct2026();
+  await migQuitaBonelesOct2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3396,7 +3397,8 @@ async function migComprasSemana5Oct2026(){
   // Sin peso en el ticket: se guardan por PAQUETE para no inventar un
   // precio por gramo (ese invento ya envenenó el COGS tres veces).
   await addC(['Pechuga de pollo (Costco)'],1,'paq',389.00,'lacteos_proteinas');     // KS PECHUGAS POLLO
-  await addC(['Boneles de pollo (Costco)'],1,'paq',209.25,'lacteos_proteinas');     // BONELES POLLO
+  // Boneles de pollo: Iván confirmó que son suyos. Con eso, el ticket 8757
+  // (boneles + alimento de gato) es personal completo y no deja gasto.
 
   // ── Coffee Shop 2, Central de Abasto (4-oct) — $388.98 ──
   await addC(['Perlas de tapioca brown sugar'],2000,'g',0.11500,'abarrotes');       // 2 kg $229.99
@@ -3436,8 +3438,6 @@ async function migComprasSemana5Oct2026(){
      notas:'10 partidas: susalitas 20/50g, leche deslactosada 12L, bebida de almendra, espinaca 454g, 2× ensalada italiana 908g, PAM oliva 2×198g, moras azules, crema de almendras, tiras de pechuga'},
     {fecha:'2026-10-04',cat:'costco',prov:'Costco',monto:389.00,ticket:'COSTCO-8756',metodo:'tarjeta',
      notas:'KS pechugas de pollo. Ticket facturado $684.20: los $295.20 de ARENA PARA GATO son gasto personal de Iván y no entran al negocio. Falta el peso del paquete de pollo'},
-    {fecha:'2026-10-04',cat:'costco',prov:'Costco',monto:209.25,ticket:'COSTCO-8757',metodo:'tarjeta',
-     notas:'Boneles de pollo. Ticket facturado $606.00: los $396.75 de ALIMENTO GATO 9KG son gasto personal de Iván y no entran al negocio. Confirmar si los boneles son del Huerto'},
     {fecha:'2026-10-04',cat:'proveedor',prov:'Coffee Shop 2',monto:388.98,ticket:'A18199',metodo:'efectivo',
      notas:'Perlas de tapioca brown sugar 2kg, popotes de tapioca, bolsa de papel estraza #2'},
     {fecha:'2026-10-04',cat:'proveedor',prov:'Plastidoro',monto:598.99,ticket:'AG-40458',metodo:'efectivo',
@@ -3465,10 +3465,34 @@ async function migComprasSemana5Oct2026(){
   }
   await markMig(migKey);
   logAudit('compras_registradas',{lote:'semana 5-oct-2026',tickets:10,gastos:nuevos,
-    totalNegocio:5115.89,totalFacturado:5807.84,
-    excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20},
+    totalNegocio:4906.64,totalFacturado:5807.84,
+    excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20,bonelesPollo:209.25},
     articulosNuevos:creados,sinCostear:omitidos});
-  if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(5115.89)} · ${creados.length} artículos nuevos`,6000);
+  if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(4906.64)} · ${creados.length} artículos nuevos`,6000);
+}
+// ══ BONELES DE POLLO FUERA (pedido de Iván) ══
+// Los boneles del ticket 8757 son suyos, no del Huerto. Como el otro
+// renglón de ese ticket era alimento de gato, el 8757 queda personal
+// COMPLETO: se borra el gasto entero, no se recorta.
+async function migQuitaBonelesOct2026(){
+  const migKey='h5boneles_oct26';
+  if(await migDone(migKey)) return;
+  const art=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Boneles de pollo (Costco)'));
+  if(art){
+    await fsDel('inventario',art.id);
+    const ix=D.inventario.findIndex(i=>i.id===art.id); if(ix>=0) D.inventario.splice(ix,1);
+  }
+  const g=D.gastos.find(x=>x.ticket==='COSTCO-8757');
+  if(g){
+    await fsDel('gastos',g.id);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos.splice(ix,1);
+  }
+  if(art||g){
+    logAudit('gasto_eliminado',{ticket:'COSTCO-8757',monto:209.25,
+      motivo:'Boneles de pollo son compra personal de Iván; el ticket completo (boneles + alimento de gato) sale del negocio'});
+    toast('✓ Boneles fuera: ticket 8757 completo era personal',4500);
+  }
+  await markMig(migKey);
 }
 // ══ SERVITOALLAS DEL 4-OCT: las tragó una colisión de alias ══
 // `buscar` daba por bueno el PRIMER artículo cuyo nombre O alias coincidía,
