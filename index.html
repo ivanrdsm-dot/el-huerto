@@ -424,6 +424,11 @@ body.kds-mode .st{font-size:20px;}
 .cr-total.naranja .mono{color:var(--orange);}
 /* Modo tarjeta pública: solo se ve la tarjeta del cliente */
 body.modo-tarjeta nav,body.modo-tarjeta .mnav,body.modo-tarjeta #lock-screen,body.modo-tarjeta #loader,body.modo-tarjeta .fab,body.modo-tarjeta main{display:none!important;}
+/* Pestañas de Reportes */
+.rp-tabs{display:flex;gap:5px;overflow-x:auto;margin-bottom:12px;padding-bottom:3px;-webkit-overflow-scrolling:touch;}
+.rp-tab-btn{flex-shrink:0;background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:999px;padding:8px 15px;font-size:12.5px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .18s ease;white-space:nowrap;}
+.rp-tab-btn:hover{border-color:var(--accent);color:var(--text);}
+.rp-tab-btn.activa{background:var(--accent);border-color:var(--accent);color:#10220d;}
 /* Pantalla a cliente: segunda vista, de cara al mostrador */
 body.modo-pantalla nav,body.modo-pantalla .mnav,body.modo-pantalla #lock-screen,body.modo-pantalla #loader,body.modo-pantalla .fab,body.modo-pantalla main{display:none!important;}
 #pantalla-view{position:fixed;inset:0;z-index:99998;background:linear-gradient(160deg,#12240f,#1a2e18 55%,#0d1a0b);color:#f4f1e8;display:none;flex-direction:column;padding:clamp(18px,3vw,40px);font-family:'DM Sans',sans-serif;overflow:hidden;}
@@ -1012,6 +1017,8 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div class="card" id="db-resultado"></div>
   </div>
+  <!-- Eventos del día que piden decisión del dueño -->
+  <div class="card" id="db-eventos" style="display:none;margin-bottom:10px;"></div>
   <!-- Fila 3: semana actual + caja hoy + nómina pendiente -->
   <div class="g3" style="margin-bottom:10px;">
     <div class="card" id="db-semana"></div>
@@ -1883,10 +1890,26 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="card" style="text-align:center;"><div class="ct">Utilidad</div><div class="kv" id="rp-util">$0</div><div style="font-size:10px;color:var(--text2);margin-top:2px;" id="rp-util-sub"></div></div>
     <div class="card" style="text-align:center;"><div class="ct">Margen</div><div class="kv gold" id="rp-margen">0%</div><div style="font-size:10px;color:var(--text2);margin-top:2px;" id="rp-label"></div></div>
   </div>
+  <!-- Pestañas: la página había crecido a 10 tarjetas apiladas y encontrar
+       un número era puro scroll. Las 4 cifras de arriba se quedan fijas. -->
+  <div class="rp-tabs" id="rp-tabs">
+    <button class="rp-tab-btn activa" data-rt="resumen" onclick="setRpTab('resumen')">📊 Resumen</button>
+    <button class="rp-tab-btn" data-rt="crecer" onclick="setRpTab('crecer')">📈 Crecimiento</button>
+    <button class="rp-tab-btn" data-rt="prods" onclick="setRpTab('prods')">🥑 Productos</button>
+    <button class="rp-tab-btn" data-rt="salud" onclick="setRpTab('salud')">🩺 Salud</button>
+    <button class="rp-tab-btn" data-rt="descargas" onclick="setRpTab('descargas')">📥 Descargas</button>
+  </div>
+  <div class="rp-panel" data-rt="resumen">
   <!-- Finanzas de cocina: costo de insumos y margen bruto del período -->
   <div class="g4" style="margin-bottom:10px;" id="rp-fin2"></div>
   <!-- KPIs de dirección: los números que un inversionista pide primero -->
   <div class="g4" style="margin-bottom:10px;" id="rp-dir"></div>
+  <div class="g2" style="gap:10px;margin-bottom:10px;">
+    <div class="card"><div class="ct">Estado de Resultados (P&L)</div><div id="rp-est"></div><div id="rp-waterfall" style="margin-top:12px;"></div></div>
+    <div class="card"><div class="ct">Top Productos del Período</div><div id="rp-top-prods"></div></div>
+  </div>
+  </div>
+  <div class="rp-panel" data-rt="crecer" style="display:none;">
   <!-- Upsell: cuánto dinero trajeron los extras sugeridos en el POS -->
   <div class="card" style="margin-bottom:10px;" id="rp-upsell"></div>
   <!-- Día más flojo de la semana: dónde conviene meter promoción -->
@@ -1903,15 +1926,13 @@ nav{padding-top:env(safe-area-inset-top);}
     <div id="rp-dow"></div>
   </div>
   <div class="g2" style="gap:10px;margin-bottom:10px;">
-    <div class="card"><div class="ct">Estado de Resultados (P&L)</div><div id="rp-est"></div><div id="rp-waterfall" style="margin-top:12px;"></div></div>
-    <div class="card"><div class="ct">Top Productos del Período</div><div id="rp-top-prods"></div></div>
-  </div>
-  <div class="g2" style="gap:10px;margin-bottom:10px;">
     <div class="card"><div class="ct">Ingresos vs Gastos (6 semanas)</div>
       <div style="display:flex;align-items:flex-end;gap:5px;height:130px;margin:10px 0;" id="rp-chart"></div>
     </div>
     <div class="card"><div class="ct">Distribución de Gastos</div><div id="rp-dist"></div></div>
   </div>
+  </div>
+  <div class="rp-panel" data-rt="prods" style="display:none;">
   <div class="card" style="margin-bottom:10px;">
     <div class="sh">
       <span class="ct" style="margin-bottom:0;">Ventas por Producto</span>
@@ -1922,12 +1943,16 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div class="tw" id="rp-prod-tabla"></div>
   </div>
+  </div>
+  <div class="rp-panel" data-rt="salud" style="display:none;">
   <!-- Salud de los datos: lo que ensucia los reportes, a la vista -->
   <div class="card" style="margin-bottom:10px;">
     <div class="sh"><span class="ct" style="margin-bottom:0;">🩺 Salud de los datos</span>
       <button class="btn bs bsm" onclick="renderSaludDatos()">↻ Revisar</button></div>
     <div id="rp-salud"></div>
   </div>
+  </div>
+  <div class="rp-panel" data-rt="descargas" style="display:none;">
   <div class="card" style="margin-bottom:10px;">
     <div class="sh">
       <span class="ct" style="margin-bottom:0;">Reporte PDF Completo</span>
@@ -2080,6 +2105,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <button class="btn bs bsm" onclick="csvX('vendedores')">📥 Vendedores</button>
       <button class="btn bg bsm" onclick="csvTodo()">📦 Descargar Todo</button>
     </div>
+  </div>
   </div>
 </div>
 
@@ -12185,6 +12211,7 @@ window.seedRecetasPredefinidas=async()=>{
 
 // ─── DASHBOARD ─── (siempre en tiempo real)
 function renderDashboard(){
+  renderEventosAtencion();
   const td=today(); const cm=curM();
 
   // ══ PULSO DE HOY: dinero + servicio + estado de caja en una fila ══
@@ -13059,6 +13086,93 @@ function renderSaludDatos(){
 }
 window.renderSaludDatos=renderSaludDatos;
 
+// ══════════════════════════════════════════════════════════════
+// EVENTOS QUE PIDEN AL DUEÑO
+// La bitácora ya guardaba todo, pero había que ir a buscarla. Estas son
+// las cosas que, si pasan, Iván quiere enterarse HOY y no en el corte
+// del mes: anulaciones, descuentos fuera de lo normal, un corte que no
+// cuadra y productos clave agotados.
+// Solo admin y gerente: la cajera no necesita este ruido.
+// ══════════════════════════════════════════════════════════════
+const DESC_ALERTA_PCT=25;      // descuento sobre el ticket que merece revisión
+const CORTE_ALERTA=100;        // diferencia en pesos del corte que merece revisión
+function calcEventosAtencion(){
+  const td=today(), ev=[];
+  const hoyV=D.ventas.filter(v=>v.fecha===td);
+  // 1. Anulaciones de hoy
+  const anul=hoyV.filter(v=>v.anulada);
+  if(anul.length) ev.push({t:'anulacion',icon:'🚫',sev:'alta',
+    txt:`${anul.length} venta(s) anulada(s) hoy por ${fmt(anul.reduce((s,v)=>s+v.total,0))}`,
+    det:anul.map(v=>`${v.ticket} ${fmt(v.total)} — ${v.anuladaMotivo||'sin motivo'} (${v.anuladaPorNombre||'—'})`),
+    ir:'historial'});
+  // 2. Descuentos grandes
+  const desc=hoyV.filter(v=>!v.anulada&&(v.descuento||0)>0&&v.subtotal>0&&(v.descuento/v.subtotal*100)>=DESC_ALERTA_PCT);
+  if(desc.length) ev.push({t:'descuento',icon:'🏷',sev:'media',
+    txt:`${desc.length} ticket(s) con descuento de ${DESC_ALERTA_PCT}% o más — ${fmt(desc.reduce((s,v)=>s+v.descuento,0))} regalados`,
+    det:desc.map(v=>`${v.ticket} −${fmt(v.descuento)} de ${fmt(v.subtotal)} (${v.vendedorNombre||'—'})`),
+    ir:'historial'});
+  // 3. Corte que no cuadra
+  const corte=D.cortes.find(c=>c.fecha===td);
+  if(corte&&Math.abs(corte.diferencia||0)>=CORTE_ALERTA) ev.push({t:'corte',icon:'⚖️',sev:'alta',
+    txt:`El efectivo del corte de hoy ${(corte.diferencia||0)<0?'FALTA':'SOBRA'} ${fmt(Math.abs(corte.diferencia))}`,
+    det:[`Contado ${fmt(corte.contado||0)} contra esperado ${fmt(corte.esperado||0)}`+(corte.nota?` · "${corte.nota}"`:' · sin nota')],
+    ir:'caja'});
+  if(corte&&Math.abs(corte.tcDiff||0)>=CORTE_ALERTA) ev.push({t:'cortetc',icon:'💳',sev:'media',
+    txt:`La terminal no cuadra por ${fmt(Math.abs(corte.tcDiff))}`,
+    det:[`Terminal ${fmt(corte.tcReal||0)} contra POS ${fmt(corte.ventasTc||0)} · propinas ${fmt(corte.propinas||0)}`],
+    ir:'caja'});
+  // 4. Agotados que frenan venta (solo lo que entra en recetas)
+  const enReceta=new Set(D.recetas.flatMap(r=>(r.ings||[]).map(i=>i.invId)).filter(x=>x!=null));
+  const agotados=D.inventario.filter(i=>enReceta.has(i.id)&&(i.qty||0)<=0);
+  if(agotados.length) ev.push({t:'agotado',icon:'📦',sev:'media',
+    txt:`${agotados.length} insumo(s) de receta en CERO`,
+    det:agotados.slice(0,8).map(i=>i.nombre),
+    ir:'inventario'});
+  return ev;
+}
+let _evFirma='';
+function renderEventosAtencion(){
+  const el=$('db-eventos'); if(!el) return;
+  if(!esAdminOGerente()){ el.style.display='none'; return; }
+  const ev=calcEventosAtencion();
+  if(!ev.length){ el.style.display='none'; _evFirma=''; return; }
+  el.style.display='block';
+  const col=s=>s==='alta'?'var(--red)':'var(--orange)';
+  el.innerHTML=`<div class="ct">🔔 Necesita tu atención — ${today()}</div>`+
+    ev.map(e=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border);">
+      <span style="font-size:17px;">${e.icon}</span>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:700;color:${col(e.sev)};">${e.txt}</div>
+        <div style="font-size:11px;color:var(--text3);line-height:1.5;margin-top:2px;">${e.det.join(' · ')}</div>
+      </div>
+      <button class="btn bs bxs" onclick="go('${e.ir}')">Ver</button>
+    </div>`).join('');
+  // Aviso push solo cuando aparece algo NUEVO, no en cada render
+  const firma=ev.map(e=>e.t+':'+e.txt).join('|');
+  if(firma!==_evFirma){
+    const nuevos=_evFirma?ev.filter(e=>!_evFirma.includes(e.t+':'+e.txt)):[];
+    if(_evFirma&&nuevos.length&&typeof notifPush==='function')
+      notifPush('🔔 El Huerto',nuevos[0].txt,{tag:'evento-'+nuevos[0].t});
+    _evFirma=firma;
+  }
+}
+window.renderEventosAtencion=renderEventosAtencion;
+
+// ── Pestañas de Reportes ──
+// La última pestaña abierta se recuerda: si Iván vive en "Salud", no
+// tiene que volver a buscarla cada vez que entra.
+window.setRpTab=t=>{
+  document.querySelectorAll('#page-reportes .rp-panel').forEach(p=>{p.style.display=p.dataset.rt===t?'':'none';});
+  document.querySelectorAll('#page-reportes .rp-tab-btn').forEach(b=>b.classList.toggle('activa',b.dataset.rt===t));
+  try{localStorage.setItem('h5rptab',t);}catch(e){}
+};
+function restaurarRpTab(){
+  let t='resumen';
+  try{ t=localStorage.getItem('h5rptab')||'resumen'; }catch(e){}
+  if(!document.querySelector(`#page-reportes .rp-panel[data-rt="${t}"]`)) t='resumen';
+  setRpTab(t);
+}
+
 // ── Abrir la pantalla a cliente ──
 window.abrirPantallaCliente=()=>{
   const url=location.origin+location.pathname+'?pantalla=1';
@@ -13116,6 +13230,7 @@ function renderReportes(){
   renderUpsell(ventas,label);
   renderVentasPorDia();
   renderSaludDatos();
+  restaurarRpTab();
   // Estado de resultados
   const ingSubs=p==='mes'?D.subs.filter(s=>s.activo&&s.pagos.includes(cm)).reduce((s,x)=>s+x.monto,0):0;
   // ══ P&L PROFESIONAL (devengado) ══

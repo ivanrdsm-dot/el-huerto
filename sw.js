@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.74'; // Opera sin internet + pantalla a cliente
+const CACHE_NAME = 'el-huerto-v14.75'; // Eventos de atención + Reportes en pestañas
 const ASSETS = [
   '/',
   '/index.html',
