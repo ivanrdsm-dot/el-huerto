@@ -429,6 +429,32 @@ body.modo-tarjeta nav,body.modo-tarjeta .mnav,body.modo-tarjeta #lock-screen,bod
 .rp-tab-btn{flex-shrink:0;background:var(--surface2);border:1px solid var(--border);color:var(--text2);border-radius:999px;padding:8px 15px;font-size:12.5px;font-weight:700;font-family:'DM Sans',sans-serif;cursor:pointer;transition:all .18s ease;white-space:nowrap;}
 .rp-tab-btn:hover{border-color:var(--accent);color:var(--text);}
 .rp-tab-btn.activa{background:var(--accent);border-color:var(--accent);color:#10220d;}
+/* Menú QR: lo ve el cliente en su celular para apartar lugar */
+body.modo-menu nav,body.modo-menu .mnav,body.modo-menu #lock-screen,body.modo-menu #loader,body.modo-menu .fab,body.modo-menu main{display:none!important;}
+#menu-view{position:fixed;inset:0;z-index:99997;background:#f4f1e8;color:#1a2e18;display:none;flex-direction:column;font-family:'DM Sans',sans-serif;}
+#menu-view .mv-top{background:linear-gradient(160deg,#1a2e18,#12240f);color:#f4f1e8;padding:16px 18px 13px;}
+#menu-view .mv-marca{font-family:'Playfair Display',serif;font-size:25px;font-weight:700;color:#7ec850;}
+#menu-view .mv-sub{font-size:12px;color:#9db394;margin-top:1px;}
+#menu-view .mv-cats{display:flex;gap:6px;overflow-x:auto;padding:11px 14px 7px;background:#f4f1e8;position:sticky;top:0;z-index:2;border-bottom:1px solid #e0dbcf;}
+#menu-view .mv-cat{flex-shrink:0;background:#fff;border:1px solid #d9d3c5;border-radius:999px;padding:7px 13px;font-size:12.5px;font-weight:700;color:#4a5a46;cursor:pointer;white-space:nowrap;}
+#menu-view .mv-cat.on{background:#1a2e18;border-color:#1a2e18;color:#7ec850;}
+#menu-view .mv-body{flex:1;overflow-y:auto;padding:12px 14px 120px;}
+#menu-view .mv-h{font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#7a8a76;font-weight:800;margin:16px 0 7px;}
+#menu-view .mv-p{display:flex;align-items:center;gap:11px;background:#fff;border:1px solid #e3ded1;border-radius:13px;padding:11px 13px;margin-bottom:8px;}
+#menu-view .mv-p-n{flex:1;min-width:0;}
+#menu-view .mv-p-n b{display:block;font-size:14px;font-weight:700;}
+#menu-view .mv-p-n span{font-size:11.5px;color:#7a8a76;}
+#menu-view .mv-p-pr{font-weight:800;font-variant-numeric:tabular-nums;font-size:14px;}
+#menu-view .mv-add{background:#1a2e18;color:#7ec850;border:0;border-radius:10px;width:36px;height:36px;font-size:19px;font-weight:700;cursor:pointer;flex-shrink:0;}
+#menu-view .mv-qty{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+#menu-view .mv-qty button{background:#e8e3d6;border:0;border-radius:8px;width:30px;height:30px;font-size:17px;font-weight:800;color:#1a2e18;cursor:pointer;}
+#menu-view .mv-qty b{min-width:1.3em;text-align:center;font-size:15px;}
+#menu-view .mv-bar{position:fixed;left:0;right:0;bottom:0;background:#fff;border-top:1px solid #e0dbcf;padding:12px 14px calc(12px + env(safe-area-inset-bottom));box-shadow:0 -6px 22px rgba(0,0,0,.09);}
+#menu-view input{width:100%;padding:11px 12px;font-size:15px;border:1px solid #d9d3c5;border-radius:10px;background:#fff;color:#1a2e18;font-family:inherit;margin-bottom:8px;}
+#menu-view .mv-go{width:100%;background:#2e7d32;color:#fff;border:0;border-radius:12px;padding:14px;font-size:15.5px;font-weight:800;cursor:pointer;font-family:inherit;}
+#menu-view .mv-go:disabled{opacity:.4;}
+#menu-view .mv-ok{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:13px;padding:30px;}
+#menu-view .mv-folio{font-family:'Playfair Display',serif;font-size:52px;font-weight:900;color:#2e7d32;letter-spacing:1px;}
 /* Pantalla a cliente: segunda vista, de cara al mostrador */
 body.modo-pantalla nav,body.modo-pantalla .mnav,body.modo-pantalla #lock-screen,body.modo-pantalla #loader,body.modo-pantalla .fab,body.modo-pantalla main{display:none!important;}
 #pantalla-view{position:fixed;inset:0;z-index:99998;background:linear-gradient(160deg,#12240f,#1a2e18 55%,#0d1a0b);color:#f4f1e8;display:none;flex-direction:column;padding:clamp(18px,3vw,40px);font-family:'DM Sans',sans-serif;overflow:hidden;}
@@ -1206,6 +1232,8 @@ nav{padding-top:env(safe-area-inset-top);}
         </div>
         <!-- Comandera: estado siempre visible para TODOS los perfiles; un toque vincula -->
         <div id="bt-pos-chip" onclick="btChipTap()" style="display:none;margin-top:8px;border-radius:var(--rsm);padding:8px 12px;font-size:12px;font-weight:700;cursor:pointer;align-items:center;gap:8px;transition:all .25s ease;"></div>
+        <!-- Pre-pedidos del menú QR: el cliente ya aparto, falta cobrarle -->
+        <div id="pos-prep-strip" style="display:none;flex-direction:column;gap:6px;margin-top:8px;"></div>
         <!-- Órdenes vivas sin salir de Ventas: toca = avanza etapa, 📦 = entregada -->
         <div id="pos-ord-strip" class="pos-ord-strip" style="display:none;"></div>
       </div>
@@ -2238,6 +2266,19 @@ nav{padding-top:env(safe-area-inset-top);}
     <div id="cfg-pantalla-qr" style="margin-top:12px;display:none;text-align:center;"></div>
   </div>
   <div class="card">
+    <div class="ct">Menú QR — apartar lugar en la fila</div>
+    <div style="font-size:11.5px;color:var(--text2);line-height:1.55;margin-bottom:10px;">
+      Imprime este código y ponlo en la fila, en las mesas o en la entrada. El cliente arma su pedido
+      desde el celular y le sale un folio; a ti te llega arriba del POS y lo cargas de un toque.
+      <b>No se cobra ahí</b>: paga en la caja al recoger.
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn bp" onclick="mostrarQRMenu()">📱 Ver / imprimir el QR</button>
+      <button class="btn bs" onclick="window.open(location.origin+location.pathname+'?menu=1','_blank')">👀 Verlo como cliente</button>
+    </div>
+    <div id="cfg-menu-qr" style="margin-top:12px;display:none;text-align:center;"></div>
+  </div>
+  <div class="card">
     <div class="ct">Gasto operativo promedio</div>
     <div style="font-size:11.5px;color:var(--text2);line-height:1.55;margin-bottom:9px;">
       Lo que sale cada semana <b>sin contar nómina</b>: fruta, Costco, El Zorro, La Chispa, limpieza, servicios.
@@ -2493,6 +2534,8 @@ nav{padding-top:env(safe-area-inset-top);}
 <div id="tarjeta-view" style="display:none;position:fixed;inset:0;z-index:99999;background:#e9e4da;overflow-y:auto;"></div>
 <!-- Pantalla a cliente (?pantalla=1): espejo de la orden en vivo -->
 <div id="pantalla-view"></div>
+<!-- Menú QR (?menu=1): el cliente aparta su lugar en la fila -->
+<div id="menu-view"></div>
 
 <!-- Selección de toppings/preparación al agregar producto (va a la comanda) -->
 <div class="modal-bg" id="prep-modal" style="display:none;">
@@ -2581,7 +2624,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
@@ -2813,7 +2856,23 @@ async function completeInit(){
 }
 
 function listenAll(){
-  const cols=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad'];
+  // ══════════════════════════════════════════════════════════════
+  // QUÉ SE DESCARGA, Y EN QUÉ DISPOSITIVO
+  // Las vistas públicas (menú QR, tarjeta de sellos, pantalla a cliente)
+  // las abre un CLIENTE desde su celular. Hasta hoy se bajaban las 20
+  // colecciones —ventas, nómina, gastos, empleados y la bitácora— al
+  // teléfono de cualquiera que escaneara, y además corrían completeInit(),
+  // o sea las MIGRACIONES, contra la base de producción.
+  // Con el menú QR repartido en toda la universidad eso dejaba de ser
+  // teórico. Cada modo baja solo lo suyo y ninguno migra nada.
+  // ══════════════════════════════════════════════════════════════
+  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos'];
+  const publico = MODO_MENU || MODO_PANTALLA || !!_tarjetaCode;
+  const cols = MODO_PANTALLA ? []
+    : MODO_MENU ? ['productos']
+    : _tarjetaCode ? ['lealtad']
+    : TODAS;
+  if(!cols.length){ READY=true; return; } // la pantalla a cliente escucha su propio doc
   // Usar Set para saber exactamente cuáles colecciones ya cargaron (evita doble-conteo)
   const loaded=new Set();
 
@@ -2828,7 +2887,9 @@ function listenAll(){
         if(ldTxt) ldTxt.textContent=`${col}… (${n}/${cols.length})`;
 
         if(n>=cols.length){
-          await completeInit();
+          // Una vista pública NUNCA corre migraciones ni seeds
+          if(publico){ READY=true; if(MODO_MENU) renderMenuPublico(); }
+          else await completeInit();
         }
       } else {
         // A1: render granular con debounce (antes: renderAll de 17 módulos)
@@ -2843,7 +2904,8 @@ function listenAll(){
         const ldTxt=document.getElementById('ld-txt');
         if(ldTxt) ldTxt.textContent=`${col} (error)… (${n}/${cols.length})`;
         if(n>=cols.length){
-          await completeInit();
+          if(publico){ READY=true; if(MODO_MENU) renderMenuPublico(); }
+          else await completeInit();
         }
       }
     });
@@ -7403,6 +7465,108 @@ async function registrarSelloLealtad(venta){
   renderOpLealtad();
 }
 // ══════════════════════════════════════════════════════════════
+// MENÚ QR  (?menu=1)  — APARTAR LUGAR, NO COBRAR
+// El cliente arma su pedido desde el celular mientras hace fila (o antes
+// de llegar) y queda apartado. NO se cobra aquí: no hay dinero de por
+// medio, no toca caja ni inventario. Es una orden PRE-ARMADA que la
+// cajera carga de un toque cuando el cliente llega a pagar.
+// Decisión de Iván (7-oct-2026): solo apartar lugar.
+// Por eso el pre-pedido vive en su propia colección y jamás se convierte
+// en venta por sí solo — la venta sigue naciendo en la caja, como hoy.
+// ══════════════════════════════════════════════════════════════
+const MODO_MENU=new URLSearchParams(location.search).get('menu')==='1';
+if(MODO_MENU) document.body.classList.add('modo-menu');
+let MV={items:{}, cat:'todos', enviado:null};
+const mvProductos=()=>D.productos.filter(p=>p.activo!==false&&(p.precio||0)>0);
+const mvTotal=()=>Math.round(Object.entries(MV.items).reduce((s,[id,q])=>{
+  const p=D.productos.find(x=>String(x.id)===String(id)); return s+(p?p.precio*q:0);},0)*100)/100;
+const mvCuenta=()=>Object.values(MV.items).reduce((s,q)=>s+q,0);
+window.mvSetCat=c=>{MV.cat=c;renderMenuPublico();};
+window.mvAdd=id=>{MV.items[id]=(MV.items[id]||0)+1;renderMenuPublico();};
+window.mvQuita=id=>{MV.items[id]=(MV.items[id]||0)-1;if(MV.items[id]<=0)delete MV.items[id];renderMenuPublico();};
+function renderMenuPublico(){
+  const el=$('menu-view'); if(!el||!MODO_MENU) return;
+  el.style.display='flex';
+  if(MV.enviado){
+    el.innerHTML=`<div class="mv-top"><div class="mv-marca">El Huerto</div><div class="mv-sub">Tu lugar está apartado</div></div>
+      <div class="mv-ok">
+        <div style="font-size:52px;">✅</div>
+        <div style="font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#7a8a76;font-weight:800;">Tu folio</div>
+        <div class="mv-folio">${MV.enviado.folio}</div>
+        <div style="font-size:15px;max-width:26ch;line-height:1.55;">
+          Pasa a la caja y di tu nombre o tu folio. <b>Ahí pagas</b> y te lo preparamos.
+        </div>
+        <div style="font-size:12.5px;color:#7a8a76;">${MV.enviado.n} producto(s) · aprox. ${fmt(MV.enviado.total)}</div>
+        <button class="mv-go" style="max-width:260px;margin-top:8px;" onclick="mvOtro()">Apartar otro pedido</button>
+      </div>`;
+    return;
+  }
+  const prods=mvProductos();
+  const cats=['todos',...new Set(prods.map(p=>p.cat).filter(Boolean))];
+  const visibles=MV.cat==='todos'?prods:prods.filter(p=>p.cat===MV.cat);
+  const porCat={};
+  visibles.forEach(p=>{(porCat[p.cat||'otro']=porCat[p.cat||'otro']||[]).push(p);});
+  const n=mvCuenta(), t=mvTotal();
+  el.innerHTML=`
+    <div class="mv-top">
+      <div class="mv-marca">El Huerto</div>
+      <div class="mv-sub">Aparta tu lugar en la fila · pagas en la caja</div>
+    </div>
+    <div class="mv-cats">${cats.map(c=>`<button class="mv-cat ${MV.cat===c?'on':''}" onclick="mvSetCat('${c}')">${c==='todos'?'Todo':(catPOS[c]||c)}</button>`).join('')}</div>
+    <div class="mv-body">
+      ${Object.keys(porCat).length===0?'<p style="color:#7a8a76;font-size:13px;padding:20px 0;text-align:center;">Cargando el menú…</p>':''}
+      ${Object.entries(porCat).map(([c,arr])=>`
+        <div class="mv-h">${catPOS[c]||c}</div>
+        ${arr.map(p=>{
+          const q=MV.items[p.id]||0;
+          return `<div class="mv-p">
+            <div class="mv-p-n"><b>${p.nombre}</b>${p.desc?`<span>${p.desc}</span>`:''}</div>
+            <span class="mv-p-pr">${fmt(p.precio)}</span>
+            ${q>0
+              ? `<span class="mv-qty"><button onclick="mvQuita(${p.id})">−</button><b>${q}</b><button onclick="mvAdd(${p.id})">+</button></span>`
+              : `<button class="mv-add" onclick="mvAdd(${p.id})">+</button>`}
+          </div>`;}).join('')}
+      `).join('')}
+    </div>
+    <div class="mv-bar">
+      <input id="mv-nombre" placeholder="¿A nombre de quién?" autocomplete="name" maxlength="40" value="${MV.nombre||''}" oninput="mvNombre(this.value)">
+      <button class="mv-go" onclick="mvApartar()" ${n===0||!(MV.nombre||'').trim()?'disabled':''}>
+        ${n===0?'Elige algo del menú':`Apartar lugar · ${n} producto${n>1?'s':''} · ${fmt(t)}`}
+      </button>
+      <div style="font-size:11px;color:#7a8a76;text-align:center;margin-top:7px;">
+        Esto NO es un pago. Apartas tu lugar y pagas al recoger.
+      </div>
+    </div>`;
+}
+window.mvNombre=v=>{MV.nombre=v;const b=document.querySelector('#menu-view .mv-go');if(b)b.disabled=mvCuenta()===0||!v.trim();};
+window.mvOtro=()=>{MV={items:{},cat:'todos',enviado:null,nombre:MV.nombre};renderMenuPublico();};
+window.mvApartar=async()=>{
+  const nombre=(MV.nombre||'').trim();
+  if(!nombre||mvCuenta()===0) return;
+  // Freno simple contra spam: un pre-pedido por dispositivo cada 2 minutos
+  try{
+    const ult=parseInt(localStorage.getItem('h5mvUlt')||'0',10);
+    if(Date.now()-ult<120000){ alert('Ya apartaste un pedido hace un momento. Espera un par de minutos o pasa a la caja.'); return; }
+  }catch(e){}
+  const btn=document.querySelector('#menu-view .mv-go'); if(btn){btn.disabled=true;btn.textContent='Apartando…';}
+  const id=Date.now();
+  const folio='Q'+String(id).slice(-4);
+  const items=Object.entries(MV.items).map(([pid,q])=>{
+    const p=D.productos.find(x=>String(x.id)===String(pid));
+    return {id:p.id,nombre:p.nombre,precio:p.precio,qty:q};
+  });
+  const pedido={id,folio,fecha:today(),
+    hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
+    cliente:nombre,items,total:mvTotal(),estado:'nuevo',origen:'menuQR',ts:id};
+  const ok=await fsSet('prepedidos',pedido);
+  if(!ok){ if(btn){btn.disabled=false;} alert('No se pudo apartar. Revisa tu señal e intenta de nuevo.'); return; }
+  try{ localStorage.setItem('h5mvUlt',String(Date.now())); }catch(e){}
+  MV.enviado={folio,n:mvCuenta(),total:mvTotal()};
+  renderMenuPublico();
+};
+if(MODO_MENU){ renderMenuPublico(); setTimeout(renderMenuPublico,1500); }
+
+// ══════════════════════════════════════════════════════════════
 // PANTALLA A CLIENTE  (?pantalla=1)
 // Una segunda pantalla de cara al mostrador que refleja la orden
 // mientras la capturan. Sirve para tres cosas, en este orden:
@@ -8452,7 +8616,69 @@ function renderOrdenes(){
 }
 
 // Strip de órdenes vivas en el POS: la cajera trackea sin cambiar de página
+// ── Pre-pedidos del menú QR en la caja ──
+// Llegan como tarjeta arriba del POS. Un toque los carga al carrito y la
+// venta se cobra como cualquier otra: el pre-pedido NUNCA se vuelve venta
+// solo, porque nadie ha pagado todavía.
+const prepNuevos=()=>D.prepedidos.filter(p=>p.estado==='nuevo'&&p.fecha===today())
+  .sort((a,b)=>(a.ts||a.id)-(b.ts||b.id));
+let _prepVistos=0;
+function renderPrepedidos(){
+  const el=$('pos-prep-strip'); if(!el) return;
+  const list=prepNuevos();
+  if(!list.length){el.style.display='none';el.innerHTML='';_prepVistos=0;return;}
+  el.style.display='flex';
+  el.innerHTML=list.map(p=>`
+    <div style="background:#eef7e6;border:1.5px solid var(--accent);border-radius:var(--rsm);padding:9px 11px;display:flex;align-items:center;gap:10px;">
+      <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px;color:var(--accent2);">${p.folio}</span>
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:13px;font-weight:800;">${p.cliente}</div>
+        <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.items.map(i=>i.qty+'× '+i.nombre).join(' · ')}</div>
+      </div>
+      <span class="mono" style="font-size:12px;font-weight:700;">${fmt(p.total)}</span>
+      <button class="btn bp bsm" onclick="cargarPrepedido(${p.id})">Cargar</button>
+      <button class="btn bd bxs" onclick="descartarPrepedido(${p.id})" title="Descartar">✕</button>
+    </div>`).join('');
+  // Campanita solo cuando llega uno nuevo
+  if(list.length>_prepVistos){
+    if(_prepVistos>0){
+      try{ if(typeof playNewOrderSound==='function') playNewOrderSound(); }catch(e){}
+      const ult=list[list.length-1];
+      if(typeof notifPush==='function') notifPush('📱 Pedido apartado',`${ult.cliente} · ${fmt(ult.total)}`,{tag:'prep-'+ult.id});
+    }
+    _prepVistos=list.length;
+  }
+}
+window.cargarPrepedido=async id=>{
+  const p=D.prepedidos.find(x=>x.id===id); if(!p) return;
+  if(order.length && !confirm('Hay una orden en curso. ¿Reemplazarla con el pedido apartado?')) return;
+  order=[]; orderStartedAt=null;
+  // addItem respeta las variantes: si el producto pide toppings, se los
+  // pregunta a la cajera con el cliente enfrente, que es cuando se sabe.
+  // Los productos con variantes abren su modal: si la cajera cancela uno,
+  // ese renglón NO entra al carrito. Por eso se avisa cuántos van a pedir
+  // detalle, para que cuadre contra lo que el cliente aparto.
+  let conVariantes=0;
+  for(const it of p.items){
+    if(PROD_PREP[it.id]&&!PROD_PREP[it.id].fijo) conVariantes+=(it.qty||1);
+    for(let k=0;k<(it.qty||1);k++) addItem(it.id);
+  }
+  if($('op-cliente')) $('op-cliente').value=p.cliente||'';
+  await fsSet('prepedidos',{...p,estado:'tomado',tomadoTs:Date.now(),tomadoPor:SESSION?.nombre||activeVend?.nombre||'—'});
+  logAudit('prepedido_tomado',{folio:p.folio,cliente:p.cliente,total:p.total});
+  toast(conVariantes
+    ? `✓ ${p.folio} de ${p.cliente}: ${conVariantes} producto(s) te van a pedir los toppings — pregúntale al cliente`
+    : `✓ Pedido ${p.folio} de ${p.cliente} cargado — cóbralo normal`, 5500);
+};
+window.descartarPrepedido=async id=>{
+  const p=D.prepedidos.find(x=>x.id===id); if(!p) return;
+  if(!confirm(`¿Descartar el pedido ${p.folio} de ${p.cliente}?`)) return;
+  await fsSet('prepedidos',{...p,estado:'descartado',descartadoTs:Date.now()});
+  logAudit('prepedido_descartado',{folio:p.folio,cliente:p.cliente});
+  renderPrepedidos();
+};
 function renderPosOrdenes(){
+  renderPrepedidos();
   const el=$('pos-ord-strip'); if(!el) return;
   const act=[...ordActivas()].sort((a,b)=>(a.tsCobro||a.id)-(b.tsCobro||b.id));
   if(!act.length){el.style.display='none';el.innerHTML='';return;}
@@ -13404,6 +13630,32 @@ window.abrirPantallaCliente=()=>{
   if(!w){toast('⚠ El navegador bloqueó la ventana. Permite pop-ups de este sitio',4500,'warn');return;}
   publicarPantalla(); // que arranque con lo que hay en la orden
   toast('🖥 Pantalla abierta — muévela al monitor del cliente y ponla en pantalla completa (F11)',6000);
+};
+window.mostrarQRMenu=()=>{
+  const cont=$('cfg-menu-qr'); if(!cont) return;
+  const url=location.origin+location.pathname+'?menu=1';
+  if(cont.style.display==='block'){cont.style.display='none';return;}
+  cont.style.display='block';
+  cont.innerHTML='<div id="mv-qr" style="display:inline-block;padding:14px;background:#fff;border-radius:12px;"></div>'+
+    `<div style="font-size:11px;color:var(--text2);margin-top:7px;word-break:break-all;">${url}</div>`+
+    '<button class="btn bs bsm" style="margin-top:8px;" onclick="imprimirQRMenu()">🖨 Imprimir cartel</button>';
+  try{ new QRCode(document.getElementById('mv-qr'),{text:url,width:190,height:190,correctLevel:QRCode.CorrectLevel.M}); }
+  catch(e){ cont.innerHTML='<div style="font-size:12px;">Abre esta dirección: <b>'+url+'</b></div>'; }
+};
+window.imprimirQRMenu=()=>{
+  const img=document.querySelector('#mv-qr img')||document.querySelector('#mv-qr canvas');
+  const src=img?(img.tagName==='IMG'?img.src:img.toDataURL()):'';
+  const w=window.open('','_blank','width=680,height=900');
+  if(!w){toast('⚠ Permite las ventanas emergentes para imprimir',4000,'warn');return;}
+  w.document.write(`<html><head><title>Menú QR — El Huerto</title></head>
+    <body style="margin:0;font-family:Georgia,serif;text-align:center;padding:50px 30px;color:#1a2e18;">
+      <div style="font-size:44px;font-weight:700;color:#2e7d32;">El Huerto</div>
+      <div style="font-size:23px;margin-top:10px;">Aparta tu lugar en la fila</div>
+      <div style="font-size:15px;color:#666;margin-top:6px;">Escanea, arma tu pedido y pasa a la caja a pagar</div>
+      <img src="${src}" style="width:300px;height:300px;margin:28px auto;display:block;">
+      <div style="font-size:15px;color:#666;">No se cobra en el celular · Pagas al recoger</div>
+    </body></html>`);
+  w.document.close(); setTimeout(()=>w.print(),400);
 };
 window.mostrarQRPantalla=()=>{
   const cont=$('cfg-pantalla-qr'); if(!cont) return;

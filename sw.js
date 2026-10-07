@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.77'; // Órdenes de compra por WhatsApp
+const CACHE_NAME = 'el-huerto-v14.78'; // Menú QR: apartar lugar en la fila
 const ASSETS = [
   '/',
   '/index.html',
