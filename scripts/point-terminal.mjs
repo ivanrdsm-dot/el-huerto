@@ -36,8 +36,9 @@ async function mp(url, opts = {}) {
     // pero la API de terminales está bloqueada por política para la cuenta.
     if (code === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES') {
       console.error('→ Mercado Pago no deja a esta cuenta administrar terminales por API.');
-      console.error('  Hazlo desde la Point: Más opciones > Ajustes > Modo de vinculación (PDV / normal).');
-      console.error('  El ID para MP_POINT_TERMINAL_ID es MODELO__SERIAL (el serial está en la etiqueta trasera).');
+      console.error('  Lo libera soporte de Mercado Pago (ver POINT_SETUP.md). El menú de la Point');
+      console.error('  "Más opciones > Ajustes > Modo de vinculación" solo aparece tras la 1a activación por API.');
+      console.error('  El ID para MP_POINT_TERMINAL_ID es MODELO__MODELO+SERIAL (ej. NEWLAND_N950__N950NCCA05077658).');
     }
     if (r.status === 412) console.error('→ Ya hay otra terminal en modo PDV en esa caja; solo se permite una.');
     if (code === 'store_pos_not_found') console.error('→ La terminal no tiene sucursal/caja asignada en Mercado Pago.');

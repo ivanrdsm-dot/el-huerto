@@ -13,6 +13,35 @@ en Vercel, redesplegar y regresar la Point a modo normal (Paso 2, `--normal`).
 Ya configurado: `MP_POINT_STAFF_EMAILS` (admin, Claudia 2002, Erandy 2005,
 Vale 2006). Cuando entre alguien nuevo, agrega su `empID@elhuerto.app`.
 
+## 🔴 Estado al 7-oct-2026: esperando a soporte de Mercado Pago
+
+Hecho: token de producción en Vercel y `.env`, ID de la terminal confirmado,
+cajeras con cuenta propia. **Falta solo el modo PDV**, y Mercado Pago lo tiene
+bloqueado para la cuenta: `GET /terminals/v1/list` y `PATCH /terminals/v1/setup`
+responden `403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES`. El menú *Modo de
+vinculación* de la Point no aparece hasta la primera activación por API.
+
+Mensaje para soporte (Developers → Soporte, desde el panel de la app):
+
+> Hola. Integro mi Point Smart 2 con Orders API (integración propia) y no puedo
+> activar el modo PDV.
+> - Usuario: 3183209300 (MLM) · App: El Huerto POS, 2249509833805529
+>   (credenciales de producción)
+> - Terminal: NEWLAND_N950__N950NCCA05077658 (SN NCCA05077658), sucursal 78636166
+> - `GET /terminals/v1/list` y `PATCH /terminals/v1/setup` responden 403
+>   `PA_UNAUTHORIZED_RESULT_FROM_POLICIES` ("At least one policy returned
+>   UNAUTHORIZED"). x-request-id: 58acd6ca-0507-40ee-a78a-2611a0b67033
+>   (2026-10-08 03:24 UTC).
+> - Con el mismo token, `POST /v1/orders` (type point) a esa terminal sí responde
+>   201, y `/users/me`, `/stores` y `/pos` responden 200.
+> - En la terminal no aparece "Más opciones > Ajustes > Modo de vinculación".
+>
+> ¿Pueden habilitar a mi cuenta/aplicación la API de terminales, o activar el
+> modo PDV en esa terminal?
+
+Cuando lo liberen: `node --env-file=.env scripts/point-terminal.mjs --pdv
+NEWLAND_N950__N950NCCA05077658`, luego el Paso 3.
+
 ## ⚠️ ANTES DE EMPEZAR
 Las cajeras tienen que entrar con **su cuenta propia** (Config → Cuentas de
 acceso, ver `FIREBASE_SETUP.md`). Con la sesión anónima el POS no deja mandar
