@@ -2523,6 +2523,40 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
 </div>
 
+<!-- MODAL POINT (el total llega solo a la terminal Mercado Pago).
+     Sin cierre al tocar el fondo: con un cobro vivo en la terminal,
+     cerrar por accidente dejaría al cliente pagando algo que el POS
+     ya no está esperando. -->
+<div class="modal-bg" id="point-modal" style="display:none;">
+  <div class="modal" style="max-width:400px;">
+    <div class="modal-head">
+      <span class="modal-title">💳 Cobro con Point</span>
+      <button class="btn bs bxs" id="pt-x" onclick="cerrarPoint()">✕</button>
+    </div>
+    <div style="text-align:center;margin-bottom:12px;">
+      <div style="font-size:12px;color:var(--text3);">Cuenta</div>
+      <div class="mono fw7" id="pt-monto" style="font-size:30px;">$0.00</div>
+    </div>
+    <div id="pt-paso-propina">
+      <div class="fg" style="margin-bottom:6px;"><label>💁 Propina en tarjeta</label></div>
+      <div id="pt-chips" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:8px;"></div>
+      <div class="fg" style="margin-bottom:8px;">
+        <input type="number" id="pt-propina" placeholder="Otra cantidad $" step="0.01" min="0" inputmode="decimal" oninput="ptPropinaManual()">
+      </div>
+      <div class="sr"><span>Se cobra en la terminal</span><span class="mono fw7" id="pt-total" style="font-size:18px;">$0.00</span></div>
+      <div id="pt-aviso" style="display:none;font-size:12px;color:var(--red);margin-top:8px;"></div>
+      <button class="btn bbl bfull" id="pt-enviar" onclick="enviarAPoint()" style="font-size:16px;padding:14px;margin-top:10px;">📲 Mandar a la terminal</button>
+    </div>
+    <div id="pt-paso-espera" style="display:none;text-align:center;">
+      <div id="pt-icono" style="font-size:44px;margin:4px 0;">⏳</div>
+      <div id="pt-estado" style="font-size:17px;font-weight:800;margin-bottom:4px;"></div>
+      <div id="pt-detalle" style="font-size:12.5px;color:var(--text3);margin-bottom:12px;white-space:pre-line;"></div>
+      <div id="pt-acciones" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+    <button class="btn bs bfull bsm" id="pt-manual" onclick="ptRegistrarManual()" style="margin-top:10px;">Registrar sin Point (ya se cobró con tarjeta por otro lado)</button>
+  </div>
+</div>
+
 <!-- MODAL VENTA DETALLE -->
 <div class="modal-bg" id="venta-modal" style="display:none;" onclick="closeModal('venta-modal',event)">
   <div class="modal"><div class="modal-head"><span class="modal-title">Detalle de Venta</span><button class="btn bs bxs" onclick="$('venta-modal').style.display='none'">✕</button></div><div id="vm-content"></div></div>
@@ -2635,6 +2669,20 @@ const auth=getAuth(app);
 let AUTH_READY=false;
 async function ensureAuth(){
   try{
+    // Si alguien ya había entrado con su cuenta propia y el POS lo sigue
+    // recordando (h5session), al recargar se CONSERVA esa sesión. Antes
+    // se abría una anónima encima en cada recarga y la identidad real se
+    // perdía — y el cobro con Point exige cuenta propia.
+    await auth.authStateReady();
+    const u=auth.currentUser;
+    let haySesionPOS=false; try{haySesionPOS=!!localStorage.getItem('h5session');}catch(e){}
+    if(u && !u.isAnonymous && haySesionPOS){
+      const m=/^(?:admin|emp(\d+))@/.exec(u.email||'');
+      AUTH_PERFIL={uid:u.uid,quien:m?(m[1]?Number(m[1]):'admin'):null};
+      AUTH_READY=true;
+      console.log('✓ Firebase Auth: sesión propia restaurada',u.email);
+      return;
+    }
     await signInAnonymously(auth);
     AUTH_READY=true;
     console.log('✓ Firebase Auth: sesión anónima activa');
@@ -2873,6 +2921,8 @@ async function completeInit(){
     }
     updateNavForSession();
     renderVendedorBar();
+    // ¿Se recargó la página mientras un cliente pagaba con Point?
+    try{ptRevisarPendiente();}catch(e){console.warn('point:',e);}
   }
 }
 
@@ -8128,7 +8178,7 @@ window.abrirCobro=()=>{
 // Tarjeta: antes cobraba directo sin pedir nada — ahora, si no hay nombre,
 // se pide GRANDE primero (es lo que canta la cocina al entregar).
 window.cobrarTarjeta=()=>{
-  if($('op-cliente')?.value?.trim()){cobrar('tarjeta',0);return;}
+  if($('op-cliente')?.value?.trim()){cobrarConPoint();return;}
   if(!order.length){toast('No hay productos en la orden',2000,'warn');return;}
   $('nombre-modal').style.display='flex';
   const inp=$('nombre-cliente'); if(inp){inp.value='';setTimeout(()=>inp.focus(),120);}
@@ -8137,8 +8187,306 @@ window.confirmarNombreTarjeta=(sin)=>{
   const v=sin?'':($('nombre-cliente')?.value?.trim()||'');
   if($('op-cliente'))$('op-cliente').value=v;
   $('nombre-modal').style.display='none';
-  cobrar('tarjeta',0);
+  cobrarConPoint();
 };
+
+// ══════════════════════════════════════════════════════════════
+// MERCADO PAGO POINT — el total llega solo a la Point Smart 2
+// Antes: la cajera tecleaba el total en la terminal y luego tocaba
+// "Tarjeta" aquí. Dos capturas del mismo número = descuadres en el corte.
+// Ahora el POS manda cuenta + propina a la terminal (vía /api/point,
+// donde vive el Access Token), pregunta cada 2 s cómo va y, cuando el
+// pago queda `processed`, registra la venta solo con el ID de la orden.
+//
+// Si no hay red o Mercado Pago no responde, "Registrar sin Point" anota
+// una venta con tarjeta cobrada por otro lado. Ojo: en modo PDV la Point
+// ya no deja teclear montos; para volver al modo normal está
+// scripts/point-terminal.mjs --normal.
+//
+// El cobro vivo se guarda en localStorage: si se recarga la página a
+// medio pago, se retoma esa MISMA orden (y su carrito) en vez de mandar
+// otra — así un cliente nunca paga dos veces lo mismo.
+// ══════════════════════════════════════════════════════════════
+const POINT_KEY='huerto_point_cobro';
+const PT_FINALES=['processed','failed','canceled','expired','refunded'];
+const PT_DETALLE={accredited:'Pago acreditado',insufficient_amount:'Fondos insuficientes',
+  bad_filled_card_data:'Datos de la tarjeta incorrectos',canceled_on_terminal:'Se canceló en la terminal',
+  canceled_by_api:'Se canceló desde el POS'};
+let _pt=null;          // cobro vivo: {intento,orderId,monto,propina,total,ticket,firma,snap,estado,detalle,mp}
+let _ptTimer=null;
+let _ptFallos=0;
+let _ptPct=0;          // % de propina elegido (0 = sin propina)
+let _ptFirma=null;     // firma del carrito al abrir el modal (doble cobro)
+
+const ptGuardar=()=>{try{_pt?localStorage.setItem(POINT_KEY,JSON.stringify(_pt)):localStorage.removeItem(POINT_KEY);}catch(e){}};
+const ptLeer=()=>{try{return JSON.parse(localStorage.getItem(POINT_KEY)||'null');}catch(e){return null;}};
+const ptSinCuenta=()=>!auth.currentUser||auth.currentUser.isAnonymous;
+const ptMsgSinCuenta='Para cobrar con Point necesitas tu cuenta propia: cierra sesión y vuelve a entrar con tu contraseña.';
+const ptMsgError=e=>e instanceof TypeError?'Sin conexión a internet.':e.message; // fetch sin red = TypeError
+
+async function ptApi(metodo,{query='',body=null}={}){
+  if(ptSinCuenta()) throw Object.assign(new Error(ptMsgSinCuenta),{sinCuenta:true});
+  const token=await auth.currentUser.getIdToken();
+  const r=await fetch('/api/point'+query,{method:metodo,cache:'no-store',
+    headers:{'Authorization':'Bearer '+token,...(body?{'Content-Type':'application/json'}:{})},
+    body:body?JSON.stringify(body):undefined});
+  const data=await r.json().catch(()=>({}));
+  if(!r.ok) throw Object.assign(new Error(data.error||`El servidor de cobro respondió ${r.status}`),{status:r.status,codigo:data.codigo});
+  if(!data.id) throw Object.assign(new Error('Respuesta inesperada del servidor de cobro.'),{status:r.status});
+  return data;
+}
+
+// Propina: % elegido o cantidad tecleada (la tecleada manda)
+function ptPropina(cuenta){
+  const man=parseFloat($('pt-propina')?.value);
+  if(Number.isFinite(man)&&man>0) return Math.round(man*100)/100;
+  return Math.round(cuenta*_ptPct)/100;
+}
+function ptRenderPropina(){
+  const {total}=getDescuento();
+  const prop=ptPropina(total);
+  $('pt-monto').textContent=fmt(total);
+  $('pt-chips').innerHTML=[0,10,15,20].map(p=>`<button class="btn ${_ptPct===p&&!(parseFloat($('pt-propina').value)>0)?'bp':'bs'} bsm" onclick="ptElegirPct(${p})">${p?p+'%':'Sin'}</button>`).join('');
+  $('pt-total').textContent=fmt(total+prop);
+  const sinCuenta=ptSinCuenta();
+  $('pt-aviso').style.display=sinCuenta?'block':'none';
+  $('pt-aviso').textContent=sinCuenta?ptMsgSinCuenta:'';
+  $('pt-enviar').disabled=sinCuenta; $('pt-enviar').style.opacity=sinCuenta?'.4':'1';
+}
+window.ptElegirPct=p=>{_ptPct=p;$('pt-propina').value='';ptRenderPropina();};
+window.ptPropinaManual=()=>ptRenderPropina();
+
+// ¿Point está configurado en Vercel? Mientras no, el botón de tarjeta
+// registra como siempre: así se puede publicar antes de pegar el token,
+// y quitar MP_POINT_TERMINAL_ID en Vercel regresa al flujo anterior.
+let _ptActivo=null, _ptActivoTs=0;
+async function pointActivo(){
+  if(_ptActivo!==null && Date.now()-_ptActivoTs<5*60e3) return _ptActivo;
+  try{
+    const r=await fetch('/api/point?estado=1',{cache:'no-store'});
+    const d=await r.json(); // sin backend (404 / HTML) → SyntaxError
+    _ptActivo=d.activo===true;
+  }catch(e){
+    // Sin red: se respeta lo último que se supo. Si nunca se supo, se va
+    // por Point: su modal explica el error y ofrece registrar a mano.
+    // (En modo PDV la terminal no deja teclear montos: registrar una
+    // venta "como antes" sin que el cliente pague sería peor.)
+    if(e instanceof TypeError) return _ptActivo!==false;
+    _ptActivo=false;
+  }
+  _ptActivoTs=Date.now();
+  return _ptActivo;
+}
+
+function ptAbrir(paso){
+  $('pt-paso-propina').style.display=paso==='propina'?'block':'none';
+  $('pt-paso-espera').style.display=paso==='propina'?'none':'block';
+  $('point-modal').style.display='flex';
+}
+
+window.cobrarConPoint=async()=>{
+  if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
+  // Un cobro vivo (en la terminal, o aprobado sin registrar) va primero
+  const vivo=_pt||ptLeer();
+  if(vivo){_pt=vivo;ptAbrir('espera');ptReanudar();return;}
+  if(!order.length){toast('⚠ Agrega productos',2400,'warn');return;}
+  if(!(await pointActivo())){cobrar('tarjeta',0);return;} // Point sin configurar: como siempre
+  if(!ventaVendedorOk||!activeVend){pedirVendedorVenta(()=>cobrarConPoint());return;}
+  // Venta con fecha pasada = captura de algo que ya se cobró: no hay
+  // nada que mandar a la terminal, se registra como siempre.
+  const fecha=fechaVentaPOS();
+  if(fecha!==today()){cobrar('tarjeta',0);return;}
+  // Las guardas (fin de semana, ticket idéntico) se preguntan AQUÍ,
+  // antes de cobrar: después de que el cliente pagó ya no hay marcha atrás.
+  const {total}=getDescuento();
+  _ptFirma=firmaCobro(total,'tarjeta',null);
+  if(!guardasCobro(fecha,_ptFirma,total)) return;
+  _ptPct=0; $('pt-propina').value='';
+  $('pt-x').style.display=''; $('pt-manual').style.display='';
+  ptRenderPropina();
+  ptAbrir('propina');
+  publicarPantalla('cobro');
+};
+
+window.enviarAPoint=async()=>{
+  if(_pt) return;
+  const {total}=getDescuento();
+  const propina=ptPropina(total);
+  _pt={intento:crypto.randomUUID(),monto:Math.round(total*100)/100,propina,
+    total:Math.round((total+propina)*100)/100,ticket:String(Date.now()).slice(-6),
+    firma:_ptFirma,ts:Date.now(),estado:'enviando',
+    snap:{order:order.map(o=>({...o})),cliente:$('op-cliente')?.value||'',nota:$('op-nota')?.value||'',
+      desc:$('op-desc-val')?.value||'',orderStartedAt:orderStartedAt||null}};
+  ptGuardar();
+  ptAbrir('espera');
+  await ptEnviar();
+};
+
+// Reenviar con el MISMO `intento` es seguro: misma llave de idempotencia
+// = Mercado Pago devuelve la orden ya creada, no crea otra.
+async function ptEnviar(){
+  ptMostrar('enviando');
+  try{
+    const o=await ptApi('POST',{body:{accion:'crear',monto:_pt.monto,propina:_pt.propina,ticket:_pt.ticket,intento:_pt.intento}});
+    _pt.orderId=o.id; ptGuardar();
+    logAudit('point_enviado',{orden:o.id,monto:_pt.monto,propina:_pt.propina,vendedor:activeVend?.nombre||'—'});
+    ptAplicar(o);
+  }catch(e){
+    if(e.status||e.sinCuenta){
+      // El servidor contestó con un error (o ni se envió): la orden NO existe
+      _pt=null; ptGuardar();
+      ptMostrar('error',null,e.message);
+    }else{
+      // Sin respuesta: la orden pudo crearse o no. Se conserva el intento.
+      ptMostrar('sin-red',null,ptMsgError(e));
+    }
+  }
+}
+
+function ptPoll(ms=2000){clearTimeout(_ptTimer);_ptTimer=setTimeout(ptConsultar,ms);}
+async function ptConsultar(){
+  if(!_pt?.orderId) return;
+  try{
+    const o=await ptApi('GET',{query:'?id='+encodeURIComponent(_pt.orderId)});
+    _ptFallos=0;
+    ptAplicar(o);
+  }catch(e){
+    _ptFallos++;
+    if(e.sinCuenta){ptMostrar(_pt.estado,null,e.message);return;}
+    ptMostrar(_pt.estado,null,`${ptMsgError(e)} Reintentando…`);
+    ptPoll(Math.min(10000,2000*_ptFallos));
+  }
+}
+function ptReanudar(){
+  if(!_pt) return;
+  if(_pt.estado==='processed') return ptAprobado();
+  if(!_pt.orderId) return ptMostrar('sin-red',null,'El último envío a la terminal no tuvo respuesta.');
+  ptMostrar(_pt.estado||'created');
+  ptConsultar();
+}
+
+function ptAplicar(o){
+  _pt.estado=o.status; _pt.detalle=o.statusDetail; _pt.mp=o; ptGuardar();
+  if(o.status==='processed') return ptAprobado();
+  if(PT_FINALES.includes(o.status)){
+    clearTimeout(_ptTimer);
+    const fin=o.status, det=o.statusDetail;
+    logAudit('point_'+fin,{orden:o.id,detalle:det||null});
+    _pt=null; ptGuardar();   // nada vivo en la terminal
+    return ptMostrar(fin,det);
+  }
+  ptMostrar(o.status,o.statusDetail);
+  ptPoll();
+}
+
+// Pago aprobado → la venta se registra sola
+async function ptAprobado(){
+  clearTimeout(_ptTimer);
+  if(!_pt) return;
+  // Tras una recarga el carrito puede estar vacío u ocupado con otra orden:
+  // la venta que se registra es la que se mandó a la terminal.
+  const {total}=getDescuento();
+  if(firmaCobro(total,'tarjeta',null)!==_pt.firma && _pt.snap){
+    if(order.length && !confirm(`El pago aprobado (${fmt(_pt.total)}) es de otra orden.\n\n¿Reemplazar el carrito actual con esa orden para registrarla?`)){
+      return ptMostrar('sin-guardar',null,'Registra primero el pago aprobado: es dinero que ya entró.');
+    }
+    order=_pt.snap.order.map(o=>({...o})); orderStartedAt=_pt.snap.orderStartedAt;
+    if($('op-cliente'))$('op-cliente').value=_pt.snap.cliente;
+    if($('op-nota'))$('op-nota').value=_pt.snap.nota;
+    if($('op-desc-val'))$('op-desc-val').value=_pt.snap.desc;
+    renderOrder();
+  }
+  if(!ventaVendedorOk||!activeVend){pedirVendedorVenta(()=>ptAprobado());return;}
+  // Si la cuenta ya no cuadra con lo cobrado, no se registra a ciegas
+  const t2=getDescuento().total;
+  if(Math.abs(t2-_pt.monto)>0.01){
+    return ptMostrar('sin-guardar',null,`La terminal cobró ${fmt(_pt.monto)} (+ ${fmt(_pt.propina)} de propina) pero la orden suma ${fmt(t2)}. Ajusta la orden y vuelve a intentar.`);
+  }
+  ptMostrar('registrando');
+  const mp=_pt.mp||{};
+  const ok=await cobrar('tarjeta',0,null,{point:{orderId:_pt.orderId,monto:_pt.monto,propina:_pt.propina,total:_pt.total,
+    paymentId:mp.paymentId||null,referenciaPago:mp.referenciaPago||null,tipo:mp.tipo||null,marca:mp.marca||null,ultimos4:mp.ultimos4||null}});
+  if(!ok) return ptMostrar('sin-guardar',null,'El pago SÍ se aprobó pero la venta no se guardó. No vuelvas a cobrar: toca reintentar.');
+  _pt=null; ptGuardar();
+  $('point-modal').style.display='none';
+}
+
+function ptMostrar(estado,detalle,mensaje){
+  const vivo=['enviando','created','at_terminal','action_required','cancelando','registrando','sin-red','sin-guardar'].includes(estado);
+  // Con un cobro vivo no se cierra ni se registra a mano: sería cobrar dos veces
+  $('pt-x').style.display=vivo?'none':'';
+  $('pt-manual').style.display=vivo?'none':'';
+  if(_pt) $('pt-monto').textContent=fmt(_pt.monto)+(_pt.propina>0?` + ${fmt(_pt.propina)} propina`:'');
+  const V={
+    enviando:['⏳','Mandando a la terminal…',''],
+    created:['📲','Enviado — esperando a la terminal',''],
+    at_terminal:['💳','Cobra en la terminal','El cliente pasa, inserta o acerca su tarjeta en la Point'],
+    action_required:['⚠️','Revisa la terminal','La Point pide una acción para terminar el pago'],
+    cancelando:['⏳','Cancelando en la terminal…',''],
+    registrando:['✅','¡Pago aprobado! Registrando venta…',''],
+    processed:['✅','¡Pago aprobado!',''],
+    'sin-guardar':['✅','Pago aprobado — falta registrar la venta',''],
+    'sin-red':['📡','Sin respuesta al mandar a la terminal','Puede que el cobro sí haya llegado. Reintentar NO cobra doble.'],
+    failed:['❌','Pago rechazado',''],
+    canceled:['🚫','Cobro cancelado',''],
+    expired:['⌛','La terminal no recibió el pago a tiempo',''],
+    refunded:['↩️','El pago se reembolsó',''],
+    error:['⚠️','No se pudo mandar a la terminal',''],
+  }[estado]||['⏳',estado||'',''];
+  $('pt-icono').textContent=V[0];
+  $('pt-estado').textContent=V[1];
+  // Mientras espera, Mercado Pago repite el estado como detalle: no aporta
+  const detUtil=detalle&&detalle!==estado&&detalle!=='created'?(PT_DETALLE[detalle]||detalle):'';
+  const det=[V[2],detUtil,mensaje||'',_pt?.orderId?`Orden ${_pt.orderId}`:''].filter(Boolean);
+  $('pt-detalle').textContent=det.join('\n');
+  const B=(cls,txt,fn)=>`<button class="btn ${cls} bfull" onclick="${fn}">${txt}</button>`;
+  $('pt-acciones').innerHTML=
+    ['enviando','created','at_terminal','action_required'].includes(estado)&&_pt?.orderId ? B('bs','✕ Cancelar cobro en la terminal','ptCancelar()')
+    : estado==='sin-red' ? B('bbl','🔁 Reintentar envío','ptReintentarEnvio()')+B('bs','Descartar (ya revisé la terminal)','ptDescartar()')
+    : estado==='sin-guardar' ? B('bp','🔁 Reintentar registrar venta','ptAprobado()')
+    : ['failed','canceled','expired','error','refunded'].includes(estado) ? B('bbl','📲 Intentar otra vez','ptOtraVez()')+B('bs','Cerrar','cerrarPoint()')
+    : '';
+}
+
+window.ptCancelar=async()=>{
+  if(!_pt?.orderId) return;
+  if(!confirm('¿Cancelar el cobro que está en la terminal?')) return;
+  clearTimeout(_ptTimer);
+  ptMostrar('cancelando');
+  try{ ptAplicar(await ptApi('POST',{body:{accion:'cancelar',id:_pt.orderId}})); }
+  catch(e){
+    // Lo más común: ya se pagó y no se puede cancelar → consultar y seguir
+    toast('⚠ '+e.message,4500,'warn');
+    ptConsultar();
+  }
+};
+window.ptReintentarEnvio=()=>{if(_pt)ptEnviar();};
+window.ptDescartar=()=>{
+  if(!confirm('¿Seguro? Si la terminal sí muestra el cobro, cancélalo en la terminal antes de continuar.')) return;
+  logAudit('point_descartado',{intento:_pt?.intento,monto:_pt?.monto});
+  _pt=null; ptGuardar(); cerrarPoint();
+};
+window.ptOtraVez=()=>{_pt=null;ptGuardar();cobrarConPoint();};
+window.cerrarPoint=()=>{
+  if(_pt) return; // cobro vivo: se resuelve con sus botones
+  clearTimeout(_ptTimer);
+  $('point-modal').style.display='none';
+  publicarPantalla();
+};
+// Respaldo: la venta con tarjeta se cobró por otro lado (sin Point)
+window.ptRegistrarManual=()=>{
+  if(_pt) return;
+  $('point-modal').style.display='none';
+  cobrar('tarjeta',0,null,{guardasOk:true});
+};
+// Al abrir la app con sesión: ¿quedó un cobro de Point a medias?
+function ptRevisarPendiente(){
+  if(MODO_MENU||MODO_PANTALLA||_tarjetaCode||!SESSION) return;
+  const p=ptLeer();
+  if(!p||_pt) return;
+  if(Date.now()-(p.ts||0)>3*3600e3){logAudit('point_pendiente_viejo',{orden:p.orderId||null,monto:p.monto});}
+  _pt=p; ptAbrir('espera'); ptReanudar();
+}
 window.setBillete=v=>{
   $('cobro-recibido').value=v; calcCambio();
 };
@@ -8221,12 +8569,42 @@ async function descontarInventario(ventaItemsRaw){
 
 let cobrandoEnProceso=false;
 let _ultCobro=null; // {firma,ts} del último cobro — detecta doble cobro
+// Fecha de la venta: hoy, salvo que se esté capturando una retroactiva
+function fechaVentaPOS(){
+  const f=$('op-fecha-venta')?.value;
+  return (f && f!==today()) ? f : today();
+}
+// Firma del carrito: mismo carrito + total + método = sospecha de doble cobro
+const firmaCobro=(total,metodo,pagos)=>order.map(o=>`${o.id}x${o.qty||1}|${(o.prep||[]).join('/')}`).sort().join(',')+`|${total}|${metodo}|${(pagos||[]).length}`;
+// Las dos guardas que piden confirmación. false = la cajera se arrepintió.
+// Con Point se preguntan ANTES de mandar a la terminal (cobrarConPoint).
+function guardasCobro(fechaVenta,firma,total){
+  // ── Guarda 1: día de descanso ──
+  // El Huerto abre lunes a viernes. Una venta con fecha de sábado o
+  // domingo siempre fue un error de captura (hubo una del 7-mar-2026
+  // que se coló al instalar el POS y ensució los reportes por día).
+  if(esDiaDescanso(fechaVenta)){
+    const dn=new Date(fechaVenta+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long'});
+    if(!confirm(`⚠️ ${fechaVenta} es ${dn} y El Huerto no abre fin de semana.\n\nSi es un error, cancela y corrige la fecha de la venta.\n\n¿Registrar de todos modos?`)) return false;
+  }
+  // ── Guarda 2: ticket idéntico recién cobrado ──
+  // Mismo carrito, mismo total, mismo método en menos de 45 s casi
+  // siempre es un doble cobro. En el histórico hay 7 pares así.
+  if(_ultCobro && _ultCobro.firma===firma && Date.now()-_ultCobro.ts<45000){
+    const seg=Math.round((Date.now()-_ultCobro.ts)/1000);
+    if(!confirm(`⚠️ Hace ${seg} s se cobró un ticket IDÉNTICO (${fmt(total)}).\n\n¿Es otro cliente con lo mismo, o se cobró dos veces por error?\n\nAceptar = sí es otra venta real.`)) return false;
+  }
+  return true;
+}
 // `pagos` opcional: [{metodo,monto,recibido}] para cuentas divididas y
 // pagos mixtos. Sin él, la venta se comporta igual que siempre.
-async function cobrar(metodo,recibido=0,pagos=null){
-  if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return;}
-  if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return;}
-  if(!ventaVendedorOk||!activeVend){pedirVendedorVenta(()=>cobrar(metodo,recibido));return;}
+// `extra` opcional: {point:{orderId,monto,propina,...}} cuando el pago ya
+// lo aprobó la terminal, o {guardasOk:true} si las guardas ya se pasaron.
+// Devuelve true solo si la venta quedó guardada.
+async function cobrar(metodo,recibido=0,pagos=null,extra=null){
+  if(order.length===0){toast('⚠ Agrega productos',2400,'warn');return false;}
+  if(cobrandoEnProceso){toast('⏳ Procesando venta...',1500,'warn');return false;}
+  if(!ventaVendedorOk||!activeVend){pedirVendedorVenta(()=>cobrar(metodo,recibido,pagos,extra));return false;}
   cobrandoEnProceso=true;
 
   // Bloquear botones de pago visualmente
@@ -8251,30 +8629,15 @@ async function cobrar(metodo,recibido=0,pagos=null){
     const sumaPagos=Math.round(listaPagos.reduce((s2,x)=>s2+x.monto,0)*100)/100;
     if(Math.abs(sumaPagos-total)>0.01){
       toast(`⚠ Los pagos suman ${fmt(sumaPagos)} y el total es ${fmt(total)}`,5000,'error');
-      cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return;
+      cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return false;
     }
-    const fechaVenta = ($('op-fecha-venta')?.value && $('op-fecha-venta').value !== today())
-      ? $('op-fecha-venta').value : today();
+    const fechaVenta = fechaVentaPOS();
     const esRetroactiva = fechaVenta !== today();
-    // ── Guarda 1: día de descanso ──
-    // El Huerto abre lunes a viernes. Una venta con fecha de sábado o
-    // domingo siempre fue un error de captura (hubo una del 7-mar-2026
-    // que se coló al instalar el POS y ensució los reportes por día).
-    if(esDiaDescanso(fechaVenta)){
-      const dn=new Date(fechaVenta+'T12:00:00').toLocaleDateString('es-MX',{weekday:'long'});
-      if(!confirm(`⚠️ ${fechaVenta} es ${dn} y El Huerto no abre fin de semana.\n\nSi es un error, cancela y corrige la fecha de la venta.\n\n¿Registrar de todos modos?`)){
-        cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return;
-      }
-    }
-    // ── Guarda 2: ticket idéntico recién cobrado ──
-    // Mismo carrito, mismo total, mismo método en menos de 45 s casi
-    // siempre es un doble cobro. En el histórico hay 7 pares así.
-    const firmaOrden=order.map(o=>`${o.id}x${o.qty||1}|${(o.prep||[]).join('/')}`).sort().join(',')+`|${total}|${metodo}|${(pagos||[]).length}`;
-    if(_ultCobro && _ultCobro.firma===firmaOrden && Date.now()-_ultCobro.ts<45000){
-      const seg=Math.round((Date.now()-_ultCobro.ts)/1000);
-      if(!confirm(`⚠️ Hace ${seg} s se cobró un ticket IDÉNTICO (${fmt(total)}).\n\n¿Es otro cliente con lo mismo, o se cobró dos veces por error?\n\nAceptar = sí es otra venta real.`)){
-        cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return;
-      }
+    const firmaOrden=firmaCobro(total,metodo,pagos);
+    // Con Point las guardas ya se pasaron antes de mandar a la terminal:
+    // preguntarlas después de que el cliente pagó no tiene marcha atrás.
+    if(!extra?.point && !extra?.guardasOk && !guardasCobro(fechaVenta,firmaOrden,total)){
+      cobrandoEnProceso=false; btns.forEach(b=>b.classList.remove('loading')); return false;
     }
     const venta={
       id:tid, fecha:fechaVenta,
@@ -8295,6 +8658,16 @@ async function cobrar(metodo,recibido=0,pagos=null){
       recibido:recTotal||total,
       cambio
     };
+    // Point: el dinero de la venta es la cuenta; la propina va aparte (no
+    // es venta, pero el corte la necesita) y queda el rastro de la orden.
+    if(extra?.point){
+      const p=extra.point;
+      listaPagos[0].propina=p.propina||0;
+      listaPagos[0].mp={orden:p.orderId,pago:p.paymentId||null,ref:p.referenciaPago||null,
+        tipo:p.tipo||null,marca:p.marca||null,ultimos4:p.ultimos4||null,cobrado:p.total||null};
+      venta.mpOrden=p.orderId;
+      venta.propinaTc=p.propina||0;
+    }
     // ══ CRÍTICO: usa fsSetCritical que SÍ tira error si Firestore falla ══
     // Antes: si Firebase fallaba, fsSet silenciaba y el carrito se limpiaba igual.
     // Ahora: si falla, el carrito se mantiene y la cajera puede reintentar.
@@ -8367,12 +8740,14 @@ async function cobrar(metodo,recibido=0,pagos=null){
     setTimeout(()=>{ if(!order.length) publicarPantalla('vacio'); },6000);
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
     renderOrder();
+    return true;
   }catch(e){
     console.error('Error en venta:',e);
     // ══ NO LIMPIAR EL CARRITO ══ Permitir que la cajera reintente
     toast('❌ ERROR: Venta NO registrada. Verifica conexión y reintenta. Tu orden está intacta.',6000,'error');
     // Vibración fuerte para alertar
     try{navigator.vibrate&&navigator.vibrate([200,100,200,100,200]);}catch(_){}
+    return false;
   }finally{
     cobrandoEnProceso=false;
     btns.forEach(b=>b.classList.remove('loading'));
@@ -8546,7 +8921,9 @@ window.anularVenta=async id=>{
   const motivo=prompt(`Anular venta ${v.ticket} de ${fmt(v.total)}\n\n¿Cuál es el MOTIVO? (obligatorio)\nEj: cliente se arrepintió, error de captura, producto mal preparado…`);
   if(motivo===null) return; // canceló
   if(!motivo.trim()){toast('⚠ Escribe el motivo para poder anular',3000,'warn');return;}
-  if(!confirm(`¿Confirmar anulación?\n${v.ticket} · ${fmt(v.total)}\nMotivo: ${motivo.trim()}\n\nSe revertirá de la caja y se repondrá el inventario.`)) return;
+  // Anular aquí no mueve dinero: con Point el reembolso es aparte
+  const avisoPoint=v.mpOrden?`\n\n⚠️ Se cobró con Point (orden ${v.mpOrden}). Anular aquí NO le devuelve el dinero al cliente: el reembolso se hace en la app de Mercado Pago.`:'';
+  if(!confirm(`¿Confirmar anulación?\n${v.ticket} · ${fmt(v.total)}\nMotivo: ${motivo.trim()}\n\nSe revertirá de la caja y se repondrá el inventario.${avisoPoint}`)) return;
   const anuladaPorNombre=SESSION?.nombre||activeVend?.nombre||'—';
   await fsSet('ventas',{...v,anulada:true,anuladaMotivo:motivo.trim(),anuladaPor:SESSION?.id||0,anuladaPorNombre:anuladaPorNombre,anuladaTs:Date.now()});
   const cj=D.caja.find(c=>c.fecha===v.fecha);
@@ -9233,6 +9610,15 @@ function renderCorteInfo(){
   const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
   const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
   const esperado=fondos+vEf+deps-retiros;
+
+  // Propinas cobradas con Point: el POS ya las conoce, se precargan.
+  // La cajera puede corregir si además tecleó propinas a mano en la terminal.
+  const propPoint=Math.round(ventasHoy.reduce((s,v)=>s+(v.propinaTc||0),0)*100)/100;
+  const inpProp=$('corte-tc-propina');
+  if(inpProp && !inpProp.value && propPoint>0){
+    inpProp.value=propPoint.toFixed(2);
+    inpProp.title='Precargado con las propinas cobradas con Point hoy';
+  }
 
   // Badge si ya se hizo corte hoy
   const corteHoy=[...D.cortes].filter(c=>c.fecha===td).sort((a,b)=>b.id-a.id)[0];

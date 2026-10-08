@@ -1,3 +1,9 @@
 
 # Respaldo de imágenes originales sin marca (no se publica)
 pagina-huerto/products-originales/
+
+# Mercado Pago / credenciales locales
+.env
+.env.*.local
+.mp-integrate-progress.md
+.vercel

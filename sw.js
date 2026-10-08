@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.80'; // Firebase Auth: una cuenta por persona
+const CACHE_NAME = 'el-huerto-v14.81'; // Mercado Pago Point: /api nunca se cachea
 const ASSETS = [
   '/',
   '/index.html',
@@ -33,6 +33,10 @@ self.addEventListener('fetch', e => {
 
   // No interceptar Firestore
   if (url.hostname.includes('firestore') || url.hostname.includes('firebase')) return;
+
+  // Nunca cachear la API (estado de cobros con Point): con "cache first"
+  // la consulta de la orden devolvería para siempre la primera respuesta
+  if (url.pathname.startsWith('/api/')) return;
 
   // Network first para el HTML principal
   if (req.mode === 'navigate' || req.destination === 'document') {

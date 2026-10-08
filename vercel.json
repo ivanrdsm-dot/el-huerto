@@ -12,9 +12,14 @@
     {
       "src": "sw.js",
       "use": "@vercel/static"
+    },
+    {
+      "src": "api/*.js",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
+    { "src": "/api/point", "dest": "/api/point.js" },
     { "src": "/manifest.json", "dest": "/manifest.json" },
     { "src": "/sw.js", "dest": "/sw.js", "headers": { "Service-Worker-Allowed": "/", "Cache-Control": "no-cache" } },
     { "src": "/(.*)", "dest": "/index.html" }
