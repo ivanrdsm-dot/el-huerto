@@ -13,6 +13,21 @@ en Vercel, redesplegar y regresar la Point a modo normal (Paso 2, `--normal`).
 Ya configurado: `MP_POINT_STAFF_EMAILS` (admin, Claudia 2002, Erandy 2005,
 Vale 2006). Cuando entre alguien nuevo, agrega su `empID@elhuerto.app`.
 
+## 🟢 Plan B activo: conciliación con los cobros reales de la Point
+
+Mientras la Point no esté en PDV, se cobra como siempre (monto tecleado en la
+Point + 💳 Tarjeta en el POS) y el POS revisa contra Mercado Pago:
+
+- **Cada venta con tarjeta** se busca en los cobros de la Point (serie
+  N950NCCA05077658): mismo monto sin propina y a menos de 20 min. Queda
+  **✓MP** en Ventas, o **⚠ sin cobro** a los 15 min si no aparece (aviso en
+  pantalla: casi siempre es un monto tecleado distinto en la terminal).
+- **El corte** (paso 2) trae solo el **total de la terminal y las propinas
+  exactas**, lista las ventas sin cobro y los cobros sin venta. Lo tecleado a
+  mano se respeta; el botón *Traer de Mercado Pago* lo actualiza.
+- Corre sola al cobrar con tarjeta y cada 5 min. Solo con cuenta propia de la
+  cajera y su correo en `MP_POINT_STAFF_EMAILS`. Solo lectura: no mueve dinero.
+
 ## 🔴 Estado al 7-oct-2026: esperando a soporte de Mercado Pago
 
 Hecho: token de producción en Vercel y `.env`, ID de la terminal confirmado,

@@ -7,6 +7,7 @@
 // después pregunta por la orden hasta que se paga o se cae.
 //
 //   GET  /api/point?estado=1               → ¿Point configurado? (sin sesión)
+//   GET  /api/point?pagos=1&desde=ISO&hasta=ISO → cobros de la Point (conciliación)
 //   POST /api/point {accion:'crear', monto, propina, ticket, intento}
 //   GET  /api/point?id=ORD...              → estado de la orden
 //   POST /api/point {accion:'cancelar', id}
@@ -239,6 +240,64 @@ async function cancelar(body, res, cfg) {
   return enviar(res, 200, resumen(data));
 }
 
+// ─── Conciliación: los cobros reales de la Point ───
+// Mientras la terminal no esté en modo PDV, las cajeras teclean el monto en
+// la Point y tocan Tarjeta en el POS. El POS compara cada venta contra lo que
+// de verdad cobró la terminal. Solo lectura.
+// OJO: /v1/payments/search SIN payment_type_id no devuelve los cobros de
+// Point (visto en oct-2026: solo salían cashbacks y transferencias).
+// tip_amount viene en metadata y YA está incluida en transaction_amount.
+// Y con criteria=asc la búsqueda devuelve CERO resultados (desc sí trae todo):
+// se pide en desc y se ordena aquí.
+const SERIAL_POINT = process.env.MP_POINT_SERIAL?.trim() || 'N950NCCA05077658';
+const TIPOS_TARJETA = ['debit_card', 'credit_card', 'prepaid_card'];
+const MAX_RANGO_MS = 3 * 864e5;
+
+function cobroPoint(p) {
+  return {
+    id: String(p.id),
+    fecha: p.date_approved || p.date_created,
+    monto: Number(p.transaction_amount) || 0,
+    propina: Number(p.metadata?.tip_amount) || 0,
+    neto: p.transaction_details?.net_received_amount ?? null,
+    estado: p.status,
+    tipo: p.payment_type_id,
+    marca: p.payment_method_id || null,
+    ultimos4: p.card?.last_four_digits || null,
+    serie: p.point_of_interaction?.device?.serial_number || null,
+  };
+}
+
+async function listarPagos(consulta, res, token) {
+  const desde = new Date(String(consulta.desde || ''));
+  const hasta = new Date(String(consulta.hasta || ''));
+  if (isNaN(desde) || isNaN(hasta) || hasta <= desde || hasta - desde > MAX_RANGO_MS) {
+    return enviar(res, 400, { error: 'Rango de fechas inválido (máximo 3 días).' });
+  }
+  const pagos = [];
+  let otros = 0;
+  for (const tipo of TIPOS_TARJETA) {
+    for (let offset = 0; offset < 1000; offset += 100) {
+      const q = new URLSearchParams({
+        payment_type_id: tipo, range: 'date_created',
+        begin_date: desde.toISOString(), end_date: hasta.toISOString(),
+        sort: 'date_created', criteria: 'desc', limit: '100', offset: String(offset),
+      });
+      const r = await fetch(`https://api.mercadopago.com/v1/payments/search?${q}`, { headers: mpHeaders({ token }) });
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) return enviar(res, r.status, { error: errorMP(data, r.status), codigo: codigoMP(data) });
+      for (const p of data.results || []) {
+        if (p.point_of_interaction?.type !== 'POINT') continue;
+        if (p.point_of_interaction?.device?.serial_number !== SERIAL_POINT) { otros++; continue; }
+        pagos.push(cobroPoint(p));
+      }
+      if (!data.results || data.results.length < 100) break;
+    }
+  }
+  pagos.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
+  return enviar(res, 200, { serie: SERIAL_POINT, pagos, otros });
+}
+
 function enviar(res, status, cuerpo) {
   res.statusCode = status;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -277,6 +336,18 @@ module.exports = async function handler(req, res) {
     return enviar(res, 502, { error: 'No se pudo verificar la sesión. Revisa el internet y reintenta.' });
   }
   if (quien.error) return enviar(res, quien.status, { error: quien.error });
+
+  // La conciliación solo necesita el token: funciona aunque Point (el envío
+  // automático a la terminal) siga apagado por falta de MP_POINT_TERMINAL_ID.
+  if (req.method === 'GET' && consulta.pagos) {
+    const token = process.env.MP_ACCESS_TOKEN?.trim();
+    if (!token) return enviar(res, 503, { error: 'Falta MP_ACCESS_TOKEN en las variables de entorno de Vercel.' });
+    try { return await listarPagos(consulta, res, token); }
+    catch (e) {
+      console.error('point pagos:', e?.message || e);
+      return enviar(res, 502, { error: 'No hubo respuesta de Mercado Pago. Revisa el internet y reintenta.' });
+    }
+  }
 
   const cfg = pointConfig();
   if (cfg.error) return enviar(res, 503, { error: cfg.error });

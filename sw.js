@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.81'; // Mercado Pago Point: /api nunca se cachea
+const CACHE_NAME = 'el-huerto-v14.82'; // Conciliación de tarjeta con los cobros reales de la Point
 const ASSETS = [
   '/',
   '/index.html',

@@ -1445,6 +1445,11 @@ nav{padding-top:env(safe-area-inset-top);}
             <div class="fg" style="margin:0;"><label>Desglose</label>
               <div id="corte-tc-desglose" class="cs-desglose">—</div></div>
           </div>
+          <!-- Plan B Point: el total y las propinas salen de los cobros reales -->
+          <div style="margin-top:10px;">
+            <button class="btn bbl bfull bsm" id="corte-mp-btn" onclick="corteTraerMP()">🔄 Traer de Mercado Pago (cobros reales de la Point)</button>
+            <div id="corte-mp" style="font-size:12px;margin-top:8px;"></div>
+          </div>
         </div>
 
         <!-- PASO 3: Cierre -->
@@ -8487,6 +8492,231 @@ function ptRevisarPendiente(){
   if(Date.now()-(p.ts||0)>3*3600e3){logAudit('point_pendiente_viejo',{orden:p.orderId||null,monto:p.monto});}
   _pt=p; ptAbrir('espera'); ptReanudar();
 }
+
+// ══════════════════════════════════════════════════════════════
+// CONCILIACIÓN CON MERCADO PAGO (plan B mientras la Point no esté en PDV)
+// La cajera sigue tecleando el monto en la Point y tocando Tarjeta aquí.
+// El POS trae los cobros REALES de la terminal (/api/point?pagos=1) y
+// empareja cada venta con tarjeta con su cobro: mismo monto (la propina
+// viene aparte en el cobro) y hora cercana. Así:
+//   · cada venta queda ✓ verificada, o ⚠ "sin cobro" si nadie la cobró
+//     o se tecleó otro monto en la terminal;
+//   · el corte trae el total de la terminal y las propinas EXACTOS, y
+//     lista los cobros que no tienen venta en el POS.
+// Con Point en PDV sigue sirviendo: la venta trae la referencia del pago.
+// ══════════════════════════════════════════════════════════════
+const MP_VENTANA_MIN=20;   // venta y cobro a más de esto no se emparejan
+const MP_GRACIA_MIN=15;    // una venta sin cobro se marca después de esto
+let _mpCache={fecha:null,ts:0,datos:null};
+let _mpCargando=null;
+let _mpTimer=null;
+let _mpUltimo=null;        // resumen de la última conciliación (va al corte)
+const _mpAvisados=new Set();
+
+async function mpTraerPagos(fecha,forzar=false){
+  if(!forzar && _mpCache.fecha===fecha && Date.now()-_mpCache.ts<60e3) return _mpCache.datos;
+  if(_mpCargando) return _mpCargando;
+  if(ptSinCuenta()) throw Object.assign(new Error(ptMsgSinCuenta),{sinCuenta:true});
+  _mpCargando=(async()=>{
+    const d0=new Date(fecha+'T00:00:00'); // medianoche local (Ciudad de México)
+    const q=`?pagos=1&desde=${encodeURIComponent(d0.toISOString())}&hasta=${encodeURIComponent(new Date(d0.getTime()+864e5).toISOString())}`;
+    const token=await auth.currentUser.getIdToken();
+    const r=await fetch('/api/point'+q,{cache:'no-store',headers:{'Authorization':'Bearer '+token}});
+    const d=await r.json().catch(()=>({}));
+    if(!r.ok||!Array.isArray(d.pagos)) throw Object.assign(new Error(d.error||`El servidor de cobro respondió ${r.status}`),{status:r.status});
+    _mpCache={fecha,ts:Date.now(),datos:d};
+    return d;
+  })();
+  try{ return await _mpCargando; } finally{ _mpCargando=null; }
+}
+
+// Cada pago con tarjeta de una venta es un "cargo" a buscar en la Point
+function cargosTarjeta(ventas){
+  const out=[];
+  for(const v of ventas){
+    if(v.anulada) continue;
+    ventaPagos(v).forEach((x,i)=>{
+      if(x.metodo!=='tarjeta'||!(x.monto>0)) return;
+      out.push({key:`${v.id}:${i}`,ventaId:v.id,idx:i,
+        // con Point en PDV la propina capturada en el POS va dentro del cobro
+        monto:Math.round(((x.monto||0)+(x.propina||0))*100)/100,
+        ts:v.tsCobro||v.id,
+        pago:v.mpVerif?.cargos?.[i]?.pago||x.mp?.ref||null});
+    });
+  }
+  return out;
+}
+
+// Empareja cargos del POS con cobros reales. Primero respeta los vínculos
+// ya hechos; luego, entre todos los pares con el mismo monto dentro de la
+// ventana, asigna primero los más cercanos en tiempo (así dos ventas
+// iguales seguidas no se "roban" el cobro).
+function emparejarTarjeta(cargos,pagos,ahora=Date.now()){
+  const aprobados=pagos.filter(p=>p.estado==='approved');
+  const base=p=>Math.round(((p.monto||0)-(p.propina||0))*100)/100;
+  const t=p=>new Date(p.fecha).getTime();
+  const usados=new Set(), res=new Map();
+  for(const c of cargos){
+    const p=c.pago&&aprobados.find(x=>x.id===String(c.pago)&&!usados.has(x.id));
+    if(p){usados.add(p.id);res.set(c.key,{estado:'ok',pago:p});}
+  }
+  const pares=[];
+  for(const c of cargos){
+    if(res.has(c.key)) continue;
+    for(const p of aprobados){
+      if(usados.has(p.id)||Math.abs(base(p)-c.monto)>0.01) continue;
+      const d=Math.abs(t(p)-c.ts);
+      if(d<=MP_VENTANA_MIN*60e3) pares.push({c,p,d});
+    }
+  }
+  pares.sort((a,b)=>a.d-b.d);
+  for(const {c,p} of pares){
+    if(res.has(c.key)||usados.has(p.id)) continue;
+    usados.add(p.id); res.set(c.key,{estado:'ok',pago:p});
+  }
+  for(const c of cargos) if(!res.has(c.key))
+    res.set(c.key,{estado:ahora-c.ts>MP_GRACIA_MIN*60e3?'sin_cobro':'pendiente'});
+  return {res,sueltos:aprobados.filter(p=>!usados.has(p.id))};
+}
+
+// Firestore puede devolver las llaves en otro orden: se compara lo que importa
+const mismaVerif=(a,b)=>!!a&&!!b&&a.estado===b.estado&&(a.cargos||[]).length===(b.cargos||[]).length
+  &&(a.cargos||[]).every((x,i)=>(x?.estado||null)===(b.cargos[i]?.estado||null)&&(x?.pago||null)===(b.cargos[i]?.pago||null));
+
+async function conciliarTarjeta({fecha=today(),forzar=false,avisar=true}={}){
+  const datos=await mpTraerPagos(fecha,forzar);
+  const cargos=cargosTarjeta(D.ventas.filter(v=>v.fecha===fecha));
+  const {res,sueltos}=emparejarTarjeta(cargos,datos.pagos);
+  const porVenta=new Map();
+  for(const c of cargos){
+    if(!porVenta.has(c.ventaId)) porVenta.set(c.ventaId,[]);
+    const r=res.get(c.key);
+    porVenta.get(c.ventaId)[c.idx]=r.estado==='ok'
+      ?{estado:'ok',pago:r.pago.id,monto:r.pago.monto,propina:r.pago.propina||0,tipo:r.pago.tipo||null,
+        marca:r.pago.marca||null,ultimos4:r.pago.ultimos4||null,fecha:r.pago.fecha||null}
+      :{estado:r.estado};
+  }
+  for(const [id,lista] of porVenta){
+    const v=D.ventas.find(x=>x.id===id); if(!v) continue;
+    const cs=Array.from(lista,x=>x||null); // los huecos (pagos en efectivo) van como null
+    const est=cs.filter(Boolean).map(x=>x.estado);
+    const estado=est.includes('sin_cobro')?'sin_cobro':est.includes('pendiente')?'pendiente':'ok';
+    if(estado==='pendiente'&&!v.mpVerif) continue; // nada que guardar todavía
+    const nuevo={estado,cargos:cs,ts:Date.now()};
+    if(mismaVerif(v.mpVerif,nuevo)) continue;
+    const antes=v.mpVerif?.estado;
+    v.mpVerif=nuevo;
+    escrituraOk(setDoc(docRef('ventas',id),{mpVerif:nuevo},{merge:true})).catch(e=>console.warn('mpVerif:',e?.code||e));
+    if(estado==='sin_cobro'&&antes!=='sin_cobro'&&avisar&&!_mpAvisados.has(id)){
+      _mpAvisados.add(id);
+      toast(`⚠ La venta ${v.ticket||''} de ${fmt(ventaTc(v))} (${v.hora||''}) no tiene cobro en la Point. ¿Se cobró? ¿Se tecleó otro monto?`,9000,'warn');
+    }
+  }
+  const aprobados=datos.pagos.filter(p=>p.estado==='approved');
+  const est=k=>cargos.filter(c=>res.get(c.key).estado===k).length;
+  _mpUltimo={fecha,cobros:aprobados.length,
+    total:Math.round(aprobados.reduce((s,p)=>s+p.monto,0)*100)/100,
+    propinas:Math.round(aprobados.reduce((s,p)=>s+(p.propina||0),0)*100)/100,
+    verificadas:est('ok'),sinCobro:est('sin_cobro'),pendientes:est('pendiente'),
+    sinVenta:sueltos.length,otros:datos.otros||0,ts:Date.now()};
+  return {pagos:datos.pagos,otros:datos.otros||0,cargos,res,sueltos};
+}
+
+function programarConciliacion(ms=45e3){
+  clearTimeout(_mpTimer);
+  _mpTimer=setTimeout(()=>conciliarTarjeta().catch(e=>console.warn('conciliación:',e.message)),ms);
+}
+// Cada 5 min, mientras haya ventas con tarjeta de hoy sin verificar
+setInterval(()=>{
+  if(MODO_MENU||MODO_PANTALLA||_tarjetaCode||!SESSION||ptSinCuenta()||document.visibilityState!=='visible') return;
+  const pend=D.ventas.some(v=>v.fecha===today()&&!v.anulada&&v.mpVerif?.estado!=='ok'&&ventaPagos(v).some(x=>x.metodo==='tarjeta'));
+  if(pend) conciliarTarjeta().catch(e=>console.warn('conciliación:',e.message));
+},5*60e3);
+
+// Etiqueta de la venta en listas y detalle
+function mpBadge(v){
+  const m=v.mpVerif; if(!m||v.anulada) return '';
+  if(m.estado==='ok'){
+    const c=(m.cargos||[]).find(x=>x&&x.estado==='ok');
+    return `<span class="badge xg" title="Cobro verificado en Mercado Pago${c?.ultimos4?' · ···'+c.ultimos4:''}${c?.propina?' · propina '+fmt(c.propina):''}">✓MP</span>`;
+  }
+  if(m.estado==='sin_cobro') return `<span class="badge xr" title="No hay un cobro de la Point por este monto cerca de esta hora">⚠ sin cobro</span>`;
+  return '';
+}
+function mpDetalle(v){
+  const m=v.mpVerif; if(!m) return '';
+  if(m.estado==='sin_cobro') return '⚠ Sin cobro en la Point por este monto';
+  if(m.estado!=='ok') return '⏳ Buscando el cobro…';
+  return (m.cargos||[]).filter(x=>x&&x.estado==='ok').map(c=>{
+    const h=c.fecha?new Date(c.fecha).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}):'';
+    return `✓ ${c.tipo==='debit_card'?'Débito':'Crédito'}${c.ultimos4?' ···'+c.ultimos4:''} · ${h}${c.propina?' · 💁 '+fmt(c.propina):''} · #${c.pago}`;
+  }).join('<br>');
+}
+
+// ── Corte: total de la terminal y propinas desde los cobros reales ──
+const mpHora=f=>new Date(f).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false});
+function mpPropinasPOS(){
+  // Sin datos de Mercado Pago: al menos las propinas capturadas en el POS (Point en PDV)
+  const td=today();
+  const p=Math.round(D.ventas.filter(v=>v.fecha===td&&!v.anulada).reduce((s,v)=>s+(v.propinaTc||0),0)*100)/100;
+  const i=$('corte-tc-propina');
+  if(i&&!i.value&&p>0){i.value=p.toFixed(2);i.title='Propinas cobradas con Point hoy';}
+}
+function mpPrecargarCorte(){
+  if(!_mpUltimo||_mpUltimo.fecha!==today()) return;
+  const td=today();
+  const propPOS=D.ventas.filter(v=>v.fecha===td&&!v.anulada).reduce((s,v)=>s+(v.propinaTc||0),0);
+  const llenar=(id,val)=>{
+    const i=$(id); if(!i) return;
+    // Solo si está vacío o si lo que tiene lo puso Mercado Pago: lo tecleado se respeta
+    if(!i.value||i.value===i.dataset.mpAuto){
+      i.value=val.toFixed(2); i.dataset.mpAuto=i.value; i.title='Traído de Mercado Pago';
+    }
+  };
+  llenar('corte-tc-real',_mpUltimo.total);
+  llenar('corte-tc-propina',Math.round((_mpUltimo.propinas+propPOS)*100)/100);
+  if(typeof window.calcCorteTC==='function') window.calcCorteTC();
+}
+function mpRenderCorte(r){
+  const el=$('corte-mp'); if(!el||!_mpUltimo) return;
+  const u=_mpUltimo;
+  const sinCobro=r.cargos.filter(c=>r.res.get(c.key).estado==='sin_cobro');
+  const fila=(a,b,color)=>`<div class="sr"${color?` style="color:${color};"`:''}><span>${a}</span><span class="mono">${b}</span></div>`;
+  el.innerHTML=
+    fila('📟 Point hoy',`${u.cobros} cobros · ${fmt(u.total)} (💁 ${fmt(u.propinas)})`)+
+    fila('✓ Ventas con tarjeta verificadas',`${u.verificadas} de ${r.cargos.length}`)+
+    (sinCobro.length?`<div style="color:var(--red);font-weight:700;margin-top:8px;">⚠ Ventas con tarjeta SIN cobro en la Point (${sinCobro.length})</div>`+
+      sinCobro.map(c=>{const v=D.ventas.find(x=>x.id===c.ventaId);return fila(`${v?.ticket||''} · ${v?.hora||''}`,fmt(c.monto),'var(--red)');}).join(''):'')+
+    (r.sueltos.length?`<div style="color:var(--gold);font-weight:700;margin-top:8px;">❓ Cobros en la Point sin venta en el POS (${r.sueltos.length})</div>`+
+      r.sueltos.map(p=>fila(`${mpHora(p.fecha)} · ${p.tipo==='debit_card'?'débito':'crédito'}${p.ultimos4?' ···'+p.ultimos4:''}`,
+        `${fmt(p.monto-(p.propina||0))}${p.propina?' + 💁 '+fmt(p.propina):''}`)).join(''):'')+
+    (u.pendientes?`<div style="color:var(--text3);margin-top:6px;">⏳ ${u.pendientes} venta(s) recientes todavía sin cobro: se revisan solas</div>`:'')+
+    (u.otros?`<div style="color:var(--text3);margin-top:4px;">ℹ ${u.otros} cobro(s) de otro dispositivo en la cuenta: no se cuentan</div>`:'')+
+    `<div style="color:var(--text3);margin-top:4px;">Actualizado ${mpHora(u.ts)}</div>`;
+}
+window.corteTraerMP=async()=>{
+  const btn=$('corte-mp-btn'), txt=btn?.textContent;
+  if(btn){btn.disabled=true;btn.textContent='⏳ Consultando Mercado Pago…';}
+  try{
+    const r=await conciliarTarjeta({forzar:true});
+    mpPrecargarCorte(); mpRenderCorte(r);
+    toast('✓ Cobros de la Point actualizados',2000);
+  }catch(e){
+    const el=$('corte-mp'); if(el) el.textContent='⚠ '+(e.sinCuenta?ptMsgSinCuenta:ptMsgError(e));
+    mpPropinasPOS();
+  }finally{ if(btn){btn.disabled=false;btn.textContent=txt;} }
+};
+// Al abrir el corte se trae solo (a lo más una vez por minuto)
+let _mpCorteTs=0;
+function mpCorteAuto(){
+  const el=$('corte-mp'); if(!el) return;
+  if(ptSinCuenta()){ el.textContent='Entra con tu cuenta propia para traer los cobros reales de la Point.'; mpPropinasPOS(); return; }
+  if(Date.now()-_mpCorteTs<60e3) return;
+  _mpCorteTs=Date.now();
+  conciliarTarjeta({avisar:false})
+    .then(r=>{mpPrecargarCorte();mpRenderCorte(r);})
+    .catch(e=>{el.textContent='⚠ '+ptMsgError(e);mpPropinasPOS();});
+}
 window.setBillete=v=>{
   $('cobro-recibido').value=v; calcCambio();
 };
@@ -8740,6 +8970,8 @@ async function cobrar(metodo,recibido=0,pagos=null,extra=null){
     setTimeout(()=>{ if(!order.length) publicarPantalla('vacio'); },6000);
     if(esRetroactiva && $('op-fecha-venta')) $('op-fecha-venta').value=today();
     renderOrder();
+    // Venta con tarjeta de hoy: buscar su cobro en la Point en un rato
+    if(!esRetroactiva && listaPagos.some(x=>x.metodo==='tarjeta')) programarConciliacion();
     return true;
   }catch(e){
     console.error('Error en venta:',e);
@@ -8904,6 +9136,7 @@ function renderHistorial(){
         <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap;">
           <span class="mono fw7 ${v.anulada?'ar':'ag'}" style="font-size:15px;">${v.anulada?'ANULADA':fmt(v.total)}</span>
           <span class="badge ${esMixta(v)?'xg':(v.metodo==='efectivo'?'xb':'xy')}" title="${esMixta(v)?etiquetaPago(v):''}">${iconoPago(v)}</span>
+          ${mpBadge(v)}
           ${!v.anulada?`<button class="btn bs bxs" onclick="openVentaModal(${v.id})">✏️</button><button class="btn bd bxs" onclick="anularVenta(${v.id})">Anular</button>`:'<span class="badge xr">Anulada</span>'}
         </div>
       </div>
@@ -9374,6 +9607,7 @@ window.openVentaModal=id=>{
       <div class="sr"><span>Fecha / Hora</span><span class="mono">${v.fecha} ${v.hora}</span></div>
       <div class="sr"><span>Vendedor</span><span>${e?`<span class="badge" style="background:${e.color||'var(--accent)'}22;color:${e.color||'var(--accent)'};">${e.nombre}</span>`:'Sin asignar'}</span></div>
       <div class="sr"><span>Método</span><span class="badge ${esMixta(v)?'xg':(v.metodo==='efectivo'?'xb':'xy')}">${esMixta(v)?etiquetaPago(v):v.metodo}</span></div>
+      ${v.mpVerif?`<div class="sr"><span>Mercado Pago</span><span style="text-align:right;font-size:12px;">${mpDetalle(v)}</span></div>`:''}
       <div class="sr"><span>Total</span><span class="mono fw7 ag" style="font-size:16px;">${fmt(v.total)}</span></div>
     </div>
     <div class="ct">Productos</div>
@@ -9611,14 +9845,9 @@ function renderCorteInfo(){
   const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
   const esperado=fondos+vEf+deps-retiros;
 
-  // Propinas cobradas con Point: el POS ya las conoce, se precargan.
-  // La cajera puede corregir si además tecleó propinas a mano en la terminal.
-  const propPoint=Math.round(ventasHoy.reduce((s,v)=>s+(v.propinaTc||0),0)*100)/100;
-  const inpProp=$('corte-tc-propina');
-  if(inpProp && !inpProp.value && propPoint>0){
-    inpProp.value=propPoint.toFixed(2);
-    inpProp.title='Precargado con las propinas cobradas con Point hoy';
-  }
+  // Total de la terminal y propinas: se traen de los cobros reales de la
+  // Point (plan B). Lo que la cajera teclee a mano se respeta.
+  mpCorteAuto();
 
   // Badge si ya se hizo corte hoy
   const corteHoy=[...D.cortes].filter(c=>c.fecha===td).sort((a,b)=>b.id-a.id)[0];
@@ -9843,6 +10072,10 @@ window.realizarCorte=async()=>{
     esperado, contado, diferencia,
     // Tarjeta (tcReal = total terminal; propinas se desglosan aparte)
     tcReal, tcDiff, propinas,
+    // ¿El total de la terminal lo trajo Mercado Pago o se tecleó?
+    tcFuente:($('corte-tc-real')?.dataset.mpAuto&&$('corte-tc-real').value===$('corte-tc-real').dataset.mpAuto)?'mercadopago':'manual',
+    mpConc:(_mpUltimo&&_mpUltimo.fecha===td)?{cobros:_mpUltimo.cobros,verificadas:_mpUltimo.verificadas,
+      sinCobro:_mpUltimo.sinCobro,sinVenta:_mpUltimo.sinVenta,propinas:_mpUltimo.propinas}:null,
     numVentas:ventasHoy.length,
     cerroE1:$('cdc')?.checked||false,
     cerroE2:$('ccc')?.checked||false,
