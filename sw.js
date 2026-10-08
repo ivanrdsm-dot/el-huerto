@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.79'; // Bajas 7-oct: Vale, pechuga KS, té
+const CACHE_NAME = 'el-huerto-v14.80'; // Firebase Auth: una cuenta por persona
 const ASSETS = [
   '/',
   '/index.html',

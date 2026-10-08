@@ -2265,6 +2265,26 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div id="cfg-pantalla-qr" style="margin-top:12px;display:none;text-align:center;"></div>
   </div>
+  <div class="card" style="border:2px solid var(--gold);">
+    <div class="ct">🔐 Cuentas de acceso (Firebase)</div>
+    <div style="font-size:11.5px;color:var(--text2);line-height:1.6;margin-bottom:10px;">
+      Hoy todo el sistema entra con <b>una sola sesión anónima</b>, así que Firestore no puede distinguir
+      a Claudia del dueño, y los hashes de las contraseñas viajan dentro del código de la página.
+      Con una cuenta por persona eso se cierra.
+      <br><br><b>Antes de crearlas:</b> en la consola de Firebase, Authentication → Sign-in method →
+      activa <b>Correo electrónico/contraseña</b>.
+    </div>
+    <div id="cfg-auth-estado" style="font-size:12px;margin-bottom:10px;"></div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+      <button class="btn bs" onclick="revisarCuentasAuth()">🔍 Revisar estado</button>
+      <button class="btn bp" onclick="crearCuentasAuth()">👥 Crear las cuentas</button>
+    </div>
+    <div style="font-size:11px;color:var(--text3);margin-top:9px;line-height:1.5;">
+      Crear las cuentas <b>no cambia nada todavía</b>: la app sigue funcionando igual.
+      Las reglas nuevas (<code>firestore.rules.v3</code>) se publican hasta que las tres personas
+      hayan entrado una vez con su contraseña.
+    </div>
+  </div>
   <div class="card">
     <div class="ct">Menú QR — apartar lugar en la fila</div>
     <div style="font-size:11.5px;color:var(--text2);line-height:1.55;margin-bottom:10px;">
@@ -2584,7 +2604,7 @@ nav{padding-top:env(safe-area-inset-top);}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
 const app=initializeApp(FB);
@@ -2624,7 +2644,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[],usuarios:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
@@ -2867,7 +2887,7 @@ function listenAll(){
   // Con el menú QR repartido en toda la universidad eso dejaba de ser
   // teórico. Cada modo baja solo lo suyo y ninguno migra nada.
   // ══════════════════════════════════════════════════════════════
-  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos'];
+  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos','usuarios'];
   const publico = MODO_MENU || MODO_PANTALLA || !!_tarjetaCode;
   const cols = MODO_PANTALLA ? []
     : MODO_MENU ? ['productos']
@@ -6219,6 +6239,58 @@ function playSaleSound(){
   }catch(e){ console.log('Audio no disponible'); }
 }
 
+// ══════════════════════════════════════════════════════════════
+// IDENTIDAD REAL EN FIREBASE (una cuenta por persona)
+//
+// El problema que esto cierra: hoy toda la app entra con la MISMA sesión
+// anónima, así que Firestore no puede distinguir a Claudia del dueño —
+// las reglas solo saben "está autenticado". Y los hashes de las
+// contraseñas viajan dentro de index.html, visibles para cualquiera que
+// abra el código fuente.
+//
+// Rollout por etapas, a propósito. Si las reglas se cierran antes de que
+// existan las cuentas, NADIE puede vender mañana:
+//   1. (este código) Al entrar se intenta además iniciar sesión REAL en
+//      Firebase. Si la cuenta no existe o el proveedor está apagado, se
+//      sigue con la sesión anónima de siempre: nada se rompe.
+//   2. Iván activa Correo/Contraseña en la consola de Firebase.
+//   3. Desde Ajustes → Cuentas de acceso se crean las cuentas.
+//   4. Cuando TODOS hayan entrado una vez, se publican las reglas
+//      nuevas (firestore.rules.v3) y recién ahí sirve de algo.
+//
+// El correo se arma con el ID del empleado, no con su nombre: los
+// nombres cambian de persona, los ids no (misma regla que el historial).
+// ══════════════════════════════════════════════════════════════
+const AUTH_DOM='elhuerto.app';
+const authEmail=quien=>quien==='admin'?`admin@${AUTH_DOM}`:`emp${quien}@${AUTH_DOM}`;
+let AUTH_PERFIL=null; // {uid,rol,empId} cuando hay sesión propia
+async function entrarFirebase(quien,password){
+  try{
+    const cred=await signInWithEmailAndPassword(auth,authEmail(quien),password);
+    const perfil={uid:cred.user.uid,quien};
+    AUTH_PERFIL=perfil;
+    console.log('✓ Sesión propia de Firebase:',authEmail(quien));
+    return 'ok';
+  }catch(e){
+    const c=e?.code||'';
+    // Cuenta inexistente o proveedor apagado: seguimos con la anónima
+    if(c.includes('user-not-found')||c.includes('invalid-credential')||c.includes('operation-not-allowed')||c.includes('invalid-email')){
+      console.warn('Sin cuenta propia para',quien,'—',c,'(se sigue con sesión anónima)');
+      return 'sin-cuenta';
+    }
+    if(c.includes('wrong-password')) return 'mala-pass';
+    console.warn('Auth:',c);
+    return 'sin-cuenta';
+  }
+}
+// Cierra la sesión propia y vuelve a la anónima, para que la app siga
+// leyendo aunque las reglas todavía sean las viejas.
+async function salirFirebase(){
+  AUTH_PERFIL=null;
+  try{ await signOut(auth); }catch(e){}
+  try{ await signInAnonymously(auth); }catch(e){}
+}
+
 // ─── AUTH ───
 // A0-SEGURIDAD: PINs almacenados como hash SHA-256 (ya no en texto plano).
 // Los PINs NO cambiaron para las usuarias — solo su almacenamiento.
@@ -6466,6 +6538,9 @@ async function checkPIN(){
     const ok = (empHash && valHash===empHash) || (legacyPin && val===legacyPin);
     if(ok){
       pinExito();
+      // Etapa 1: además del hash local, se intenta la sesión propia.
+      // Si aún no existe la cuenta, seguimos igual que siempre.
+      await entrarFirebase(pinTargetEmpId,val);
       $('pin-modal').style.display='none';
       loginEmp(pinTargetEmpId);
       pinTargetEmpId=null; pinTarget=null;
@@ -6481,6 +6556,7 @@ async function checkPIN(){
   // Admin PIN check (hash comparison)
   if(valHash===ADMIN_PASS_HASH){
     pinExito();
+    await entrarFirebase('admin',val);
     SESSION={tipo:'admin',nombre:'Admin',color:'#e8c96a'};
     try{ localStorage.setItem('h5session',JSON.stringify(SESSION)); }catch(e){}
     $('pin-modal').style.display='none';
@@ -13688,6 +13764,64 @@ window.abrirPantallaCliente=()=>{
   if(!w){toast('⚠ El navegador bloqueó la ventana. Permite pop-ups de este sitio',4500,'warn');return;}
   publicarPantalla(); // que arranque con lo que hay en la orden
   toast('🖥 Pantalla abierta — muévela al monitor del cliente y ponla en pantalla completa (F11)',6000);
+};
+// ── Alta de las cuentas de Firebase (una sola vez) ──
+// createUserWithEmailAndPassword deja la sesión abierta como el usuario
+// recién creado, así que al final hay que volver a entrar como admin.
+function _authPersonas(){
+  const lista=[{quien:'admin',nombre:'Administrador (Iván)',rol:'admin',empId:null}];
+  empsActivos().forEach(e=>lista.push({
+    quien:e.id, nombre:e.nombre,
+    rol:(e.rol==='Gerente')?'gerente':'empleado', empId:e.id}));
+  return lista;
+}
+window.revisarCuentasAuth=async()=>{
+  const cont=$('cfg-auth-estado'); if(!cont) return;
+  cont.innerHTML='<span style="color:var(--text3);">Revisando…</span>';
+  const filas=[];
+  for(const p of _authPersonas()){
+    const u=D.usuarios?.find?.(x=>x.quien===String(p.quien));
+    filas.push(`<div class="sr"><span style="font-size:12px;">${p.nombre} <span style="color:var(--text3);font-size:10.5px;">${authEmail(p.quien)}</span></span>
+      <span class="badge ${u?'xg':'xy'}">${u?'✓ creada':'pendiente'}</span></div>`);
+  }
+  cont.innerHTML=filas.join('')+
+    `<div style="font-size:11px;color:var(--text3);margin-top:7px;">Sesión actual: <b>${AUTH_PERFIL?('propia · '+authEmail(AUTH_PERFIL.quien)):'anónima (compartida)'}</b></div>`;
+};
+window.crearCuentasAuth=async()=>{
+  if(SESSION?.tipo!=='admin'){toast('⚠ Solo administrador',2600,'warn');return;}
+  const personas=_authPersonas();
+  const passAdmin=prompt('Para terminar hay que volver a entrar como admin.\n\nEscribe TU contraseña de administrador:');
+  if(!passAdmin){toast('Cancelado',2000);return;}
+  const passes={};
+  for(const p of personas){
+    if(p.quien==='admin'){ passes[p.quien]=passAdmin; continue; }
+    const v=prompt(`Contraseña para ${p.nombre} (mínimo 6 caracteres).\n\nUsa LA MISMA con la que entra hoy, para que no note el cambio.`);
+    if(!v){toast('Cancelado',2000);return;}
+    if(v.length<6){alert(`La contraseña de ${p.nombre} debe tener al menos 6 caracteres (Firebase lo exige).`);return;}
+    passes[p.quien]=v;
+  }
+  const hechas=[],fallidas=[];
+  for(const p of personas){
+    try{
+      const cred=await createUserWithEmailAndPassword(auth,authEmail(p.quien),passes[p.quien]);
+      await fsSet('usuarios',{id:cred.user.uid,uid:cred.user.uid,quien:String(p.quien),
+        rol:p.rol,empId:p.empId,nombre:p.nombre,creada:today()});
+      hechas.push(p.nombre);
+    }catch(e){
+      const c=e?.code||'';
+      if(c.includes('email-already-in-use')) hechas.push(p.nombre+' (ya existía)');
+      else if(c.includes('operation-not-allowed')) fallidas.push(p.nombre+': falta activar Correo/Contraseña en Firebase');
+      else fallidas.push(p.nombre+': '+c);
+    }
+  }
+  // Volver a dejar la sesión como admin
+  const r=await entrarFirebase('admin',passAdmin);
+  if(r!=='ok') await salirFirebase();
+  logAudit('cuentas_auth_creadas',{creadas:hechas,fallidas});
+  await revisarCuentasAuth();
+  alert(`Cuentas creadas: ${hechas.length}\n${hechas.join('\n')}`+
+    (fallidas.length?`\n\nNo se pudieron:\n${fallidas.join('\n')}`:'')+
+    `\n\nNo cambió nada todavía: la app sigue igual. Pide a cada quien que entre una vez con su contraseña, y después publicamos las reglas nuevas.`);
 };
 window.mostrarQRMenu=()=>{
   const cont=$('cfg-menu-qr'); if(!cont) return;

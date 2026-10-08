@@ -1,0 +1,92 @@
+rules_version = '2';
+// ══════════════════════════════════════════════════════════════
+// EL HUERTO — Reglas Firestore v3 (identidad por persona)
+//
+// ⚠️ NO PUBLICAR TODAVÍA. Primero, en este orden:
+//   1. Firebase Console → Authentication → Sign-in method →
+//      activar "Correo electrónico/contraseña".
+//   2. En la app: Config → Cuentas de acceso → "Crear las cuentas".
+//   3. Que Iván, Claudia y Erandy entren UNA VEZ cada quien con su
+//      contraseña (eso confirma que su cuenta sirve).
+//   4. Recién entonces pegar este archivo en Firestore → Rules → Publish.
+//
+// Si algo sale mal: volver a publicar firestore.rules (v2) y todo
+// regresa a como estaba. Tenlo abierto en otra pestaña antes de publicar.
+//
+// QUÉ CAMBIA CONTRA v2
+//   v2: "cualquiera autenticado puede leer y escribir casi todo". Como
+//       toda la app entraba con la MISMA sesión anónima, eso incluía a
+//       quien escaneara el QR del menú o la tarjeta de sellos.
+//   v3: cada persona tiene su cuenta y su rol en usuarios/{uid}.
+//       El cliente anónimo solo ve el menú y puede apartar su lugar.
+//       Nómina y gastos quedan solo para el dueño.
+//
+// NOTA TÉCNICA: las reglas son una UNIÓN permisiva — si cualquier match
+// concede acceso, se concede. Por eso el comodín de abajo EXCLUYE
+// explícitamente las colecciones sensibles; no basta con restringirlas
+// en su propio match.
+// ══════════════════════════════════════════════════════════════
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function hayPerfil() {
+      return request.auth != null
+        && exists(/databases/$(database)/documents/usuarios/$(request.auth.uid));
+    }
+    function rol() {
+      return hayPerfil()
+        ? get(/databases/$(database)/documents/usuarios/$(request.auth.uid)).data.rol
+        : 'anonimo';
+    }
+    function esAdmin()  { return rol() == 'admin'; }
+    function esStaff()  { return rol() == 'admin' || rol() == 'gerente' || rol() == 'empleado'; }
+
+    // ── Lo único que necesita ver un cliente desde su celular ──
+    // Menú QR y tarjeta de sellos entran anónimos: ven el catálogo y
+    // nada más. No pueden tocar precios.
+    match /productos/{id} {
+      allow read:  if request.auth != null;
+      allow write: if esAdmin();
+    }
+    // La tarjeta de sellos se actualiza sola en el celular del cliente
+    match /lealtad/{id} {
+      allow read:  if request.auth != null;
+      allow write: if esStaff();
+    }
+    // El cliente CREA su pre-pedido; solo el personal lo lee y lo mueve
+    match /prepedidos/{id} {
+      allow create: if request.auth != null;
+      allow read, update, delete: if esStaff();
+    }
+    // Doc de la pantalla a cliente y registro de migraciones
+    match /sistema/{id} {
+      allow read:  if request.auth != null;
+      allow write: if esStaff();
+    }
+
+    // ── Solo el dueño ──
+    match /nomPagos/{id}  { allow read, write: if esAdmin(); }
+    match /gastos/{id}    { allow read, write: if esAdmin(); }
+    match /empleados/{id} { allow read: if esStaff(); allow write: if esAdmin(); }
+    match /usuarios/{id} {
+      allow read:  if request.auth != null && (request.auth.uid == id || esAdmin());
+      allow write: if esAdmin();
+    }
+
+    // ── Bitácora: append-only para todos, incluido el dueño ──
+    match /auditLog/{logId} {
+      allow create: if esStaff();
+      allow update, delete: if false;
+    }
+
+    // ── Todo lo demás de la operación ──
+    // El comodín excluye a mano lo que ya tiene regla propia, porque la
+    // unión permisiva volvería a conceder lo que arriba se restringió.
+    match /{col}/{docId} {
+      allow read: if esStaff()
+        && !(col in ['nomPagos','gastos','usuarios','auditLog']);
+      allow write: if esStaff()
+        && !(col in ['nomPagos','gastos','usuarios','auditLog','empleados','productos']);
+    }
+  }
+}
