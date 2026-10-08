@@ -35,6 +35,10 @@ Mensaje para soporte (Developers → Soporte, desde el panel de la app):
 > - Con el mismo token, `POST /v1/orders` (type point) a esa terminal sí responde
 >   201, y `/users/me`, `/stores` y `/pos` responden 200.
 > - En la terminal no aparece "Más opciones > Ajustes > Modo de vinculación".
+> - Ya re-vinculé la terminal a la sucursal "el huerto", caja "QR #1" (125408837),
+>   y sigue igual. Sin PDV, una orden a la terminal se queda en `created` y
+>   nunca llega (ORD01M4CS4VHZ4NJAGX22FQM6DX9X, cancelada). Otro x-request-id:
+>   13a36c00-3003-483f-aca2-1d57872a0901 (03:31 UTC).
 >
 > ¿Pueden habilitar a mi cuenta/aplicación la API de terminales, o activar el
 > modo PDV en esa terminal?
