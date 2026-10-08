@@ -129,6 +129,8 @@ const codigoMP = d => d?.errors?.[0]?.code || d?.code || d?.error || null;
 const MENSAJES_MP = {
   already_queued_order_for_terminal: 'Ya hay un cobro esperando en la terminal. Cancélalo antes de mandar otro.',
   forbidden_checking_terminal_owner: 'La terminal no está vinculada a la cuenta de Mercado Pago de esta app.',
+  // La documentación dice _terminal_owner; la API real (oct-2026) responde _device_owner
+  forbidden_checking_device_owner: 'La terminal no está vinculada a la cuenta de Mercado Pago de esta app. Revisa MP_POINT_TERMINAL_ID.',
   store_pos_not_found: 'La terminal no tiene sucursal ni caja asignada en Mercado Pago.',
   cannot_cancel_order: 'Esa orden ya no se puede cancelar (probablemente ya se pagó).',
   order_not_found: 'Mercado Pago no encuentra esa orden.',

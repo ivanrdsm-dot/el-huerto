@@ -33,28 +33,26 @@ tarjeta.
 4. Y en un `.env` local (ya está en `.gitignore`) para el Paso 2: copia
    `.env.example` a `.env` y pega el token en `MP_ACCESS_TOKEN`
 
-## Paso 2 — Ubicar la terminal y ponerla en modo PDV (3 min)
+## Paso 2 — La terminal y su modo PDV (2 min)
 
-Con la Point encendida y con internet:
+**ID de nuestra Point Smart 2 (confirmado el 7-oct-2026):**
+`NEWLAND_N950__N950NCCA05077658` (etiqueta trasera: modelo N950, SN NCCA05077658).
+Mercado Pago aceptó una orden de prueba a ese ID y se canceló al instante.
 
-```bash
-node --env-file=.env scripts/point-terminal.mjs
-```
+Mercado Pago **bloquea para esta cuenta** la API que lista terminales y cambia
+su modo (`403 PA_UNAUTHORIZED_RESULT_FROM_POLICIES`); las órdenes sí pasan. Por
+eso el modo se cambia **en la Point misma**:
 
-Copia el `id` (termina con el serial de la etiqueta trasera). Si el modo no es
-`PDV`:
+**Más opciones → Ajustes → Modo de vinculación → PDV**
 
-```bash
-node --env-file=.env scripts/point-terminal.mjs --pdv EL_ID_QUE_SALIO
-```
-
-> Si un día falla el internet o Mercado Pago, regrésala al modo normal con
-> `--normal EL_ID` y registra en el POS con “Registrar sin Point”.
+> Si un día falla el internet o Mercado Pago, ahí mismo se regresa al modo
+> normal y se registra en el POS con “Registrar sin Point”.
+> `scripts/point-terminal.mjs` sirve si algún día Mercado Pago libera la API.
 
 ## Paso 3 — Terminal en Vercel y redesplegar (2 min)
 
 ```bash
-printf '%s' 'EL_ID_QUE_SALIO' | vercel env add MP_POINT_TERMINAL_ID production
+printf '%s' 'NEWLAND_N950__N950NCCA05077658' | vercel env add MP_POINT_TERMINAL_ID production
 vercel redeploy https://el-huerto.vercel.app --target production
 ```
 

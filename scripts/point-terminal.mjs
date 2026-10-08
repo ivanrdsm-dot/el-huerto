@@ -28,12 +28,30 @@ async function mp(url, opts = {}) {
   if (!r.ok) {
     const code = data?.errors?.[0]?.code || data?.code || data?.error || '';
     console.error(`Mercado Pago respondió ${r.status} ${code}`);
+    // El cuerpo del error nunca trae el token: se muestra para diagnosticar
+    console.error(JSON.stringify(data).slice(0, 600));
     if (r.status === 401) console.error('→ El Access Token no es válido.');
+    if (r.status === 403) await diagnostico();
+    // Visto en la cuenta de El Huerto (oct-2026): las órdenes sí pasan,
+    // pero la API de terminales está bloqueada por política para la cuenta.
+    if (code === 'PA_UNAUTHORIZED_RESULT_FROM_POLICIES') {
+      console.error('→ Mercado Pago no deja a esta cuenta administrar terminales por API.');
+      console.error('  Hazlo desde la Point: Más opciones > Ajustes > Modo de vinculación (PDV / normal).');
+      console.error('  El ID para MP_POINT_TERMINAL_ID es MODELO__SERIAL (el serial está en la etiqueta trasera).');
+    }
     if (r.status === 412) console.error('→ Ya hay otra terminal en modo PDV en esa caja; solo se permite una.');
     if (code === 'store_pos_not_found') console.error('→ La terminal no tiene sucursal/caja asignada en Mercado Pago.');
     process.exit(1);
   }
   return data;
+}
+
+// ¿De qué cuenta es el token? La Point solo acepta órdenes de su dueño.
+async function diagnostico() {
+  const r = await fetch('https://api.mercadopago.com/users/me', { headers });
+  const u = await r.json().catch(() => ({}));
+  if (!r.ok) return console.error(`/users/me respondió ${r.status}: el token no sirve para esta cuenta.`);
+  console.error(`→ El token es del usuario ${u.id} (${u.site_id}, ${u.nickname}).`);
 }
 
 if (!modo) {
