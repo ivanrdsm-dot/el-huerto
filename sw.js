@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.86'; // Limpieza de duplicados del inventario
+const CACHE_NAME = 'el-huerto-v14.87'; // Fusión de las tapas en una sola
 const ASSETS = [
   '/',
   '/index.html',

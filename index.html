@@ -2947,6 +2947,7 @@ async function completeInit(){
   await migBajasOct2026();
   await migPartidasGastosOct2026();
   await migLimpiaInventarioOct2026();
+  await migFusionaTapasOct2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3892,6 +3893,46 @@ async function migLimpiaInventarioOct2026(){
       motivo:'Duplicados y artículos en desuso, a pedido de Iván'});
     toast(`✓ Inventario: ${borrados.length} duplicado(s) fuera${fusionados.length?`, ${fusionados.length} fusionado(s)`:''}`,5000);
   }
+  await markMig(migKey);
+}
+// ══ FUSIÓN DE LAS TAPAS (pedido de Iván, 8-oct) ══
+// Pidió eliminar "Tapa unicel". Pero esa era la que tenía 200 piezas y
+// 22 recetas colgando, contra 105 piezas y 2 recetas de "Tapa para
+// café": borrarla a secas dejaba 22 productos sin costear.
+// Así que el concepto "unicel" desaparece, pero por FUSIÓN: todo se
+// junta en "Tapa para café", que es como le dice él.
+// El precio viaja con la fusión — "Tapa para café" estaba en $0, y
+// quedarse con ese cero habría borrado el costo de las 22 recetas.
+async function migFusionaTapasOct2026(){
+  const migKey='h5tapas_oct26';
+  if(await migDone(migKey)) return;
+  const DE=7510, A=1787162118820;
+  const origen=D.inventario.find(i=>i.id===DE);
+  const destino=D.inventario.find(i=>i.id===A);
+  if(!origen||!destino){ await markMig(migKey); return; }
+  // 1. Las recetas apuntan al que se queda
+  let tocadas=0;
+  for(const r of D.recetas){
+    const ings=r.ings||[];
+    if(!ings.some(i=>i.invId===DE)) continue;
+    const upd={...r, ings:ings.map(i=>i.invId===DE?{...i,invId:A,nombre:destino.nombre}:i)};
+    await fsSet('recetas',upd);
+    const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+    tocadas++;
+  }
+  // 2. Existencia y precio se suman/heredan
+  const qty=Math.round(((destino.qty||0)+(origen.qty||0))*1000)/1000;
+  const precio=(destino.precio>0)?destino.precio:(origen.precio||0);
+  const upd={...destino,qty,precio};
+  await fsSet('inventario',upd);
+  const ix=D.inventario.findIndex(i=>i.id===A); if(ix>=0) D.inventario[ix]=upd;
+  // 3. Ahora sí, fuera el duplicado
+  await fsDel('inventario',DE);
+  const iy=D.inventario.findIndex(i=>i.id===DE); if(iy>=0) D.inventario.splice(iy,1);
+  logAudit('inventario_fusion',{de:'Tapa unicel',a:'Tapa para café',
+    recetasRepuntadas:tocadas,existenciaFinal:qty,precio,
+    motivo:'Iván pidió eliminar la tapa de unicel; se fusiona para no dejar 22 recetas sin costear'});
+  toast(`✓ Tapas fusionadas: ${qty} pz en "Tapa para café", ${tocadas} receta(s) repuntadas`,5500);
   await markMig(migKey);
 }
 // ══ DESGLOSE POR CONCEPTO DE CADA TICKET (pedido de Iván, 8-oct) ══
@@ -5675,7 +5716,7 @@ const ALIAS_INV = {
   'servitoallas':'Servitoallas','servilleta':'Servitoallas','toallaenrollo':'Servitoallas',
   'tapasmoothie':'Tapa Smoothie','tapadomo':'Tapa Smoothie',
   'tapa14oz':'Tapa 14 oz',
-  'tapaunicel':'Tapa unicel','tapaparacafe':'Tapa unicel','tapatransparente95':'Tapa unicel',
+  'tapaunicel':'Tapa para café','tapaparacafe':'Tapa para café','tapatransparente95':'Tapa para café',
   'vasonevero':'Vaso nevero',
   'vaso14oz':'Vaso 14 oz','vasoplastico14oz':'Vaso 14 oz',
   'vasodegustador':'Vaso degustador',
