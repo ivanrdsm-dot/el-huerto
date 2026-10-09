@@ -1083,14 +1083,28 @@ nav{padding-top:env(safe-area-inset-top);}
 <div id="page-dashboard" class="page">
   <div class="sh">
     <span class="st">Panel Principal</span>
-    <span id="db-fecha" style="font-size:11px;color:var(--text3);font-family:'DM Mono',monospace;"></span>
+    <div style="display:flex;gap:10px;align-items:center;">
+      <!-- Un solo selector manda sobre TODO el panel. Antes convivían
+           "Ventas hoy", "Ingresos mes" y "Semana actual" en la misma
+           pantalla: tres marcos de referencia distintos a la vez. -->
+      <div class="rp-tabs" id="db-periodo" style="margin:0;">
+        <button class="rp-tab-btn activa" data-dbp="hoy" onclick="setDbPeriodo('hoy')">Hoy</button>
+        <button class="rp-tab-btn" data-dbp="semana" onclick="setDbPeriodo('semana')">Semana</button>
+        <button class="rp-tab-btn" data-dbp="mes" onclick="setDbPeriodo('mes')">Mes</button>
+      </div>
+      <span id="db-fecha" style="font-size:12px;color:var(--text3);"></span>
+    </div>
   </div>
-  <!-- Pulso operativo: dinero, servicio y estado de caja de HOY, de un vistazo -->
+  <div id="db-rango" style="font-size:12.5px;color:var(--text2);margin:-6px 0 12px;"></div>
+  <!-- El dinero del período: lo que entró, lo que salió y lo que quedó -->
+  <div class="g4" style="margin-bottom:10px;" id="db-dinero"></div>
+  <!-- Salud del negocio: los números que dicen si el modelo aguanta -->
+  <div class="g4" style="margin-bottom:10px;" id="db-salud"></div>
+  <!-- Pulso operativo de HOY: servicio y estado de caja -->
   <div id="db-pulso" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;"></div>
   <!-- ⚡ Widget en vivo: Hoy vs Ayer al mismo horario -->
   <div id="db-live-widget" style="margin-bottom:14px;"></div>
-  <!-- KPIs fila 1 -->
-  <div class="g4" style="margin-bottom:10px;" id="db-kpis"></div>
+  <div class="g4" style="margin-bottom:10px;display:none;" id="db-kpis"></div>
   <!-- Fila 2: gráfica + estado de resultados + retiros -->
   <div class="g3" style="margin-bottom:10px;">
     <div class="card" style="grid-column:span 2;" id="db-grafica-wrap">
@@ -1112,10 +1126,14 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="card" id="db-caja-hoy"></div>
     <div class="card" id="db-nomina-estado"></div>
   </div>
-  <!-- Fila 4: top vendedores hoy + productos más vendidos -->
+  <!-- Fila 4: lo que más se vende y lo que está por acabarse -->
+  <div class="g2" style="margin-bottom:10px;">
+    <div class="card" id="db-top-prods"></div>
+    <div class="card" id="db-inv-critico"></div>
+  </div>
   <div class="g2" style="margin-bottom:10px;">
     <div class="card" id="db-vendedores-hoy"></div>
-    <div class="card" id="db-top-prods"></div>
+    <div class="card" id="db-margen-prods"></div>
   </div>
   <!-- Fila 5: Check-in del día (solo visible para admin) -->
   <div class="card" id="db-checkin-wrap" style="display:none;">
@@ -9655,6 +9673,105 @@ function renderOrdenes(){
 }
 
 // Strip de órdenes vivas en el POS: la cajera trackea sin cambiar de página
+// ── El dinero y la salud del período elegido ──
+function renderDbPeriodo(){
+  const R=dbRango(), td=today();
+  document.querySelectorAll('#db-periodo .rp-tab-btn').forEach(b=>b.classList.toggle('activa',b.dataset.dbp===DB_P));
+  if($('db-rango'))$('db-rango').textContent=R.label;
+  if($('db-fecha'))$('db-fecha').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
+  // El widget en vivo y el pulso solo tienen sentido mirando HOY
+  const soloHoy=R.p==='hoy';
+  if($('db-live-widget'))$('db-live-widget').style.display=soloHoy?'':'none';
+  if($('db-pulso'))$('db-pulso').style.display=soloHoy?'flex':'none';
+
+  const ventas=D.ventas.filter(v=>!v.anulada&&R.vent.includes(v.fecha));
+  const ing=r2(ventas.reduce((s,v)=>s+v.total,0));
+  const gd=desgloseGastos(D.gastos.filter(g=>R.gast.includes(g.fecha)));
+  const base=gastoBasePeriodo(R.p,R.p==='mes'?{_mes:curM()}:{_sem:td});
+  const estimado=Math.max(0,r2(base-gd.sinNomina));
+  const gasto=r2(gd.sinNomina+estimado);
+  const nom=nominaDevengada(R.vent);
+  const util=r2(ing-gasto-nom);
+  const margen=ing>0?Math.round(util/ing*100):0;
+  const kc=(label,val,sub,color,extra)=>`<div class="card" style="text-align:center;">
+    <div class="ct">${label}</div>
+    <div class="kv" style="color:${color};">${val}</div>
+    <div style="font-size:11px;color:var(--text3);margin-top:3px;">${sub}</div>${extra||''}</div>`;
+  if($('db-dinero'))$('db-dinero').innerHTML=
+    kc('Ventas',fmt(ing),`${ventas.length} ticket${ventas.length===1?'':'s'}`,'var(--accent)')+
+    kc('Gastos',fmt(gasto),gd.sinNomina>0?`${fmt(gd.sinNomina)} capturado${estimado>0?` · ${fmt(estimado)} est.`:''}`:`${fmt(estimado)} estimado`,'var(--red)')+
+    kc('Nómina',fmt(nom),nom>gd.nomina?'devengada':'pagada','var(--gold)')+
+    kc('Utilidad',fmt(util),`Margen ${margen}%`,util>=0?'var(--teal)':'var(--red)');
+
+  // ── Salud: los números que dicen si el modelo aguanta ──
+  const conCosto=ventas.filter(v=>v.foodCost!=null);
+  const cogs=r2(conCosto.reduce((s,v)=>s+v.foodCost,0));
+  const cobert=ventas.length?Math.round(conCosto.length/ventas.length*100):0;
+  const fcPct=ing>0?Math.round(cogs/ing*100):0;
+  const prime=ing>0?Math.round((cogs+nom)/ing*100):0;
+  const dias=new Set(ventas.map(v=>v.fecha)).size||1;
+  const mBruta=ing>0?(ing-cogs)/ing:0;
+  const equil=mBruta>0?r2((nom+gasto)/dias/mBruta):null;
+  const vtaDia=r2(ing/dias);
+  const ticket=ventas.length?r2(ing/ventas.length):0;
+  const sem=(ok,txt)=>`<div style="font-size:10.5px;margin-top:4px;color:${ok?'var(--accent)':'var(--red)'};font-weight:560;">${txt}</div>`;
+  if($('db-salud'))$('db-salud').innerHTML=
+    kc('Ticket promedio',fmt(ticket),`${Math.round(ventas.length/dias)} tickets/día · ${dias} día${dias===1?'':'s'}`,'var(--text)')+
+    kc('Food cost',ing>0?fcPct+'%':'—',cobert<100?`cobertura ${cobert}% de las ventas`:'todo costeado','var(--text)',ing>0?sem(fcPct<=35,fcPct<=35?'✓ sano · meta ≤35%':'⚠ alto · meta ≤35%'):'')+
+    kc('Prime cost',ing>0?prime+'%':'—','insumos + nómina','var(--text)',ing>0?sem(prime<=60,prime<=60?'✓ sano · meta ≤60%':'⚠ alto · meta ≤60%'):'')+
+    kc('Punto de equilibrio',equil!=null?fmt(equil):'—','lo que hay que vender al día','var(--text)',equil!=null?sem(vtaDia>=equil,vtaDia>=equil?`✓ vendes ${fmt(vtaDia)}/día`:`⚠ vendes ${fmt(vtaDia)}/día`):'');
+}
+
+// ── Lo que está por acabarse y frena venta ──
+function renderDbInventario(){
+  const el=$('db-inv-critico'); if(!el) return;
+  const enReceta=new Set(D.recetas.flatMap(r=>(r.ings||[]).map(i=>i.invId)).filter(x=>x!=null));
+  const criticos=D.inventario
+    .filter(i=>enReceta.has(i.id))
+    .map(i=>({i,e:invEstadoStock(i)}))
+    .filter(x=>x.e.estado==='agotado'||x.e.estado==='bajo')
+    .sort((a,b)=>(a.e.estado==='agotado'?0:1)-(b.e.estado==='agotado'?0:1));
+  el.innerHTML=`<div class="sh"><span class="ct" style="margin-bottom:0;">Insumos por acabarse</span>
+      <button class="btn bs bsm" onclick="go('inventario')">Ver inventario</button></div>`+
+    (criticos.length===0
+      ? `<p style="font-size:12.5px;color:var(--text3);padding:10px 0;">Nada crítico. Todos los insumos de receta tienen existencia.</p>`
+      : `<div style="font-size:11.5px;color:var(--text3);margin-bottom:8px;">Solo insumos que entran en una receta: si se acaban, dejas de vender algo.</div>`+
+        criticos.slice(0,9).map(({i,e})=>`<div class="sr">
+          <span style="font-size:12.5px;display:flex;align-items:center;gap:7px;">
+            <span style="width:7px;height:7px;border-radius:50%;background:${e.estado==='agotado'?'var(--red)':'var(--gold)'};"></span>${i.nombre}</span>
+          <span class="mono" style="font-size:12px;color:${e.estado==='agotado'?'var(--red)':'var(--gold)'};">${i.qty||0} ${i.unit||''}</span>
+        </div>`).join('')+
+        (criticos.length>9?`<div style="font-size:11px;color:var(--text3);margin-top:7px;">y ${criticos.length-9} más</div>`:''));
+}
+
+// ── Dónde está el margen: lo que más vendes contra lo que más deja ──
+function renderDbMargenes(){
+  const el=$('db-margen-prods'); if(!el) return;
+  const R=dbRango();
+  const ventas=D.ventas.filter(v=>!v.anulada&&R.vent.includes(v.fecha));
+  const map={};
+  ventas.forEach(v=>(v.items||[]).forEach(it=>{
+    const k=it.id; if(!map[k]) map[k]={nombre:it.nombre,qty:0,venta:0};
+    map[k].qty+=it.qty||1; map[k].venta+=(it.precio||0)*(it.qty||1);
+  }));
+  const filas=Object.entries(map).map(([id,x])=>{
+    const fc=(typeof foodCostProducto==='function')?foodCostProducto(Number(id)):null;
+    const costo=fc&&fc.costo!=null?fc.costo*x.qty:null;
+    return {...x, costo, ganancia:costo!=null?r2(x.venta-costo):null,
+      margen:costo!=null&&x.venta>0?Math.round((x.venta-costo)/x.venta*100):null};
+  }).filter(x=>x.ganancia!=null).sort((a,b)=>b.ganancia-a.ganancia);
+  el.innerHTML=`<div class="ct">Lo que más deja</div>`+
+    (filas.length===0
+      ? `<p style="font-size:12.5px;color:var(--text3);">Sin ventas costeadas en este período.</p>`
+      : `<div style="font-size:11.5px;color:var(--text3);margin-bottom:8px;">Ganancia real del período, ya descontado el insumo. No es lo mismo vender mucho que ganar.</div>`+
+        filas.slice(0,8).map(f=>`<div class="sr">
+          <span style="font-size:12.5px;">${f.nombre} <span style="color:var(--text3);">· ${f.qty}</span></span>
+          <span style="display:flex;gap:12px;align-items:baseline;">
+            <span style="font-size:11px;color:${f.margen>=60?'var(--accent)':f.margen>=40?'var(--gold)':'var(--red)'};">${f.margen}%</span>
+            <span class="mono ag" style="font-size:12.5px;min-width:74px;text-align:right;">${fmt(f.ganancia)}</span>
+          </span></div>`).join(''));
+}
+
 // ── Pre-pedidos del menú QR en la caja ──
 // Llegan como tarjeta arriba del POS. Un toque los carga al carrito y la
 // venta se cobra como cualquier otra: el pre-pedido NUNCA se vuelve venta
@@ -13636,8 +13753,38 @@ window.seedRecetasPredefinidas=async()=>{
 };
 
 // ─── DASHBOARD ─── (siempre en tiempo real)
+// ══════════════════════════════════════════════════════════════
+// PANEL — UN SOLO PERÍODO MANDA
+// Antes convivían en la misma pantalla "Ventas hoy", "Ingresos mes" y
+// "Semana actual": tres marcos de referencia a la vez, y ningún número
+// de gasto ni de utilidad por semana, que es como Iván lleva el negocio.
+// Ahora el selector manda sobre todo y los números usan exactamente el
+// mismo criterio que Reportes: gasto con piso en el promedio semanal y
+// nómina DEVENGADA, no solo la que ya se pagó.
+// ══════════════════════════════════════════════════════════════
+let DB_P='semana';
+try{ DB_P=localStorage.getItem('h5dbp')||'semana'; }catch(e){}
+window.setDbPeriodo=p=>{
+  DB_P=p;
+  try{ localStorage.setItem('h5dbp',p); }catch(e){}
+  document.querySelectorAll('#db-periodo .rp-tab-btn').forEach(b=>b.classList.toggle('activa',b.dataset.dbp===p));
+  renderDashboard();
+};
+// Las VENTAS cuentan lun-vie; los GASTOS, los 7 días, porque las compras
+// grandes caen en sábado (Costco, El Zorro) y si no se perderían.
+function dbRango(){
+  const td=today();
+  if(DB_P==='hoy') return {p:'hoy',vent:[td],gast:[td],label:fmtFecha(td)};
+  if(DB_P==='mes'){
+    const cm=curM(), dias=diasDelMes(cm);
+    return {p:'mes',vent:dias,gast:dias,label:'Mes '+cm};
+  }
+  const wd=getWDays(td);
+  return {p:'semana',vent:wd,gast:getWDays7(td),label:`Semana ${fmtFecha(wd[0])} → ${fmtFecha(wd[4])}`};
+}
 function renderDashboard(){
   renderEventosAtencion();
+  renderDbPeriodo();
   const td=today(); const cm=curM();
 
   // ══ PULSO DE HOY: dinero + servicio + estado de caja en una fila ══
@@ -13860,6 +14007,7 @@ function renderDashboard(){
     <div class="sr fw7"><span>En caja efectivo</span><span class="mono at" style="font-size:16px;">${fmt(retHoy.enCaja)}</span></div>
     <div style="margin-top:8px;"><button class="btn bs bsm bfull" onclick="go('caja')">Ver Caja →</button></div>`;
 
+  renderDbInventario(); renderDbMargenes();
   // Nómina estado
   const nomPend=D.nomPagos.find(p=>p.semana===monSem);
   if($('db-nomina-estado'))$('db-nomina-estado').innerHTML=`<div class="ct">Nómina Semanal</div>

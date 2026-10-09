@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.88'; // La tapa domo entra a los smoothies
+const CACHE_NAME = 'el-huerto-v14.89'; // Panel por período con dinero, salud, inventario y margen
 const ASSETS = [
   '/',
   '/index.html',
