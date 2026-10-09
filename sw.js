@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.84'; // Pulso con iconos + alta de cuentas idempotente
+const CACHE_NAME = 'el-huerto-v14.85'; // Gastos con desglose por concepto
 const ASSETS = [
   '/',
   '/index.html',

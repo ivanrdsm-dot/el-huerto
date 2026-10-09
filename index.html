@@ -2945,6 +2945,7 @@ async function completeInit(){
   await migServitoallas5Oct2026();
   await migQuitaBonelesOct2026();
   await migBajasOct2026();
+  await migPartidasGastosOct2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3821,6 +3822,96 @@ async function migComprasSemana5Oct2026(){
     excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20,bonelesPollo:209.25,pechugaKS:389.00},
     articulosNuevos:creados,sinCostear:omitidos});
   if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(4517.64)} · ${creados.length} artículos nuevos`,6000);
+}
+// ══ DESGLOSE POR CONCEPTO DE CADA TICKET (pedido de Iván, 8-oct) ══
+// Hasta hoy cada gasto guardaba sus partidas como texto corrido en las
+// notas ("10 partidas: susalitas, leche…"). Servía para recordar, no
+// para revisar: no se podía ver qué costó cada cosa ni sumar por
+// concepto. Ahora cada gasto lleva `partidas[]` con cantidad, unidad e
+// importe, y la pantalla de Gastos las despliega.
+// Los importes de Costco van NETOS del descuento global del ticket, que
+// es lo que de verdad salió de la cuenta.
+const PARTIDAS_TICKETS={
+  'COSTCO-8755':[
+    {c:'Susalitas 20/50 g',q:20,u:'pz',i:298.99},
+    {c:'KS Leche deslactosada light',q:12,u:'L',i:264.996},
+    {c:'KS Bebida de almendra',q:6,u:'pz',i:148.995},
+    {c:'Espinaca',q:454,u:'g',i:88.896},
+    {c:'Ensalada italiana 908 g',q:2,u:'pz',i:107.783},
+    {c:'PAM aceite de oliva 198 g',q:2,u:'lata',i:178.996},
+    {c:'Moras azules',q:1360,u:'g',i:188.996},
+    {c:'KS Crema de almendras',q:1,u:'pz',i:168.996},
+    {c:'Tiras de pechuga de pollo',q:1360,u:'g',i:358.998},
+  ],
+  'A18199':[
+    {c:'Perlas de tapioca brown sugar',q:2,u:'kg',i:229.99},
+    {c:'Popote de tapioca negro',q:1,u:'paq',i:104.99},
+    {c:'Bolsa de papel estraza #2 blanca',q:1,u:'paq',i:54.00},
+  ],
+  'AG-40458':[
+    {c:'Contenedor de papel 8 oz',q:100,u:'pz',i:156.00},
+    {c:'Bowl de papel kraft 32 oz',q:50,u:'pz',i:136.00},
+    {c:'Tapa para bowl kraft',q:50,u:'pz',i:88.00},
+    {c:'Aderezo honey mustard 3.78 L',q:1,u:'pz',i:219.00},
+    {c:'Ahorro del ticket',q:1,u:'—',i:-0.01},
+  ],
+  'MOLINERA-22632':[
+    {c:'Aderezo chipotle McCormick 310 g',q:6,u:'pz',i:193.02},
+    {c:'Aderezo guacamole McCormick 305 g',q:3,u:'pz',i:105.00},
+    {c:'Aderezo César Clemente Jacques 1.9 kg',q:1,u:'pz',i:142.00},
+    {c:'Aderezo Mil Islas Clemente Jacques 2 kg',q:1,u:'pz',i:135.00},
+  ],
+  'LANUEVA-216170':[
+    {c:'Vaso Reyna 16 oz largo',q:150,u:'pz',i:162.00},
+    {c:'Tapa Goplas para vaso 16 oz',q:100,u:'pz',i:94.00},
+    {c:'Cuchara sopera Classy',q:100,u:'pz',i:36.00},
+    {c:'Tenedor sopero Classy',q:100,u:'pz',i:36.00},
+    {c:'Bolsa de basura negra 60×90',q:1,u:'rollo',i:43.00},
+    {c:'Vaso Primo 2 oz',q:100,u:'pz',i:30.00},
+    {c:'Vaso blanco 4 oz',q:100,u:'pz',i:80.00},
+    {c:'Servitoalla Kleenex',q:2,u:'paq',i:68.00},
+  ],
+  'MOLINERA-22633':[
+    {c:'Cacahuate japonés',q:1,u:'kg',i:50.00},
+    {c:'IEPS',q:1,u:'—',i:4.00},
+  ],
+  'REYES-05OCT26-A':[
+    {c:'Zanahoria',q:1,u:'kg',i:15.00},
+    {c:'Papa',q:1,u:'kg',i:23.00},
+    {c:'Jitomate',q:1,u:'kg',i:25.00},
+    {c:'Calabaza',q:1,u:'kg',i:15.00},
+  ],
+  'REYES-05OCT26-B':[
+    {c:'Jícama',q:8,u:'kg',i:160.00},
+    {c:'Piña',q:1,u:'pz',i:15.00},
+    {c:'Pepino',q:8,u:'kg',i:160.00},
+    {c:'Papa',q:1,u:'kg',i:23.00},
+    {c:'Zanahoria',q:4,u:'kg',i:60.00},
+    {c:'Jitomate',q:2,u:'kg',i:50.00},
+  ],
+};
+async function migPartidasGastosOct2026(){
+  const migKey='h5partidas_oct26';
+  if(await migDone(migKey)) return;
+  let n=0; const descuadres=[];
+  for(const [ticket,partidas] of Object.entries(PARTIDAS_TICKETS)){
+    const g=D.gastos.find(x=>x.ticket===ticket);
+    if(!g) continue;
+    const suma=r2(partidas.reduce((s2,x)=>s2+x.i,0));
+    // Si el desglose no cuadra con el total del gasto, se registra igual
+    // pero se deja constancia: un desglose que no suma engaña más que no
+    // tenerlo.
+    if(Math.abs(suma-g.monto)>0.05) descuadres.push(`${ticket}: partidas ${suma} vs gasto ${g.monto}`);
+    const upd={...g,partidas,partidasSuma:suma};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=upd;
+    n++;
+  }
+  if(n){
+    logAudit('gastos_desglosados',{tickets:n,descuadres:descuadres.length?descuadres:undefined});
+    toast(`✓ ${n} ticket(s) con desglose por concepto`,4000);
+  }
+  await markMig(migKey);
 }
 // ══ BAJAS DEL 7-OCT-2026 (pedido de Iván) ══
 // Cuatro cosas distintas que dejaron de ser del negocio:
@@ -10290,6 +10381,13 @@ function checkApertura(){
 }
 
 // ─── GASTOS ───
+// Desglose por concepto: la fila del ticket se abre y muestra qué trae.
+window.togglePartidas=id=>{
+  const tr=$('gpart-'+id), car=$('gcar-'+id); if(!tr) return;
+  const abierto=tr.style.display!=='none';
+  tr.style.display=abierto?'none':'table-row';
+  if(car) car.textContent=abierto?'▸':'▾';
+};
 window.addGasto=async()=>{
   const fecha=$('gf').value||today(); const monto=parseFloat($('gm').value);
   if(!monto||monto<=0){toast('⚠ Monto inválido');return;}
@@ -10434,19 +10532,37 @@ function renderGastos(){
     return '<span class="badge" style="background:#f5f5f5;color:#616161;">📦 Gen</span>';
   };
   if($('gtable'))$('gtable').innerHTML=rows.length===0?`<tr><td colspan="8" style="color:var(--text3);text-align:center;padding:20px;">${periodo==='semana'?'Sin gastos esta semana':'Sin gastos en este período'}</td></tr>`:
-    rows.map(r=>`<tr>
+    rows.map(r=>{
+      const pt=r.partidas||[];
+      const suma=pt.length?r2(pt.reduce((s2,x)=>s2+(x.i||0),0)):null;
+      const cuadra=suma==null||Math.abs(suma-r.monto)<=0.05;
+      return `<tr${pt.length?` onclick="togglePartidas(${r.id})" style="cursor:pointer;"`:''}>
       <td class="mono">${r.fecha}</td>
       <td><span class="badge xr">${catL[r.cat]||r.cat}</span></td>
       <td>${tipoBadge(r.tipoEstrategico,r.canal)}</td>
       <td>${r.prov||'—'}</td>
-      <td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td>
+      <td class="mono" style="color:var(--text2);">${r.ticket||'—'}${pt.length?` <span id="gcar-${r.id}" style="color:var(--text3);">▸</span> <span style="font-size:10.5px;color:var(--text3);">${pt.length} concepto${pt.length>1?'s':''}</span>`:''}</td>
       <td>${mi[r.metodo]||''}</td>
       <td class="mono ar fw7">${fmt(r.monto)}</td>
-      <td style="display:flex;gap:3px;">
+      <td style="display:flex;gap:3px;" onclick="event.stopPropagation();">
         <button class="btn bs bxs" onclick="editGasto(${r.id})" title="Editar">✏️</button>
         <button class="btn bd bxs" onclick="delGasto(${r.id})" title="Eliminar">✕</button>
       </td>
-    </tr>`).join('');
+    </tr>`+(pt.length?`<tr id="gpart-${r.id}" style="display:none;"><td colspan="8" style="padding:0 10px 12px;">
+      <div style="background:var(--surface2);border-radius:var(--rsm);padding:11px 13px;">
+        <div style="font-size:12.5px;color:var(--text2);font-weight:510;margin-bottom:7px;">Qué trae el ticket ${r.ticket}</div>
+        ${pt.map(x=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:.5px solid var(--border);font-size:12.5px;">
+          <span>${x.c}</span>
+          <span style="display:flex;gap:14px;flex-shrink:0;">
+            <span style="color:var(--text3);">${x.q} ${x.u}</span>
+            <span class="mono" style="min-width:76px;text-align:right;font-weight:560;">${fmt(x.i)}</span>
+          </span></div>`).join('')}
+        <div style="display:flex;justify-content:space-between;padding-top:8px;font-size:12.5px;font-weight:620;">
+          <span>Suma del desglose</span>
+          <span class="mono ${cuadra?'':'ar'}">${fmt(suma)}${cuadra?'':` · el gasto dice ${fmt(r.monto)}`}</span>
+        </div>
+      </div></td></tr>`:'');
+    }).join('');
 
   // Distribución por categoría
   const bC={}; rows.forEach(r=>{bC[r.cat]=(bC[r.cat]||0)+r.monto;});
