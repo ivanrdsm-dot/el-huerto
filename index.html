@@ -1973,6 +1973,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <div id="rg-barra-fill" style="height:100%;width:0%;background:var(--accent);transition:width .4s var(--ease);"></div>
     </div>
     <div id="rec-guia"></div>
+    <div id="rg-recost" style="margin-top:10px;"></div>
   </div>
   <!-- A3: FOOD COST REAL POR PRODUCTO -->
   <div class="card" style="margin-bottom:10px;border:2px solid var(--accent);" id="foodcost-card">
@@ -3004,6 +3005,7 @@ async function completeInit(){
   await migCafe08Oct2026();
   await migLimpiaInventarioOct2026();
   await migFusionaTapasOct2026();
+  await migEnsaladaBowlOct2026();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -4107,7 +4109,11 @@ const INV_BORRAR=[
   {id:1785385521455, n:'Elote dorado',           pq:'ya no se usa'},
   {id:1791334360444, n:'Calabaza',               pq:'se compró una vez, no entra en recetas'},
   {id:7307,          n:'Aceite de oliva',        pq:'ya no se usa (el PAM en aerosol se queda: 3 latas en existencia)'},
-  {id:1791334360451, n:'Bowl papel kraft 32 oz', pq:'sin existencia ni uso'},
+  // OJO: aquí estaba 'Bowl papel kraft 32 oz' marcado como "sin
+  // existencia ni uso". Era FALSO: Iván había comprado 50 piezas a
+  // Plastidoro el 4-oct y es el bowl en el que sirve la ensalada. Lo
+  // borré por leer el inventario antes de cargar esa compra.
+  // migEnsaladaBowlOct2026 lo repone. No volver a ponerlo en esta lista.
   {id:1785385521418, n:'Gel antibacterial',      pq:'sin existencia ni uso'},
 ];
 // Caso aparte: "Vaso 12 oz" está en CERO pero DOS recetas lo usan. Si se
@@ -4197,6 +4203,80 @@ async function migTapaDomoSmoothies(){
 // junta en "Tapa para café", que es como le dice él.
 // El precio viaja con la fusión — "Tapa para café" estaba en $0, y
 // quedarse con ese cero habría borrado el costo de las 22 recetas.
+// ══════════════════════════════════════════════════════════════
+// LA ENSALADA VA EN BOWL, NO EN PLATO (Iván, 8-oct)
+// Y el bowl no estaba porque yo lo borré: lo marqué "sin existencia ni
+// uso" leyendo el inventario ANTES de cargar la compra del 4-oct a
+// Plastidoro, donde venían 50 piezas a $2.72. Por eso la ensalada
+// —$16,830 en 8 semanas, el producto que más dinero mueve sin costo—
+// apuntaba a un "Plato desechable" sin precio.
+// Aquí se repone el bowl, se corrige la receta y se arreglan las dos
+// unidades que Iván acaba de aclarar: la miel y el yogurt vienen en
+// litro, no en pieza, y por eso la receta en ml no podía convertirlas.
+// ══════════════════════════════════════════════════════════════
+async function migEnsaladaBowlOct2026(){
+  const migKey='h5ensbowl_oct26';
+  if(await migDone(migKey)) return;
+  const hecho=[];
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  const fijar=async(nombre,campos)=>{
+    const inv=buscar(nombre); if(!inv) return null;
+    const upd={...inv,...campos};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    return upd;
+  };
+
+  // ── 1. Vuelve el bowl ──
+  // La existencia se calcula: 50 compradas el 4-oct menos las ensaladas
+  // vendidas desde el 5-oct, que es lo que de verdad se gastó.
+  let bowl=buscar('Bowl papel kraft 32 oz');
+  if(!bowl){
+    const idsEns=new Set(D.productos.filter(p=>p.cat==='ensalada').map(p=>p.id));
+    let usadas=0;
+    D.ventas.filter(v=>!v.anulada&&(v.fecha||'')>='2026-10-05')
+      .forEach(v=>(v.items||[]).forEach(i=>{ if(idsEns.has(i.id)) usadas+=i.qty||0; }));
+    bowl={id:Date.now(),nombre:'Bowl papel kraft 32 oz',cat:'empaque',catOf:'desechables',
+      qty:Math.max(0,r2(50-usadas)),unit:'pz',min:20,precio:2.720073};
+    await fsSet('inventario',bowl);
+    D.inventario.push(bowl);
+    hecho.push(`bowl repuesto con ${bowl.qty} pz`);
+  }
+
+  // ── 2. La ensalada cambia de recipiente ──
+  // El plato sale; entran el bowl y su tapa, la que Iván pidió conservar
+  // justamente porque "es la de la ensalada".
+  const tapa=buscar('Tapa p/bowl kraft');
+  const plato=buscar('Plato desechable');
+  let recetasTocadas=0;
+  for(const p of D.productos.filter(x=>x.cat==='ensalada')){
+    const rec=D.recetas.find(r=>r.prodId===p.id); if(!rec) continue;
+    let ings=(rec.ings||[]).filter(i=>!(plato&&i.invId==plato.id));
+    if(!ings.some(i=>i.invId==bowl.id)) ings.push({invId:bowl.id,nombre:bowl.nombre,qty:1,unit:'pz'});
+    if(tapa&&!ings.some(i=>i.invId==tapa.id)) ings.push({invId:tapa.id,nombre:tapa.nombre,qty:1,unit:'pz'});
+    if(JSON.stringify(ings)===JSON.stringify(rec.ings||[])) continue;
+    const upd={...rec,ings};
+    await fsSet('recetas',upd);
+    const ix=D.recetas.findIndex(r=>r.id===rec.id); if(ix>=0) D.recetas[ix]=upd;
+    recetasTocadas++;
+  }
+  if(recetasTocadas) hecho.push(`${recetasTocadas} receta(s) de ensalada al bowl`);
+
+  // ── 3. Las unidades que Iván aclaró ──
+  // Venían en 'pz' y las recetas las piden en ml: pz→ml no se puede
+  // convertir, y el costo salía nulo. El envase es de 1 litro, así que
+  // la pieza Y el litro son la misma cosa: cambiar la unidad no mueve
+  // la existencia.
+  if(await fijar('Miel',{unit:'L',precio:120})) hecho.push('miel 1 L a $120');
+  if(await fijar('Yogurth natural',{unit:'L',precio:49})) hecho.push('yogurt 1 L a $49');
+  // Precio que dio Iván para el plato desechable
+  if(await fijar('Plato desechable',{precio:1.20})) hecho.push('plato desechable $1.20');
+
+  logAudit('costeo_corregido',{cambios:hecho,
+    motivo:'Iván: "es diferente el bowl de ensalada a plato desechable"; el bowl lo había borrado yo por error el 8-oct'});
+  if(hecho.length) toast(`✓ Costeo: ${hecho.join(' · ')}`,7000);
+  await markMig(migKey);
+}
 async function migFusionaTapasOct2026(){
   const migKey='h5tapas_oct26';
   if(await migDone(migKey)) return;
@@ -13883,15 +13963,29 @@ function calcPendientesCosteo(){
   return {filas,pend,activos:act.length,listos:act.length-pend.length,
     dinero:r2(dinero),cubierto:r2(cubierto),pct:dinero>0?Math.round(cubierto/dinero*100):0};
 }
+// El Panel usa el costo que cada venta guardó al cobrarse, así que
+// arreglar una receta hoy no mueve lo de ayer. Esto lo dice en voz alta
+// y ofrece rehacer SOLO las que quedaron sin costo.
+function pintarRecosteo(){
+  const caja=$('rg-recost'); if(!caja) return;
+  const n=ventasSinCostear().length;
+  caja.innerHTML=n?
+    `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <span style="font-size:11.5px;color:var(--text2);">${n} venta(s) de las últimas ${COSTEO_SEMANAS} semanas se cobraron sin costo completo. El Panel las seguirá contando así hasta que las rehagas.</span>
+      <button class="btn bs bsm" style="flex:none;white-space:nowrap;" onclick="recostearVentas()">Recostear</button>
+    </div>`:'';
+}
 function renderCosteoGuia(){
   const cont=$('rec-guia'); if(!cont) return;
   const R=calcPendientesCosteo();
   if($('rg-prog')) $('rg-prog').textContent=`${R.listos} de ${R.activos} productos · ${R.pct}% de lo que vendes`;
   if($('rg-barra-fill')) $('rg-barra-fill').style.width=R.pct+'%';
   if(!R.pend.length){
-    cont.innerHTML='<p style="font-size:12.5px;color:var(--accent);margin:0;">Todo el menú activo tiene su costo completo. El food cost del Panel ya es el real.</p>';
+    cont.innerHTML='<p style="font-size:12.5px;color:var(--accent);margin:0;">Todo el menú activo tiene su costo completo.</p>';
+    pintarRecosteo();
     return;
   }
+  pintarRecosteo();
   const top=R.pend.slice(0,12), resto=R.pend.length-top.length;
   cont.innerHTML=
     `<p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Ordenado por cuánto dinero mueve cada uno en las últimas ${COSTEO_SEMANAS} semanas. Empieza por arriba: ahí está el margen que no estás viendo.</p>`+
@@ -13908,6 +14002,53 @@ function renderCosteoGuia(){
     }).join('')+
     (resto>0?`<div style="font-size:11px;color:var(--text3);margin-top:8px;">y ${resto} más — aparecen conforme vayas cerrando los de arriba</div>`:'');
 }
+
+// ── Recostear las ventas que quedaron sin costo ──
+// Cada venta guarda su costo AL MOMENTO de venderse, para que el margen
+// histórico no cambie si después suben los precios. Eso está bien.
+// Pero una venta que nunca se pudo costear no tiene nada que proteger:
+// su "snapshot" es un hueco. Si no se rehace, el Panel seguiría diciendo
+// 72% de cobertura semanas después de haber arreglado las recetas.
+// Por eso esto SOLO toca las incompletas y nunca las que ya cuadraban.
+function ventasSinCostear(){
+  // Solo las que SABEMOS que quedaron mal: sin costo, o marcadas
+  // incompletas al cobrarse. Una venta vieja que trae costo pero no
+  // trae la marca (es anterior al campo) NO se toca: rehacerla con los
+  // precios de hoy sí rompería el histórico, que es justo lo que el
+  // snapshot existe para evitar.
+  return ventasRecientes().filter(v=>v.foodCost==null||v.foodCostCompleto===false);
+}
+window.recostearVentas=async()=>{
+  const faltan=ventasSinCostear();
+  if(!faltan.length){toast('✓ No hay ventas sin costear en las últimas 8 semanas',3200);return;}
+  if(!confirm(`Se van a recostear ${faltan.length} venta(s) de las últimas ${COSTEO_SEMANAS} semanas con las recetas de hoy.\n\nLas que ya tenían su costo completo NO se tocan.`)) return;
+  let ok=0, siguen=0, lote=[];
+  // Se escribe por tandas: esperar venta por venta son minutos con el
+  // pulgar en la pantalla, y Firestore agrupa igual de bien.
+  const vaciar=async()=>{ if(!lote.length) return; await Promise.all(lote.map(x=>fsSet('ventas',x))); lote=[]; };
+  for(let n=0;n<faltan.length;n++){
+    const v=faltan[n];
+    let fc=0, completo=true;
+    (v.items||[]).forEach(i=>{
+      const r=foodCostProducto(i.id,i.prep);
+      if(r.costo!=null) fc+=r.costo*(i.qty||0);
+      if(!r.completo) completo=false;
+    });
+    // Mismo candado que al cobrar: si el costo supera la venta, hay un
+    // precio mal escalado. Mejor sin dato que con dato podrido.
+    if(!completo||(fc>v.total&&v.total>0)){siguen++;continue;}
+    const upd={...v,foodCost:r2(fc),foodCostCompleto:true};
+    lote.push(upd);
+    const ix=D.ventas.findIndex(x=>x.id===v.id); if(ix>=0) D.ventas[ix]=upd;
+    ok++;
+    if(lote.length>=50){ await vaciar(); toast(`Recosteando… ${n+1} de ${faltan.length}`,1200); }
+  }
+  await vaciar();
+  logAudit('ventas_recosteadas',{recosteadas:ok,siguenIncompletas:siguen,semanas:COSTEO_SEMANAS,
+    motivo:'Recetas corregidas: las ventas que nunca se pudieron costear se rehacen con el costeo de hoy'});
+  toast(`✓ ${ok} venta(s) recosteadas${siguen?` · ${siguen} siguen incompletas`:''}`,6000);
+  renderAll();
+};
 
 // ── El editor ──
 // Guarda en cuanto tocas algo: no hay botón "guardar" que se te olvide.
