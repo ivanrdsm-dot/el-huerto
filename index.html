@@ -1851,30 +1851,22 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div id="oc-lista" style="margin-top:8px;"></div>
   </div>
+  <!-- Proveedores ya NO lleva su propia lista de compras. Había dos
+       listas para lo mismo y eso hacía dudar de si un ticket estaba
+       contado. Ahora todo se captura en Gastos y aquí se LEE de ahí. -->
   <div class="g2" style="gap:10px;">
-    <div class="card">
-      <div class="ct">Registrar Pedido</div>
-      <div class="ii"><div class="fg"><label>Fecha</label><input type="date" id="pvf"></div>
-        <div class="fg"><label>Tipo</label><select id="pvtipo"><option value="semanal">📅 Semanal</option><option value="costco">🛒 Costco</option><option value="emergencia">⚡ Emergencia</option><option value="otro">Otro</option></select></div></div>
-      <div class="ii">
-        <div class="fg"><label>Proveedor</label><input type="text" id="pvn" placeholder="Nombre" list="pvdl2"><datalist id="pvdl2"></datalist></div>
-        <div class="fg"><label>Total</label><input type="number" id="pvt" placeholder="$0"></div>
-      </div>
-      <div class="ii">
-        <div class="fg"><label>Ticket</label><input type="text" id="pvtk" placeholder="001"></div>
-        <div class="fg"><label>Detalle</label><input type="text" id="pvdet" placeholder="Descripción"></div>
-      </div>
-      <button class="btn bp bfull" onclick="addPedido()">+ Registrar Pedido</button>
+    <div class="card" style="margin-top:10px;">
+      <div class="sh"><span class="ct" style="margin-bottom:0;">Compras del mes por proveedor</span>
+        <button class="btn bp bsm" onclick="go('gastos')">Registrar una compra</button></div>
+      <div id="pvmes"></div>
     </div>
-    <div>
-      <div class="card" style="margin-bottom:10px;"><div class="ct">Este Mes</div><div id="pvmes"></div></div>
-      <div class="card"><div class="ct">Histórico</div><div id="pvfreq"></div></div>
-    </div>
+    <div class="card" style="margin-top:10px;"><div class="ct">A quién le compras más — histórico</div><div id="pvfreq"></div></div>
   </div>
   <div class="card" style="margin-top:10px;">
-    <div class="ct">Historial</div>
-    <div class="tw"><table class="tbl"><thead><tr><th>Fecha</th><th>Proveedor</th><th>Tipo</th><th>Ticket</th><th>Total</th><th></th></tr></thead><tbody id="pvtable"></tbody></table></div>
-    <div style="margin-top:8px;text-align:right;"><button class="btn bs bsm" onclick="csvX('pedidos')">⬇ CSV</button></div>
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Últimas compras registradas</span>
+      <span style="font-size:11px;color:var(--text3);">Sale de Gastos · toda compra es un gasto del negocio</span></div>
+    <div class="tw"><table class="tbl"><thead><tr><th>Fecha</th><th>Proveedor</th><th>Categoría</th><th>Ticket</th><th>Total</th></tr></thead><tbody id="pvtable"></tbody></table></div>
+    <div style="margin-top:8px;text-align:right;"><button class="btn bs bsm" onclick="csvX('gastos')">⬇ CSV de gastos</button></div>
   </div>
 </div>
 
@@ -2964,6 +2956,7 @@ async function completeInit(){
   await migQuitaBonelesOct2026();
   await migBajasOct2026();
   await migPartidasGastosOct2026();
+  await migFusionaPedidosEnGastos();
   await migLimpiaInventarioOct2026();
   await migFusionaTapasOct2026();
   await migTapaDomoSmoothies();
@@ -3843,6 +3836,58 @@ async function migComprasSemana5Oct2026(){
     excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20,bonelesPollo:209.25,pechugaKS:389.00},
     articulosNuevos:creados,sinCostear:omitidos});
   if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(4517.64)} · ${creados.length} artículos nuevos`,6000);
+}
+// ══ PROVEEDORES SE FUNDE EN GASTOS (pedido de Iván, 8-oct) ══
+// Iván: "todo lo que tienes en proveedor es gasto, unifícalo y migra".
+// Tiene razón en el fondo, pero no en el diagnóstico: los 12 pedidos de
+// abril NO faltaban en Gastos — ya estaban ahí. Verificado uno por uno:
+// los 12 cruzan contra un gasto por fecha y monto EXACTOS, y 10 además
+// traen su folio citado en las notas de ese gasto.
+// Migrarlos habría sumado $14,807.43 que ya estaban contados, inflando
+// el gasto de abril al doble.
+// Lo que sí hacía falta: que no hubiera DOS listas. Así que el pedido
+// le presta al gasto lo que el gasto no tenía —proveedor y número de
+// ticket— y después desaparece. Una sola fuente de verdad.
+async function migFusionaPedidosEnGastos(){
+  const migKey='h5pedidos_oct26';
+  if(await migDone(migKey)) return;
+  const enriquecidos=[], huerfanos=[];
+  for(const ped of [...D.pedidos]){
+    const g=D.gastos.find(x=>x.fecha===ped.fecha && Math.abs((x.monto||0)-(ped.total||0))<0.01);
+    if(!g){
+      // Sin gasto gemelo sí hay que crearlo: ese dinero no está contado
+      huerfanos.push(`${ped.fecha} ${ped.proveedor||''} ${fmt(ped.total||0)}`);
+      continue;
+    }
+    const upd={...g};
+    let cambio=false;
+    if(!upd.prov && ped.proveedor){ upd.prov=ped.proveedor; cambio=true; }
+    if(!upd.ticket && ped.ticket){ upd.ticket=ped.ticket; cambio=true; }
+    if(!upd.cat) { upd.cat='proveedor'; cambio=true; }
+    if(cambio){
+      await fsSet('gastos',upd);
+      const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=upd;
+      enriquecidos.push(`${ped.fecha} ${ped.proveedor||''} ${ped.ticket||''}`);
+    }
+    await fsDel('pedidos',ped.id);
+    const iy=D.pedidos.findIndex(x=>x.id===ped.id); if(iy>=0) D.pedidos.splice(iy,1);
+  }
+  // Los que no tenían gasto gemelo sí se dan de alta: ahí sí faltaba
+  let nid=Date.now();
+  for(const ped of [...D.pedidos]){
+    const g={id:++nid,fecha:ped.fecha,cat:'proveedor',prov:ped.proveedor||'—',
+      monto:ped.total||0,ticket:ped.ticket||'',metodo:'efectivo',tipoEstrategico:'operacion',
+      notas:`Migrado de Proveedores · ${ped.tipo||''}`.trim()};
+    await fsSet('gastos',g); D.gastos.push(g);
+    await fsDel('pedidos',ped.id);
+    const iy=D.pedidos.findIndex(x=>x.id===ped.id); if(iy>=0) D.pedidos.splice(iy,1);
+  }
+  logAudit('pedidos_fusionados_en_gastos',{enriquecidos:enriquecidos.length,
+    detalle:enriquecidos, dadosDeAlta:huerfanos.length?huerfanos:undefined,
+    motivo:'Una sola lista de gastos: Proveedores deja de llevar la suya'});
+  if(enriquecidos.length||huerfanos.length)
+    toast(`✓ Proveedores fundido en Gastos: ${enriquecidos.length} con proveedor y folio${huerfanos.length?`, ${huerfanos.length} dado(s) de alta`:''}`,6000);
+  await markMig(migKey);
 }
 // ══ LIMPIEZA DE DUPLICADOS DEL INVENTARIO (pedido de Iván, 8-oct) ══
 // Regla que pidió: "si hay vaso que ya tiene las piezas capturadas
@@ -11539,16 +11584,39 @@ function renderProv(){
         </div>`;
       }).join('');
   }
-  const rows=[...D.pedidos].sort((a,b)=>b.fecha.localeCompare(a.fecha));
-  if($('pvtable'))$('pvtable').innerHTML=rows.length===0?`<tr><td colspan="6" style="color:var(--text3);text-align:center;padding:14px;">Sin pedidos</td></tr>`:
-    rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${r.nombre}</td><td><span class="badge xb">${pvL[r.tipo]||r.tipo}</span></td><td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td><td class="mono ar fw7">${fmt(r.total)}</td><td style="display:flex;gap:3px;"><button class="btn bs bxs" onclick="editPedido(${r.id})" title="Editar">✏️</button><button class="btn bd bxs" onclick="delPed(${r.id})" title="Eliminar">✕</button></td></tr>`).join('');
-  const freq={}; D.pedidos.forEach(p=>{freq[p.nombre]=(freq[p.nombre]||0)+p.total;});
-  if($('pvfreq'))$('pvfreq').innerHTML=Object.entries(freq).length===0?`<p style="color:var(--text3);font-size:12px;">Sin historial</p>`:
-    Object.entries(freq).sort((a,b)=>b[1]-a[1]).slice(0,6).map(([n,v])=>`<div class="sr"><span>${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
-  const bP={}; D.pedidos.filter(p=>mOf(p.fecha)===curM()).forEach(p=>{bP[p.nombre]=(bP[p.nombre]||0)+p.total;});
-  if($('pvmes'))$('pvmes').innerHTML=Object.entries(bP).length===0?`<p style="color:var(--text3);font-size:12px;">Sin pedidos este mes</p>`:
-    Object.entries(bP).sort((a,b)=>b[1]-a[1]).map(([n,v])=>`<div class="sr"><span>${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
-  if($('pvdl2'))$('pvdl2').innerHTML=[...new Set(D.pedidos.map(p=>p.nombre))].map(n=>`<option value="${n}">`).join('');
+  // Todo sale de GASTOS: las compras a proveedor son gasto, no una lista
+  // aparte. Se excluye la nómina, que no es una compra.
+  const compras=D.gastos.filter(g=>g.cat!=='nomina');
+  // "Costco" y "COSTCO" son el mismo proveedor: se agrupan por nombre
+  // normalizado y se muestra la grafía más usada, no dos renglones.
+  const nombreProv=g=>(g.prov||g.concepto||'Sin proveedor').trim();
+  const clave=n=>normInvNombre(n);
+  const agrupar=arr=>{
+    const m={};
+    arr.forEach(g=>{
+      const n=nombreProv(g), k=clave(n);
+      if(!m[k]) m[k]={total:0,nombres:{}};
+      m[k].total+=g.monto||0;
+      m[k].nombres[n]=(m[k].nombres[n]||0)+1;
+    });
+    return Object.values(m).map(x=>[
+      Object.entries(x.nombres).sort((a,b)=>b[1]-a[1])[0][0],
+      r2(x.total)
+    ]).sort((a,b)=>b[1]-a[1]);
+  };
+  const rows=[...compras].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).slice(0,40);
+  if($('pvtable'))$('pvtable').innerHTML=rows.length===0?`<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:14px;">Sin compras registradas</td></tr>`:
+    rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${nombreProv(r)}</td><td><span class="badge xb">${catL[r.cat]||r.cat||'—'}</span></td><td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td><td class="mono ar fw7">${fmt(r.monto)}</td></tr>`).join('');
+  const hist=agrupar(compras);
+  if($('pvfreq'))$('pvfreq').innerHTML=hist.length===0?`<p style="color:var(--text3);font-size:12px;">Sin historial</p>`:
+    hist.slice(0,8).map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
+  const mes=agrupar(compras.filter(g=>mOf(g.fecha)===curM()));
+  const totMes=r2(mes.reduce((s2,[,v])=>s2+v,0));
+  const sinProv=compras.filter(g=>!g.prov&&!g.concepto).length;
+  if($('pvmes'))$('pvmes').innerHTML=mes.length===0?`<p style="color:var(--text3);font-size:12px;">Sin compras este mes</p>`:
+    mes.map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('')+
+    `<div class="sr fw7" style="border:none;padding-top:9px;"><span>Total del mes</span><span class="mono ar" style="font-size:15px;">${fmt(totMes)}</span></div>`+
+    (sinProv?`<div style="font-size:11px;color:var(--gold);margin-top:8px;">${sinProv} gasto(s) del histórico sin proveedor anotado — se agrupan como "Sin proveedor"</div>`:'');
 }
 
 // ─── SUSCRIPTORES ───

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.89'; // Panel por período con dinero, salud, inventario y margen
+const CACHE_NAME = 'el-huerto-v14.90'; // Proveedores se funde en Gastos: una sola lista
 const ASSETS = [
   '/',
   '/index.html',
