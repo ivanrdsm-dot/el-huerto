@@ -2946,6 +2946,7 @@ async function completeInit(){
   await migQuitaBonelesOct2026();
   await migBajasOct2026();
   await migPartidasGastosOct2026();
+  await migLimpiaInventarioOct2026();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3822,6 +3823,76 @@ async function migComprasSemana5Oct2026(){
     excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20,bonelesPollo:209.25,pechugaKS:389.00},
     articulosNuevos:creados,sinCostear:omitidos});
   if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(4517.64)} · ${creados.length} artículos nuevos`,6000);
+}
+// ══ LIMPIEZA DE DUPLICADOS DEL INVENTARIO (pedido de Iván, 8-oct) ══
+// Regla que pidió: "si hay vaso que ya tiene las piezas capturadas
+// elimina las que no tengan datos" — o sea, de cada concepto duplicado
+// se queda el que tiene existencia y/o recetas colgando.
+// Se borra SOLO lo que no tiene existencia NI receta: borrar un insumo
+// que una receta usa la deja sin costear en silencio, que es el error
+// que ya nos mordió tres veces.
+const INV_BORRAR=[
+  // Vasos duplicados sin existencia ni uso
+  {id:1773767311830, n:'vaso plastico [16oz]',   pq:'duplicado de Vaso plástico 16 oz (274 pz, 24 recetas)'},
+  {id:7511,          n:'Vaso nevero',            pq:'sin existencia, sin precio, sin receta'},
+  {id:7512,          n:'Vaso 14 oz',             pq:'sin existencia, sin precio, sin receta'},
+  // Hielo duplicado: queda "Hielos" en pz, que es el que usan 9 recetas
+  {id:1787162135935, n:'Hielo (g)',              pq:'duplicado de Hielos (9 recetas)'},
+  // Los que Iván pidió por nombre
+  {id:1785385521455, n:'Elote dorado',           pq:'ya no se usa'},
+  {id:1791334360444, n:'Calabaza',               pq:'se compró una vez, no entra en recetas'},
+  {id:7307,          n:'Aceite de oliva',        pq:'ya no se usa (el PAM en aerosol se queda: 3 latas en existencia)'},
+  {id:1791334360451, n:'Bowl papel kraft 32 oz', pq:'sin existencia ni uso'},
+  {id:1785385521418, n:'Gel antibacterial',      pq:'sin existencia ni uso'},
+];
+// Caso aparte: "Vaso 12 oz" está en CERO pero DOS recetas lo usan. Si se
+// borra sin más, esas recetas se quedan sin insumo y dejan de costear
+// sin avisar. Primero se repuntan al vaso bueno —"Vaso p/café 12 oz",
+// 115 pz y 12 recetas— y después sí se borra.
+const INV_FUSIONAR=[{de:1787162118912, a:7516, n:'Vaso 12 oz → Vaso p/café 12 oz'}];
+async function migLimpiaInventarioOct2026(){
+  const migKey='h5invdup_oct26';
+  if(await migDone(migKey)) return;
+  const borrados=[], fusionados=[], protegidos=[];
+  // 1. Fusionar antes de borrar
+  for(const f of INV_FUSIONAR){
+    const destino=D.inventario.find(i=>i.id===f.a);
+    if(!destino){ protegidos.push(f.n+': no existe el destino'); continue; }
+    let tocadas=0;
+    for(const r of D.recetas){
+      const ings=r.ings||[];
+      if(!ings.some(i=>i.invId===f.de)) continue;
+      const upd={...r, ings:ings.map(i=>i.invId===f.de?{...i,invId:f.a,nombre:destino.nombre}:i)};
+      await fsSet('recetas',upd);
+      const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+      tocadas++;
+    }
+    const viejo=D.inventario.find(i=>i.id===f.de);
+    if(viejo){
+      await fsDel('inventario',viejo.id);
+      const ix=D.inventario.findIndex(i=>i.id===viejo.id); if(ix>=0) D.inventario.splice(ix,1);
+    }
+    fusionados.push(`${f.n} (${tocadas} receta(s) repuntadas)`);
+  }
+  // 2. Borrar los duplicados, con red: si tiene existencia o receta, NO
+  const usados=new Set(D.recetas.flatMap(r=>(r.ings||[]).map(i=>i.invId)).filter(x=>x!=null));
+  for(const b of INV_BORRAR){
+    const it=D.inventario.find(i=>i.id===b.id);
+    if(!it) continue;
+    if((it.qty||0)>0 || usados.has(it.id)){
+      protegidos.push(`${it.nombre}: tiene ${it.qty||0} en existencia${usados.has(it.id)?' y receta(s) que lo usan':''} — NO se borró`);
+      continue;
+    }
+    await fsDel('inventario',it.id);
+    const ix=D.inventario.findIndex(i=>i.id===it.id); if(ix>=0) D.inventario.splice(ix,1);
+    borrados.push(`${it.nombre} — ${b.pq}`);
+  }
+  if(borrados.length||fusionados.length){
+    logAudit('inventario_limpieza',{borrados,fusionados,protegidos:protegidos.length?protegidos:undefined,
+      motivo:'Duplicados y artículos en desuso, a pedido de Iván'});
+    toast(`✓ Inventario: ${borrados.length} duplicado(s) fuera${fusionados.length?`, ${fusionados.length} fusionado(s)`:''}`,5000);
+  }
+  await markMig(migKey);
 }
 // ══ DESGLOSE POR CONCEPTO DE CADA TICKET (pedido de Iván, 8-oct) ══
 // Hasta hoy cada gasto guardaba sus partidas como texto corrido en las

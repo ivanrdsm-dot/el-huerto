@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.85'; // Gastos con desglose por concepto
+const CACHE_NAME = 'el-huerto-v14.86'; // Limpieza de duplicados del inventario
 const ASSETS = [
   '/',
   '/index.html',
