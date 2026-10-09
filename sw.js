@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.90'; // Proveedores se funde en Gastos: una sola lista
+const CACHE_NAME = 'el-huerto-v14.92'; // El surtido del domingo cuenta en su semana
 const ASSETS = [
   '/',
   '/index.html',

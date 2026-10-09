@@ -1668,7 +1668,8 @@ nav{padding-top:env(safe-area-inset-top);}
             <option value="transferencia">📲 Transferencia</option></select></div>
       </div>
       <div class="ii">
-        <div class="fg"><label>Proveedor</label><input type="text" id="gprov" placeholder="Nombre" list="pvdl"></div>
+        <div class="fg"><label>Proveedor</label>
+        <input type="text" id="gprov" placeholder="Elige o escribe" list="pvdl" onchange="gastoSugiereCat(this.value)"></div>
         <div class="fg"><label>Ticket/Folio</label><input type="text" id="gtk" placeholder="001"></div>
       </div>
       <div class="ii">
@@ -1713,6 +1714,7 @@ nav{padding-top:env(safe-area-inset-top);}
     </table></div>
   </div>
   <datalist id="pvdl"></datalist>
+  <!-- El catálogo llena esta lista: elegir en vez de escribir -->
 </div>
 
 <!-- ══ NÓMINA SEMANAL ══ -->
@@ -2957,6 +2959,8 @@ async function completeInit(){
   await migBajasOct2026();
   await migPartidasGastosOct2026();
   await migFusionaPedidosEnGastos();
+  await migCanonizaProveedores();
+  await migSurtidoALaSemana();
   await migLimpiaInventarioOct2026();
   await migFusionaTapasOct2026();
   await migTapaDomoSmoothies();
@@ -3836,6 +3840,96 @@ async function migComprasSemana5Oct2026(){
     excluidoPersonal:{alimentoGato:396.75,arenaGato:295.20,bonelesPollo:209.25,pechugaKS:389.00},
     articulosNuevos:creados,sinCostear:omitidos});
   if(nuevos.length) toast(`✓ Semana 5-oct: ${nuevos.length} gastos por ${fmt(4517.64)} · ${creados.length} artículos nuevos`,6000);
+}
+// ══ EL SURTIDO DEL DOMINGO CUENTA EN LA SEMANA QUE SURTE ══
+// Los 6 tickets de Central de Abasto y Costco traen fecha del domingo
+// 4-oct. Yo los registré con esa fecha, y con la semana corriendo de
+// lunes a domingo caían en la semana ANTERIOR: Iván abría "Esta semana"
+// y veía 4 registros en vez de 10, faltándole $3,971.64 que sí gastó
+// para esta semana.
+// Mandan los hechos del negocio: ese surtido es de la semana del 5-oct.
+// Se mueven al lunes y se guarda la fecha impresa en `fechaTicket`, así
+// el rastro contra el papel no se pierde.
+const SURTIDO_4OCT=['COSTCO-8755','A18199','AG-40458','MOLINERA-22632','LANUEVA-216170','MOLINERA-22633'];
+async function migSurtidoALaSemana(){
+  const migKey='h5surtido_oct26';
+  if(await migDone(migKey)) return;
+  const movidos=[];
+  for(const t of SURTIDO_4OCT){
+    const g=D.gastos.find(x=>x.ticket===t);
+    if(!g || g.fecha!=='2026-10-04') continue;
+    const upd={...g,fecha:'2026-10-05',fechaTicket:'2026-10-04',
+      notas:(g.notas||'')+' · Ticket del domingo 4-oct; se cuenta en la semana del 5-oct, que es a la que surtió'};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=upd;
+    movidos.push(`${t} ${fmt(g.monto)}`);
+  }
+  if(movidos.length){
+    logAudit('gastos_refechados',{tickets:movidos,de:'2026-10-04',a:'2026-10-05',
+      motivo:'El surtido del domingo pertenece a la semana que abastece; la fecha impresa queda en fechaTicket'});
+    toast(`✓ ${movidos.length} compra(s) del domingo pasan a la semana del 5-oct`,5000);
+  }
+  await markMig(migKey);
+}
+// ══════════════════════════════════════════════════════════════
+// CATÁLOGO DE PROVEEDORES
+// El mismo proveedor se escribía de tres formas —"Costco", "COSTCO",
+// "Costco Interlomas"— y el gasto se partía en tres renglones. Con un
+// catálogo fijo, el nombre que se guarda es siempre el mismo.
+// `alias` son las grafías que ya existen en el histórico y que deben
+// caer en ese nombre. Al agregar un proveedor nuevo, agregarlo aquí.
+// ══════════════════════════════════════════════════════════════
+const PROVEEDORES=[
+  {n:'Costco',                      cat:'costco',    alias:['costco','costcointerlomas','costcodemexico','costcowholesale']},
+  {n:'Reyes Ramiro',                cat:'proveedor', alias:['reyesramiro','reyes','piñareyesramiro']},
+  {n:'La Molinera de Abastos',      cat:'proveedor', alias:['lamolinera','lamolineradeabastos','molinera']},
+  {n:'Materias Primas La Nueva',    cat:'proveedor', alias:['materiasprimaslanueva','lanueva','materiasprimas']},
+  {n:'Plastidoro',                  cat:'proveedor', alias:['plastidoro','comercializadoraplastidoro']},
+  {n:'Coffee Shop 2',               cat:'proveedor', alias:['coffeeshop2','coffeeshop']},
+  {n:'Grupo El Zorro',              cat:'proveedor', alias:['grupoelzorro','elzorro','zorro','zorroabarrotero','zorroabarroterolasarmas','zorromediomayoreo']},
+  {n:'La Chispa',                   cat:'proveedor', alias:['lachispa','chispa']},
+  {n:'Naranjarillo',                cat:'proveedor', alias:['naranjarillo','naranjarillobodegasatizapan']},
+  {n:'Tía Renee',                   cat:'proveedor', alias:['tiarenee','reneefarca','reneefarcatiarenee','panestiarenee']},
+  {n:'Vega Life',                   cat:'proveedor', alias:['vegalife','vega']},
+  {n:'La Comer',                    cat:'proveedor', alias:['lacomer','lacomerbosquereal']},
+  {n:'Chilapita',                   cat:'proveedor', alias:['chilapita','chilapitaazcapotzalco']},
+  {n:'Universidad Panamericana',    cat:'renta',     alias:['panamericana','universidadpanamericana','up','ciudadup']},
+  {n:'IMSS',                        cat:'varios',    alias:['imss']},
+  {n:'Nómina interna',              cat:'nomina',    alias:['nominainterna','nomina']},
+];
+// Devuelve el nombre canónico de un proveedor escrito de cualquier forma
+function provCanonico(nombre){
+  const k=normInvNombre(nombre||'');
+  if(!k) return '';
+  const hit=PROVEEDORES.find(p=>p.alias.includes(k)||normInvNombre(p.n)===k);
+  return hit?hit.n:(nombre||'').trim();
+}
+const provCategoria=nombre=>{
+  const k=normInvNombre(nombre||'');
+  return PROVEEDORES.find(p=>p.alias.includes(k)||normInvNombre(p.n)===k)?.cat||null;
+};
+// ══ Unifica las grafías que ya están guardadas ══
+async function migCanonizaProveedores(){
+  const migKey='h5provcanon_oct26';
+  if(await migDone(migKey)) return;
+  const cambios={};
+  for(const g of [...D.gastos]){
+    const actual=(g.prov||g.concepto||'').trim();
+    if(!actual) continue;
+    const canon=provCanonico(actual);
+    if(canon===actual && g.prov) continue;
+    const upd={...g,prov:canon};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=upd;
+    if(canon!==actual) cambios[`${actual} → ${canon}`]=(cambios[`${actual} → ${canon}`]||0)+1;
+  }
+  const n=Object.values(cambios).reduce((s2,v)=>s2+v,0);
+  if(n){
+    logAudit('proveedores_unificados',{cambios,total:n,
+      motivo:'El mismo proveedor escrito de varias formas partía el gasto en renglones distintos'});
+    toast(`✓ ${n} gasto(s) con el nombre del proveedor unificado`,5000);
+  }
+  await markMig(migKey);
 }
 // ══ PROVEEDORES SE FUNDE EN GASTOS (pedido de Iván, 8-oct) ══
 // Iván: "todo lo que tienes en proveedor es gasto, unifícalo y migra".
@@ -10701,9 +10795,13 @@ window.addGasto=async()=>{
   // Detectar si estamos editando un gasto existente
   const editId=$('gm').dataset.editId;
   const existe=editId?D.gastos.find(x=>x.id==editId):null;
+  // El proveedor se guarda SIEMPRE con su nombre del catálogo: si la
+  // cajera escribe "costco" o "COSTCO", se guarda "Costco" y el gasto
+  // no se parte en tres renglones distintos.
+  const prov=provCanonico($('gprov').value);
   const g=existe?
-    {...existe,fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal}:
-    {id:Date.now(),fecha,cat:$('gc').value,prov:$('gprov').value.trim(),monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal};
+    {...existe,fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal}:
+    {id:Date.now(),fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal};
   await fsSet('gastos',g);
   // Resetear form y modo edición
   $('gm').value='';$('gprov').value='';$('gtk').value='';$('gnota').value='';
@@ -10769,7 +10867,24 @@ window.delGasto=async id=>{
   if(g) logAudit('gasto_eliminado',{fecha:g.fecha,monto:g.monto,cat:g.cat,prov:g.prov||''});
   toast('✓ Eliminado');
 };
+// Al elegir un proveedor del catálogo, la categoría se pone sola: el
+// gasto de Costco siempre cae en Costco, no a veces en "Varios".
+window.gastoSugiereCat=nombre=>{
+  const canon=provCanonico(nombre);
+  if($('gprov')) $('gprov').value=canon;
+  const cat=provCategoria(canon);
+  if(cat && $('gc') && [...$('gc').options].some(o=>o.value===cat)) $('gc').value=cat;
+};
 function renderGastos(){
+  // La lista del formulario sale del CATÁLOGO, más cualquier proveedor
+  // del histórico que todavía no esté en él (para no perderlos de vista)
+  if($('pvdl')){
+    const delCatalogo=PROVEEDORES.map(p=>p.n);
+    const delHistorico=[...new Set(D.gastos.map(g=>(g.prov||'').trim()).filter(Boolean))]
+      .filter(n=>!delCatalogo.some(c=>normInvNombre(c)===normInvNombre(n)));
+    $('pvdl').innerHTML=[...delCatalogo,...delHistorico.sort()]
+      .map(n=>`<option value="${n}">`).join('');
+  }
   const td=today();
   const periodo=$('g-periodo')?.value||'semana';
   const fc=$('gfcat')?.value||'';
@@ -10842,7 +10957,7 @@ function renderGastos(){
       const suma=pt.length?r2(pt.reduce((s2,x)=>s2+(x.i||0),0)):null;
       const cuadra=suma==null||Math.abs(suma-r.monto)<=0.05;
       return `<tr${pt.length?` onclick="togglePartidas(${r.id})" style="cursor:pointer;"`:''}>
-      <td class="mono">${r.fecha}</td>
+      <td class="mono">${r.fecha}${r.fechaTicket&&r.fechaTicket!==r.fecha?`<br><span style="font-size:10px;color:var(--text3);">ticket ${r.fechaTicket}</span>`:''}</td>
       <td><span class="badge xr">${catL[r.cat]||r.cat}</span></td>
       <td>${tipoBadge(r.tipoEstrategico,r.canal)}</td>
       <td>${r.prov||'—'}</td>
