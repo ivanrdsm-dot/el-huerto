@@ -1000,6 +1000,9 @@ nav{padding-top:env(safe-area-inset-top);}
 <g id="i-gear"><circle cx="12" cy="12" r="3.2"/><path d="M19.3 14.6a1.6 1.6 0 0 0 .32 1.77l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.6 1.6 0 0 0-1.77-.32 1.6 1.6 0 0 0-1 1.47V21a2 2 0 1 1-4 0v-.1a1.6 1.6 0 0 0-1-1.47 1.6 1.6 0 0 0-1.77.32l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.6 1.6 0 0 0 .32-1.77 1.6 1.6 0 0 0-1.47-1H3a2 2 0 1 1 0-4h.1a1.6 1.6 0 0 0 1.47-1 1.6 1.6 0 0 0-.32-1.77l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.6 1.6 0 0 0 1.77.32H9a1.6 1.6 0 0 0 1-1.47V3a2 2 0 1 1 4 0v.1a1.6 1.6 0 0 0 1 1.47 1.6 1.6 0 0 0 1.77-.32l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.6 1.6 0 0 0-.32 1.77V9a1.6 1.6 0 0 0 1.47 1H21a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.47 1z"/></g>
 <g id="i-list"><path d="M8.5 6.5h12M8.5 12h12M8.5 17.5h12"/><circle cx="4" cy="6.5" r="1.1"/><circle cx="4" cy="12" r="1.1"/><circle cx="4" cy="17.5" r="1.1"/></g>
 <g id="i-book"><path d="M3.5 4.5h6a3 3 0 0 1 3 3v12a2.4 2.4 0 0 0-2.4-2.4H3.5z"/><path d="M20.5 4.5h-6a3 3 0 0 0-3 3v12a2.4 2.4 0 0 1 2.4-2.4h6.6z"/></g>
+<g id="i-receipt"><path d="M5 21V4.5a.5.5 0 0 1 .78-.42L8 5.5l2.2-1.46a.5.5 0 0 1 .56 0L13 5.5l2.24-1.46a.5.5 0 0 1 .56 0L18 5.5l1.22-1.42A.5.5 0 0 1 20 4.5V21l-2.5-1.5L15 21l-2.5-1.5L10 21l-2.5-1.5z"/><path d="M9 9.5h7M9 13.5h7"/></g>
+<g id="i-wallet"><rect x="2.5" y="5.5" width="19" height="14" rx="2.6"/><path d="M2.5 10h19"/><circle cx="17" cy="14.8" r="1.2"/></g>
+<g id="i-check"><circle cx="12" cy="12" r="8.8"/><path d="M8.2 12.2l2.6 2.6 5-5.4"/></g>
 <g id="i-sun"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.2v2.4M12 19.4v2.4M4.1 4.1l1.7 1.7M18.2 18.2l1.7 1.7M2.2 12h2.4M19.4 12h2.4M4.1 19.9l1.7-1.7M18.2 5.8l1.7-1.7"/></g>
 <g id="i-moon"><path d="M20.5 14.3A8.6 8.6 0 0 1 9.7 3.5a8.6 8.6 0 1 0 10.8 10.8z"/></g>
 <g id="i-wrench"><path d="M14.2 6.3a4.6 4.6 0 0 0 6 6L15 17.5l-4.5-4.5z"/><path d="M10.5 13 4.2 19.3a1.8 1.8 0 0 0 2.5 2.5L13 15.5"/></g>
@@ -13392,16 +13395,16 @@ function renderDashboard(){
     const ordsDone=vHoy.filter(v=>v.prep?.estado==='entregada'&&v.prep.tsEntrega);
     const cocinaProm=ordsDone.length?ordsDone.reduce((s,v)=>s+(v.prep.tsEntrega-(v.tsCobro||v.id)),0)/ordsDone.length/60000:null;
     const abiertas=typeof ordActivas==='function'?ordActivas().length:0;
-    const chip=(icon,label,val,color,onclick)=>`<div ${onclick?`onclick="${onclick}" style="cursor:pointer;"`:''} class="card" style="padding:9px 13px;display:flex;align-items:center;gap:8px;flex:1;min-width:135px;${onclick?'cursor:pointer;':''}">
-      <span style="font-size:17px;">${icon}</span>
-      <div><div style="font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);font-weight:700;">${label}</div>
-      <div class="mono" style="font-size:14.5px;font-weight:900;color:${color};">${val}</div></div></div>`;
+    const chip=(icon,label,val,color,onclick)=>`<div ${onclick?`onclick="${onclick}"`:''} class="card" style="padding:12px 15px;display:flex;align-items:center;gap:11px;flex:1;min-width:140px;${onclick?'cursor:pointer;':''}">
+      <svg class="ic" style="width:19px;height:19px;color:${color};opacity:.9;"><use href="#i-${icon}"/></svg>
+      <div><div style="font-size:12.5px;color:var(--text2);font-weight:500;letter-spacing:-.008em;">${label}</div>
+      <div style="font-size:17px;font-weight:600;letter-spacing:-.018em;font-variant-numeric:tabular-nums;color:${color};">${val}</div></div></div>`;
     $('db-pulso').innerHTML=
-      chip('💰','Ventas hoy',fmt(totHoy),'var(--accent)')+
-      chip('🧾','Tickets · prom',`${vHoy.length} · ${fmt(prom)}`,'var(--text)')+
-      chip('⏱','Cocina',cocinaProm!=null?cocinaProm.toFixed(1)+' min'+(abiertas?` · ${abiertas} viva${abiertas>1?'s':''}`:''):(abiertas?abiertas+' en curso':'—'),cocinaProm!=null&&cocinaProm>(CFG.ordTiempos?.urgent||12)?'var(--red)':'var(--teal)',`go('ordenes')`)+
-      chip('💵','Apertura',fondo?`${fmt(fondo.monto)}${fondo.por?' · '+fondo.por:''}`:'FALTA',fondo?'var(--accent)':'var(--red)',fondo?'':`$('apertura-modal').style.display='flex'`)+
-      chip('🌙','Corte',corteHoy?`✓ ${corteHoy.hora}`:'Pendiente',corteHoy?'var(--accent)':'var(--gold)',`go('caja')`);
+      chip('cash','Ventas hoy',fmt(totHoy),'var(--accent)')+
+      chip('receipt','Tickets · prom',`${vHoy.length} · ${fmt(prom)}`,'var(--text)')+
+      chip('clock','Cocina',cocinaProm!=null?cocinaProm.toFixed(1)+' min'+(abiertas?` · ${abiertas} viva${abiertas>1?'s':''}`:''):(abiertas?abiertas+' en curso':'—'),cocinaProm!=null&&cocinaProm>(CFG.ordTiempos?.urgent||12)?'var(--red)':'var(--teal)',`go('ordenes')`)+
+      chip('wallet','Apertura',fondo?`${fmt(fondo.monto)}${fondo.por?' · '+fondo.por:''}`:'FALTA',fondo?'var(--accent)':'var(--red)',fondo?'':`$('apertura-modal').style.display='flex'`)+
+      chip('check','Corte',corteHoy?`✓ ${corteHoy.hora}`:'Pendiente',corteHoy?'var(--accent)':'var(--gold)',`go('caja')`);
   }
   }catch(e){console.warn('pulso:',e);}
 
@@ -14461,8 +14464,12 @@ window.revisarCuentasAuth=async()=>{
     filas.push(`<div class="sr"><span style="font-size:12px;">${p.nombre} <span style="color:var(--text3);font-size:10.5px;">${authEmail(p.quien)}</span></span>
       <span class="badge ${u?'xg':'xy'}">${u?'✓ creada':'pendiente'}</span></div>`);
   }
+  const listas=_authPersonas().every(p=>D.usuarios?.find?.(x=>x.quien===String(p.quien)));
   cont.innerHTML=filas.join('')+
-    `<div style="font-size:11px;color:var(--text3);margin-top:7px;">Sesión actual: <b>${AUTH_PERFIL?('propia · '+authEmail(AUTH_PERFIL.quien)):'anónima (compartida)'}</b></div>`;
+    `<div style="font-size:11px;color:var(--text3);margin-top:7px;">Sesión actual: <b>${AUTH_PERFIL?('propia · '+authEmail(AUTH_PERFIL.quien)):'anónima (compartida)'}</b></div>`+
+    (listas
+      ? `<div style="margin-top:9px;padding:9px 11px;border-radius:var(--rsm);background:color-mix(in srgb,var(--accent) 10%,transparent);font-size:12px;color:var(--text);">✓ Las tres tienen cuenta y rol. Ya se pueden publicar las reglas <code>firestore.rules.v3</code>.</div>`
+      : `<div style="margin-top:9px;padding:9px 11px;border-radius:var(--rsm);background:color-mix(in srgb,var(--red) 9%,transparent);font-size:12px;color:var(--text);"><b>No publiques <code>firestore.rules.v3</code> todavía.</b> Quien aparezca como pendiente se quedaría dentro de la app pero sin poder leer ni escribir datos.</div>`);
 };
 window.crearCuentasAuth=async()=>{
   if(SESSION?.tipo!=='admin'){toast('⚠ Solo administrador',2600,'warn');return;}
@@ -14479,26 +14486,43 @@ window.crearCuentasAuth=async()=>{
   }
   const hechas=[],fallidas=[];
   for(const p of personas){
+    let uid=null, nota='';
     try{
       const cred=await createUserWithEmailAndPassword(auth,authEmail(p.quien),passes[p.quien]);
-      await fsSet('usuarios',{id:cred.user.uid,uid:cred.user.uid,quien:String(p.quien),
-        rol:p.rol,empId:p.empId,nombre:p.nombre,creada:today()});
-      hechas.push(p.nombre);
+      uid=cred.user.uid; nota='creada';
     }catch(e){
       const c=e?.code||'';
-      if(c.includes('email-already-in-use')) hechas.push(p.nombre+' (ya existía)');
-      else if(c.includes('operation-not-allowed')) fallidas.push(p.nombre+': falta activar Correo/Contraseña en Firebase');
-      else fallidas.push(p.nombre+': '+c);
+      if(c.includes('email-already-in-use')){
+        // La cuenta ya existía. Antes se daba por buena y se seguía — pero
+        // sin escribir su documento en `usuarios` esa persona queda SIN ROL:
+        // con las reglas v3 entraría a la app y no podría leer nada.
+        // Por eso ahora se inicia sesión con ella para obtener su uid real.
+        try{
+          const cred=await signInWithEmailAndPassword(auth,authEmail(p.quien),passes[p.quien]);
+          uid=cred.user.uid; nota='ya existía · rol asignado';
+        }catch(e2){
+          fallidas.push(`${p.nombre}: la cuenta ya existe pero esa contraseña no entra. Cámbiala en Firebase Console o usa la correcta`);
+          continue;
+        }
+      } else if(c.includes('operation-not-allowed')){
+        fallidas.push(p.nombre+': falta activar Correo/Contraseña en Firebase Console'); continue;
+      } else { fallidas.push(p.nombre+': '+c); continue; }
     }
+    await fsSet('usuarios',{id:uid,uid,quien:String(p.quien),
+      rol:p.rol,empId:p.empId,nombre:p.nombre,creada:today()});
+    hechas.push(`${p.nombre} — ${nota}`);
   }
   // Volver a dejar la sesión como admin
   const r=await entrarFirebase('admin',passAdmin);
   if(r!=='ok') await salirFirebase();
   logAudit('cuentas_auth_creadas',{creadas:hechas,fallidas});
   await revisarCuentasAuth();
-  alert(`Cuentas creadas: ${hechas.length}\n${hechas.join('\n')}`+
-    (fallidas.length?`\n\nNo se pudieron:\n${fallidas.join('\n')}`:'')+
-    `\n\nNo cambió nada todavía: la app sigue igual. Pide a cada quien que entre una vez con su contraseña, y después publicamos las reglas nuevas.`);
+  const listas=hechas.length===personas.length && !fallidas.length;
+  alert(`Cuentas listas: ${hechas.length} de ${personas.length}\n${hechas.join('\n')}`+
+    (fallidas.length?`\n\nNO quedaron:\n${fallidas.join('\n')}`:'')+
+    (listas
+      ? `\n\nTodas tienen cuenta y rol. La app sigue funcionando igual que antes; ya se pueden publicar las reglas v3.`
+      : `\n\nNO publiques las reglas v3 todavía: quien quede sin cuenta se queda sin acceso a los datos.`));
 };
 window.mostrarQRMenu=()=>{
   const cont=$('cfg-menu-qr'); if(!cont) return;

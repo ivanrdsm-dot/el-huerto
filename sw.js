@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.83'; // Rediseño: superficies neutras, tipografía del sistema, iconos
+const CACHE_NAME = 'el-huerto-v14.84'; // Pulso con iconos + alta de cuentas idempotente
 const ASSETS = [
   '/',
   '/index.html',
