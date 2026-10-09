@@ -3009,6 +3009,7 @@ async function completeInit(){
   await migEnsaladaBowlOct2026();
   await migUnidadesGramos2026();
   await migHuerfanosOct2026();
+  await migSusaliasOct2026();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -4257,6 +4258,59 @@ const AGRAMOS=[
 //   · el coco rallado ya no se vende
 //   · granola, jitomate y pechuga de pavo sí los tiene: se crean
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// SUSALIAS: UN SOLO RENGLÓN (Iván, 9-oct)
+// "Solamente las Susalias, que son para las Papas Locas, y se usan de
+// las dos: enchilada y flama."
+// Si las dos se gastan indistintamente en el mismo platillo, en
+// inventario son un solo consumible con dos sabores en el anaquel.
+// Tenerlas partidas hacía que la receta no encontrara ninguna y que
+// las Papas Locas —$13,410 en 8 semanas— no costearan.
+// El precio queda en CERO a propósito: la FLAMA traía $79 por pieza y
+// eso no es una bolsa de papas, es el paquete. Mejor sin precio y a la
+// vista en Costeo guiado que con un número que ensucie el margen.
+// ══════════════════════════════════════════════════════════════
+async function migSusaliasOct2026(){
+  const migKey='h5susalias_oct26';
+  if(await migDone(migKey)) return;
+  const partes=D.inventario.filter(i=>normInvNombre(i.nombre).startsWith('susalias'));
+  if(!partes.length){ await markMig(migKey); return; }
+  // Se queda la que más existencia tenga; las demás le heredan su stock
+  partes.sort((a,b)=>(b.qty||0)-(a.qty||0));
+  const queda=partes[0], sobran=partes.slice(1);
+  const total=r2(partes.reduce((s,i)=>s+(i.qty||0),0));
+  const upd={...queda,nombre:'Susalias',unit:'pz',qty:total,precio:0};
+  await fsSet('inventario',upd);
+  const ix=D.inventario.findIndex(i=>i.id===queda.id); if(ix>=0) D.inventario[ix]=upd;
+  // Las recetas de las que se van —y las que quedaron huérfanas pidiendo
+  // "Susalias" a secas— apuntan a la que se queda
+  let tocadas=0;
+  const idsFuera=new Set(sobran.map(i=>i.id));
+  for(const r of D.recetas){
+    const ings=r.ings||[]; let toco=false;
+    const nuevas=ings.map(i=>{
+      const existe=D.inventario.find(x=>x.id==i.invId);
+      const esSusalia=idsFuera.has(i.invId)
+        ||(!existe&&normInvNombre(i.nombre||'').startsWith('susalia'));
+      if(!esSusalia) return i;
+      toco=true; return {...i,invId:upd.id,nombre:'Susalias',unit:i.unit||'pz'};
+    });
+    if(!toco) continue;
+    const rec={...r,ings:nuevas};
+    await fsSet('recetas',rec);
+    const iy=D.recetas.findIndex(x=>x.id===r.id); if(iy>=0) D.recetas[iy]=rec;
+    tocadas++;
+  }
+  for(const s of sobran){
+    await fsDel('inventario',s.id);
+    const iz=D.inventario.findIndex(i=>i.id===s.id); if(iz>=0) D.inventario.splice(iz,1);
+  }
+  logAudit('inventario_fusion',{resultado:'Susalias',fusionados:partes.map(p=>p.nombre),
+    existenciaFinal:total,recetas:tocadas,precio:'en cero: el $79 de la FLAMA era precio de paquete, no de bolsa',
+    motivo:'Iván: "solamente las Susalias, se usan de las dos: enchilada y flama"'});
+  toast(`✓ Susalias en un solo renglón: ${total} pz · ${tocadas} receta(s)`,5500);
+  await markMig(migKey);
+}
 async function migHuerfanosOct2026(){
   const migKey='h5huerf_oct26';
   if(await migDone(migKey)) return;
