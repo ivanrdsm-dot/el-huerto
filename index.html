@@ -1963,6 +1963,17 @@ nav{padding-top:env(safe-area-inset-top);}
       <button class="btn bg bsm" onclick="seedRecetasPredefinidas()">📖 Cargar Recetas Predefinidas</button>
     </div>
   </div>
+  <!-- COSTEO GUIADO: qué falta costear, por orden de cuánto dinero mueve -->
+  <div class="card" style="margin-bottom:10px;" id="rec-guia-card">
+    <div class="sh">
+      <span class="ct" style="margin-bottom:0;">Costeo guiado</span>
+      <span id="rg-prog" style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;"></span>
+    </div>
+    <div id="rg-barra" style="height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;margin:2px 0 10px;">
+      <div id="rg-barra-fill" style="height:100%;width:0%;background:var(--accent);transition:width .4s var(--ease);"></div>
+    </div>
+    <div id="rec-guia"></div>
+  </div>
   <!-- A3: FOOD COST REAL POR PRODUCTO -->
   <div class="card" style="margin-bottom:10px;border:2px solid var(--accent);" id="foodcost-card">
     <div class="sh">
@@ -2560,6 +2571,34 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- MODAL DIVIDIR CUENTA — pagos mixtos y cuentas partidas -->
+<!-- ══ COSTEAR UN PRODUCTO ══ -->
+<div class="modal-bg" id="costeo-modal" style="display:none;" onclick="closeModal('costeo-modal',event)">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head">
+      <span class="modal-title" id="cst-titulo">Costear</span>
+      <button class="btn bs bxs" onclick="cerrarCosteo()">✕</button>
+    </div>
+    <div id="cst-ings"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end;margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div class="fg" style="flex:1;min-width:150px;margin:0;"><label>Insumo</label>
+        <input type="text" id="cst-ins" list="cst-insl" placeholder="Escribe para buscar" autocomplete="off"><datalist id="cst-insl"></datalist></div>
+      <div class="fg" style="width:72px;margin:0;"><label>Cantidad</label><input type="number" step="0.001" id="cst-qty" placeholder="0"></div>
+      <div class="fg" style="width:72px;margin:0;"><label>Unidad</label><input type="text" id="cst-unit" placeholder="g"></div>
+      <button class="btn bp bsm" onclick="cstAgregar()">Agregar</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px;">
+      <select id="cst-copiar" style="flex:1;min-width:170px;padding:7px 9px;font-size:12px;"><option value="">Copiar receta de…</option></select>
+      <button class="btn bs bsm" onclick="cstCopiar()">Copiar</button>
+      <button class="btn bs bsm" id="cst-plantilla" onclick="cstPlantilla()" style="display:none;">Plantilla de café</button>
+    </div>
+    <div id="cst-resumen" style="margin-top:12px;"></div>
+    <div style="display:flex;gap:7px;margin-top:12px;">
+      <button class="btn bs bfull" onclick="cerrarCosteo()">Cerrar</button>
+      <button class="btn bp bfull" onclick="cstSiguiente()">Siguiente pendiente</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-bg" id="div-modal" style="display:none;" onclick="closeModal('div-modal',event)">
   <div class="modal" style="max-width:430px;">
     <div class="modal-head">
@@ -9910,11 +9949,20 @@ function renderDbPeriodo(){
     kc('Utilidad',fmt(util),`Margen ${margen}%`,util>=0?'var(--teal)':'var(--red)');
 
   // ── Salud: los números que dicen si el modelo aguanta ──
-  const conCosto=ventas.filter(v=>v.foodCost!=null);
+  // La cobertura se mide en DINERO y solo cuenta el ticket COMPLETO.
+  // Antes contaba tickets con `foodCost!=null`: un ticket con un panini
+  // costeado y un capuchino sin costear entraba como bueno, el café
+  // sumaba venta con cero costo y el food cost salía más bajo de lo
+  // que es. Ahora el porcentaje se calcula contra la venta que de
+  // verdad está costeada, y la cobertura se dice en voz alta.
+  const conCosto=ventas.filter(v=>v.foodCostCompleto&&v.foodCost!=null);
   const cogs=r2(conCosto.reduce((s,v)=>s+v.foodCost,0));
-  const cobert=ventas.length?Math.round(conCosto.length/ventas.length*100):0;
-  const fcPct=ing>0?Math.round(cogs/ing*100):0;
-  const prime=ing>0?Math.round((cogs+nom)/ing*100):0;
+  const ventaCubierta=r2(conCosto.reduce((s,v)=>s+(v.total||0),0));
+  const cobert=ing>0?Math.round(ventaCubierta/ing*100):0;
+  const fcPct=ventaCubierta>0?Math.round(cogs/ventaCubierta*100):0;
+  // Prime cost proyecta ese food cost al total vendido: es estimación,
+  // y así se etiqueta.
+  const prime=ing>0?Math.round(fcPct+nom/ing*100):0;
   const dias=new Set(ventas.map(v=>v.fecha)).size||1;
   const mBruta=ing>0?(ing-cogs)/ing:0;
   const equil=mBruta>0?r2((nom+gasto)/dias/mBruta):null;
@@ -9923,8 +9971,11 @@ function renderDbPeriodo(){
   const sem=(ok,txt)=>`<div style="font-size:10.5px;margin-top:4px;color:${ok?'var(--accent)':'var(--red)'};font-weight:560;">${txt}</div>`;
   if($('db-salud'))$('db-salud').innerHTML=
     kc('Ticket promedio',fmt(ticket),`${Math.round(ventas.length/dias)} tickets/día · ${dias} día${dias===1?'':'s'}`,'var(--text)')+
-    kc('Food cost',ing>0?fcPct+'%':'—',cobert<100?`cobertura ${cobert}% de las ventas`:'todo costeado','var(--text)',ing>0?sem(fcPct<=35,fcPct<=35?'✓ sano · meta ≤35%':'⚠ alto · meta ≤35%'):'')+
-    kc('Prime cost',ing>0?prime+'%':'—','insumos + nómina','var(--text)',ing>0?sem(prime<=60,prime<=60?'✓ sano · meta ≤60%':'⚠ alto · meta ≤60%'):'')+
+    kc('Food cost',ventaCubierta>0?fcPct+'%':'—',cobert>=100?'todo el menú costeado':`solo ${cobert}% de la venta está costeada`,'var(--text)',
+      ventaCubierta===0?'':(cobert<80
+        ? `<div style="font-size:10.5px;margin-top:4px;color:var(--gold);font-weight:560;">⚠ falta costear el resto — el dato todavía no es de fiar</div>`
+        : sem(fcPct<=35,fcPct<=35?'✓ sano · meta ≤35%':'⚠ alto · meta ≤35%')))+
+    kc('Prime cost',ing>0&&ventaCubierta>0?prime+'%':'—',cobert>=100?'insumos + nómina':'insumos (proyectado) + nómina','var(--text)',ing>0&&ventaCubierta>0?sem(prime<=60,prime<=60?'✓ sano · meta ≤60%':'⚠ alto · meta ≤60%'):'')+
     kc('Punto de equilibrio',equil!=null?fmt(equil):'—','lo que hay que vender al día','var(--text)',equil!=null?sem(vtaDia>=equil,vtaDia>=equil?`✓ vendes ${fmt(vtaDia)}/día`:`⚠ vendes ${fmt(vtaDia)}/día`):'');
 }
 
@@ -13185,7 +13236,10 @@ function renderKpiOperacion(fechas){
   if(prodsConCosto.length>0){
     margenProm=prodsConCosto.reduce((s,p)=>s+((p.precio-p.costo)/p.precio*100),0)/prodsConCosto.length;
   }
-  const sinCosto=D.productos.filter(p=>p.activo&&(p.costo??0)===0).length;
+  // El costo bueno es el que sale de la RECETA, no el campo `costo` que
+  // se teclea a mano y casi nadie llenó: este KPI marcaba como "sin
+  // costo" a los 11 cafés, que están costeados al centavo.
+  const sinCosto=D.productos.filter(p=>p.activo&&!foodCostProducto(p.id).completo).length;
   // Mermas
   const mermas=D.kpiCaptura.filter(c=>c.tipo==='merma'&&fechas.includes(c.fecha)).reduce((s,c)=>s+c.valor,0);
   const pctMermas=totalVentas>0?(mermas/totalVentas*100):0;
@@ -13657,7 +13711,12 @@ function foodCostSimple(prodId){
     if(!inv){faltantes.push((ing.nombre||'?')+' · no está en inventario');return;}
     const cu=costoPorUnidadReceta(inv,ing.unit);
     if(cu==null){faltantes.push(inv.nombre+(inv.precio>0?` · unidad ${inv.unit||'?'}→${ing.unit||'?'}`:' · sin costo'));return;}
-    costo+=cu*(parseFloat(ing.qty)||0);
+    // Una cantidad vacía NO es cero. Antes sumaba $0 y la receta salía
+    // "completa" con un costo falsamente bajo: el peor de los errores,
+    // porque se ve sano. Si falta la cantidad, falta el costo.
+    const q=parseFloat(ing.qty);
+    if(!(q>0)){faltantes.push(inv.nombre+' · falta la cantidad');return;}
+    costo+=cu*q;
   });
   return {costo:Math.round(costo*100)/100,completo:faltantes.length===0,faltantes};
 }
@@ -13789,7 +13848,194 @@ async function migRecetasExtras_v1(){
   await markMig(migKey);
 }
 
+// ══════════════════════════════════════════════════════════════
+// COSTEO GUIADO
+// La mitad del menú activo no tenía costo —todos los cafés, los açaí
+// bowls, el boba tea— y el Panel decía "todo costeado" porque medía
+// TICKETS, no productos: un ticket con un panini costeado y un
+// capuchino sin costear contaba como completo, y el café entraba con
+// venta y cero costo. El food cost salía más bajo de lo que es.
+// Esta pantalla ataca el hueco por donde duele: ordena lo que falta
+// por cuánto dinero mueve, no por nombre.
+// ══════════════════════════════════════════════════════════════
+const COSTEO_SEMANAS=8;
+function ventasRecientes(semanas){
+  const d=new Date(today()+'T12:00:00'); d.setDate(d.getDate()-(semanas||COSTEO_SEMANAS)*7);
+  const corte=localDate(d);
+  return D.ventas.filter(v=>!v.anulada&&(v.fecha||'')>=corte);
+}
+function movimientoPorProducto(semanas){
+  const m={};
+  ventasRecientes(semanas).forEach(v=>(v.items||[]).forEach(i=>{
+    if(i.id==null) return;
+    if(!m[i.id]) m[i.id]={u:0,imp:0};
+    m[i.id].u+=i.qty||0; m[i.id].imp+=(i.precio||0)*(i.qty||0);
+  }));
+  return m;
+}
+function calcPendientesCosteo(){
+  const mov=movimientoPorProducto();
+  const act=D.productos.filter(p=>p.activo);
+  const filas=act.map(p=>({p,fc:foodCostProducto(p.id),mov:mov[p.id]||{u:0,imp:0}}));
+  const pend=filas.filter(x=>!x.fc.completo).sort((a,b)=>b.mov.imp-a.mov.imp);
+  const dinero=filas.reduce((s,x)=>s+x.mov.imp,0);
+  const cubierto=filas.filter(x=>x.fc.completo).reduce((s,x)=>s+x.mov.imp,0);
+  return {filas,pend,activos:act.length,listos:act.length-pend.length,
+    dinero:r2(dinero),cubierto:r2(cubierto),pct:dinero>0?Math.round(cubierto/dinero*100):0};
+}
+function renderCosteoGuia(){
+  const cont=$('rec-guia'); if(!cont) return;
+  const R=calcPendientesCosteo();
+  if($('rg-prog')) $('rg-prog').textContent=`${R.listos} de ${R.activos} productos · ${R.pct}% de lo que vendes`;
+  if($('rg-barra-fill')) $('rg-barra-fill').style.width=R.pct+'%';
+  if(!R.pend.length){
+    cont.innerHTML='<p style="font-size:12.5px;color:var(--accent);margin:0;">Todo el menú activo tiene su costo completo. El food cost del Panel ya es el real.</p>';
+    return;
+  }
+  const top=R.pend.slice(0,12), resto=R.pend.length-top.length;
+  cont.innerHTML=
+    `<p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Ordenado por cuánto dinero mueve cada uno en las últimas ${COSTEO_SEMANAS} semanas. Empieza por arriba: ahí está el margen que no estás viendo.</p>`+
+    top.map(({p,fc,mov})=>{
+      const motivo=(fc.faltantes&&fc.faltantes.length)?fc.faltantes.slice(0,2).join(' · '):'sin receta';
+      return `<div class="sr" style="align-items:center;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;">${p.nombre} <span class="mono" style="color:var(--text3);font-weight:400;">${fmt(p.precio)}</span></div>
+          <div style="font-size:11px;color:var(--gold);margin-top:1px;">${motivo}</div>
+          <div style="font-size:11px;color:var(--text3);">${mov.u?`${Math.round(mov.u)} vendidos · ${fmt(mov.imp)}`:'sin ventas en el periodo'}</div>
+        </div>
+        <button class="btn bp bxs" onclick="abrirCosteo(${p.id})">Costear</button>
+      </div>`;
+    }).join('')+
+    (resto>0?`<div style="font-size:11px;color:var(--text3);margin-top:8px;">y ${resto} más — aparecen conforme vayas cerrando los de arriba</div>`:'');
+}
+
+// ── El editor ──
+// Guarda en cuanto tocas algo: no hay botón "guardar" que se te olvide.
+let CST_PROD=null;
+const cstIngs=()=>[...(D.recetas.find(r=>r.prodId===CST_PROD)?.ings||[])];
+async function cstGuardar(ings){
+  const prev=D.recetas.find(r=>r.prodId===CST_PROD);
+  const rec=prev?{...prev,ings}:{id:Date.now()+CST_PROD,prodId:CST_PROD,ings};
+  await fsSet('recetas',rec);
+  const ix=D.recetas.findIndex(r=>r.prodId===CST_PROD);
+  if(ix>=0) D.recetas[ix]=rec; else D.recetas.push(rec);
+  renderCosteoModal();
+}
+window.abrirCosteo=prodId=>{
+  const p=D.productos.find(x=>x.id===prodId); if(!p) return;
+  CST_PROD=prodId;
+  if($('cst-titulo')) $('cst-titulo').textContent=`${p.nombre} · ${fmt(p.precio)}`;
+  if($('cst-insl')) $('cst-insl').innerHTML=[...D.inventario].sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .map(i=>`<option value="${i.nombre}">`).join('');
+  // Para copiar: primero los de su misma categoría, que son los que se parecen
+  const conReceta=D.productos.filter(x=>x.activo&&x.id!==prodId&&foodCostProducto(x.id).completo)
+    .sort((a,b)=>((a.cat===p.cat?0:1)-(b.cat===p.cat?0:1))||a.nombre.localeCompare(b.nombre));
+  if($('cst-copiar')) $('cst-copiar').innerHTML='<option value="">Copiar receta de…</option>'+
+    conReceta.map(x=>`<option value="${x.id}">${x.nombre}</option>`).join('');
+  if($('cst-plantilla')) $('cst-plantilla').style.display=(p.cat==='cafe')?'':'none';
+  ['cst-ins','cst-qty','cst-unit'].forEach(id=>{if($(id))$(id).value='';});
+  $('costeo-modal').style.display='flex';
+  renderCosteoModal();
+};
+window.cerrarCosteo=()=>{ if($('costeo-modal'))$('costeo-modal').style.display='none'; CST_PROD=null; renderRecetas(); };
+function renderCosteoModal(){
+  if(CST_PROD==null) return;
+  const p=D.productos.find(x=>x.id===CST_PROD); if(!p) return;
+  const ings=cstIngs(), cont=$('cst-ings'); if(!cont) return;
+  cont.innerHTML=ings.length===0?
+    '<p style="font-size:12.5px;color:var(--text3);margin:0;">Sin ingredientes todavía. Agrégalos abajo, copia la receta de otro producto, o usa la plantilla.</p>':
+    ings.map((ing,ix)=>{
+      const inv=D.inventario.find(i=>i.id==ing.invId)
+        ||D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre||''));
+      const cu=inv?costoPorUnidadReceta(inv,ing.unit):null;
+      const q=parseFloat(ing.qty);
+      const sub=(cu!=null&&q>0)?r2(cu*q):null;
+      let aviso='';
+      if(!inv) aviso='<span style="color:var(--red);font-size:11px;">no está en inventario</span>';
+      else if(!(inv.precio>0)) aviso=`<span style="font-size:11px;color:var(--gold);">sin precio:</span> <input type="number" step="0.0001" placeholder="$ por ${inv.unit||'u'}" style="width:118px;padding:4px 7px;font-size:11.5px;" onchange="cstPrecioInsumo(${inv.id},this.value)">`;
+      else if(cu==null) aviso=`<span style="color:var(--red);font-size:11px;">unidad ${inv.unit||'?'} → ${ing.unit||'?'}: no se puede convertir</span>`;
+      else if(!(q>0)) aviso='<span style="color:var(--gold);font-size:11px;">falta la cantidad</span>';
+      return `<div class="sr" style="align-items:center;gap:7px;">
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:12.5px;font-weight:560;">${ing.nombre||inv?.nombre||'?'}</div>
+          ${aviso?`<div style="margin-top:2px;">${aviso}</div>`:''}
+        </div>
+        <input type="number" step="0.001" value="${ing.qty||''}" placeholder="0" style="width:68px;padding:5px 7px;font-size:12px;" onchange="cstQty(${ix},this.value)">
+        <input type="text" value="${ing.unit||''}" style="width:52px;padding:5px 7px;font-size:12px;" onchange="cstUnit(${ix},this.value)">
+        <span class="mono ar" style="width:64px;font-size:12px;color:${sub!=null?'var(--text2)':'var(--text3)'};">${sub!=null?fmt(sub):'—'}</span>
+        <button class="btn bs bxs" onclick="cstQuitar(${ix})">✕</button>
+      </div>`;
+    }).join('');
+  const fc=foodCostProducto(CST_PROD), r=$('cst-resumen'); if(!r) return;
+  if(fc.completo&&fc.costo!=null&&p.precio>0){
+    const util=r2(p.precio-fc.costo), m=Math.round(util/p.precio*100);
+    const col=m>=60?'var(--accent)':(m>=40?'var(--gold)':'var(--red)');
+    r.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:baseline;">
+        <span style="font-size:12.5px;color:var(--text2);">Costo ${fmt(fc.costo)} · Utilidad ${fmt(util)}</span>
+        <span class="mono" style="font-size:24px;font-weight:700;color:${col};">${m}%</span></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:2px;">margen · food cost ${Math.round(fc.costo/p.precio*100)}%</div>`;
+  }else{
+    r.innerHTML=`<div style="font-size:12px;color:var(--gold);">Falta: ${(fc.faltantes||['sin receta']).join(' · ')}</div>`;
+  }
+}
+window.cstQty=(ix,v)=>{const g=cstIngs(); if(!g[ix])return; g[ix]={...g[ix],qty:v}; cstGuardar(g);};
+window.cstUnit=(ix,v)=>{const g=cstIngs(); if(!g[ix])return; g[ix]={...g[ix],unit:v}; cstGuardar(g);};
+window.cstQuitar=ix=>{const g=cstIngs(); g.splice(ix,1); cstGuardar(g);};
+window.cstAgregar=()=>{
+  const nombre=($('cst-ins')?.value||'').trim();
+  const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(nombre));
+  if(!inv){toast('⚠ Ese insumo no está en inventario',3000,'warn');return;}
+  const g=cstIngs();
+  if(g.some(x=>x.invId==inv.id)){toast('⚠ Ya está en la receta',2400,'warn');return;}
+  g.push({invId:inv.id,nombre:inv.nombre,qty:$('cst-qty')?.value||'',unit:$('cst-unit')?.value||inv.unit||''});
+  ['cst-ins','cst-qty','cst-unit'].forEach(id=>{if($(id))$(id).value='';});
+  cstGuardar(g);
+};
+// El precio del insumo se arregla aquí mismo: salir a Inventario a
+// buscarlo era la razón por la que 54 artículos seguían sin precio.
+window.cstPrecioInsumo=async(invId,valor)=>{
+  const v=parseFloat(valor);
+  if(!(v>0)){toast('⚠ Precio inválido',2400,'warn');return;}
+  const inv=D.inventario.find(i=>i.id==invId); if(!inv) return;
+  const upd={...inv,precio:v};
+  await fsSet('inventario',upd);
+  const ix=D.inventario.findIndex(i=>i.id==invId); if(ix>=0) D.inventario[ix]=upd;
+  logAudit('costo_insumo',{insumo:inv.nombre,precio:`${v} por ${inv.unit||'u'}`,origen:'costeo guiado'});
+  toast(`✓ ${inv.nombre}: ${fmt(v)} por ${inv.unit||'u'}`,3200);
+  renderCosteoModal();
+};
+window.cstCopiar=()=>{
+  const id=parseInt($('cst-copiar')?.value||'0');
+  if(!id){toast('⚠ Elige de cuál copiar',2400,'warn');return;}
+  const org=D.recetas.find(r=>r.prodId===id);
+  if(!org||!(org.ings||[]).length){toast('⚠ Ese producto no tiene receta',2400,'warn');return;}
+  cstGuardar(org.ings.map(i=>({...i})));
+  toast('✓ Receta copiada — ajusta las cantidades',3600);
+};
+// Los 11 cafés llevan los mismos insumos y solo cambian las cantidades.
+// La plantilla pone los renglones SIN cantidad a propósito: el costo no
+// aparece hasta que él escriba los gramos y los mililitros, para que
+// nada se vea costeado con números que yo me inventé.
+const PLANTILLA_CAFE=['Café','Leche deslactosada','Vaso p/café 12 oz','Tapa para café','Mangas p/café'];
+window.cstPlantilla=()=>{
+  const g=cstIngs(); let n=0;
+  PLANTILLA_CAFE.forEach(nom=>{
+    const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(nom));
+    if(!inv||g.some(x=>x.invId==inv.id)) return;
+    g.push({invId:inv.id,nombre:inv.nombre,qty:'',unit:inv.unit||''}); n++;
+  });
+  if(!n){toast('Ya están todos los insumos de la plantilla',2800);return;}
+  cstGuardar(g);
+  toast(`✓ ${n} insumo(s) agregados — ahora escribe las cantidades`,3800);
+};
+window.cstSiguiente=()=>{
+  const pend=calcPendientesCosteo().pend.filter(x=>x.p.id!==CST_PROD);
+  if(!pend.length){toast('✓ No queda nada pendiente por costear',3200);cerrarCosteo();return;}
+  abrirCosteo(pend[0].p.id);
+};
+
 function renderRecetas(){
+  renderCosteoGuia();
   renderFoodCost();
   const q=($('rec-q')?.value||'').toLowerCase();
   let prods=D.productos.filter(p=>p.activo);
@@ -15791,7 +16037,11 @@ function renderAjustes(){
     const lineaL={pal:"Pal'…",bowls:'Bowls',paninis:'Paninis',cafe:'Café/Té',otros:'Otros'};
     $('ajprod-list').innerHTML=`<div class="tw"><table class="tbl"><thead><tr><th>Nombre</th><th>Cat.</th><th>Línea</th><th>Precio</th><th>Costo</th><th>Margen</th><th>Estado</th><th>Acciones</th></tr></thead><tbody>`+
     items.map(p=>{
-      const costo=p.costo??0;
+      // Mismo criterio que la pantalla de Recetas: manda la receta. El
+      // campo `costo` solo se usa si el producto no tiene receta, para
+      // no perder lo que alguien ya haya capturado a mano.
+      const fcp=foodCostProducto(p.id);
+      const costo=(fcp.completo&&fcp.costo!=null)?fcp.costo:(p.costo??0);
       const linea=p.lineaEstrategica??'otros';
       const margenPct=(p.precio>0&&costo>0)?((p.precio-costo)/p.precio*100):null;
       let margenHTML='—';
@@ -15800,7 +16050,7 @@ function renderAjustes(){
         const bg=margenPct>=60?'#e8f5e9':margenPct>=40?'#fff8e1':'#ffebee';
         margenHTML=`<span style="background:${bg};color:${color};padding:2px 8px;border-radius:10px;font-weight:700;font-size:11px;">${margenPct.toFixed(1)}%</span>`;
       } else if(costo===0){
-        margenHTML='<span style="color:#c62828;font-size:10px;">⚠ sin costo</span>';
+        margenHTML=`<span style="color:var(--gold);font-size:10px;">falta costear</span>`;
       }
       return `<tr>
         <td style="font-size:12.5px;font-weight:600;">${p.nombre}</td>
