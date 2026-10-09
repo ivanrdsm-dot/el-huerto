@@ -1695,6 +1695,7 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div class="card"><div class="ct" id="gcats-titulo">Distribución</div><div id="gcats"></div></div>
   </div>
+  <div id="g-sinprov"></div>
   <div class="card" style="margin-top:10px;">
     <div class="sh">
       <span class="ct" style="margin-bottom:0" id="ghist-titulo">Historial</span>
@@ -2961,6 +2962,7 @@ async function completeInit(){
   await migFusionaPedidosEnGastos();
   await migCanonizaProveedores();
   await migSurtidoALaSemana();
+  await migCafe08Oct2026();
   await migLimpiaInventarioOct2026();
   await migFusionaTapasOct2026();
   await migTapaDomoSmoothies();
@@ -3869,6 +3871,71 @@ async function migSurtidoALaSemana(){
       motivo:'El surtido del domingo pertenece a la semana que abastece; la fecha impresa queda en fechaTicket'});
     toast(`✓ ${movidos.length} compra(s) del domingo pasan a la semana del 5-oct`,5000);
   }
+  await markMig(migKey);
+}
+// ══════════════════════════════════════════════════════════════
+// CAFÉ: 1 KG A $340 (pedido de Iván, 8-oct)
+// Van las dos cosas juntas porque separadas mienten: si solo se
+// registra el gasto, el café se sigue descontando de un stock que
+// nunca se repuso; si solo se sube el stock, el kilo sale gratis y
+// el margen de los cafés queda inflado.
+// De paso se cierra un duplicado viejo: ALIAS_INV manda
+// 'Café molido' → 'Café', pero el duplicado existe como artículo
+// propio y hay recetas apuntando a cada uno, así que el consumo de
+// café se partía en dos renglones y ninguno cuadraba.
+// ══════════════════════════════════════════════════════════════
+async function migCafe08Oct2026(){
+  const migKey='h5cafe_08oct26b';
+  if(await migDone(migKey)) return;
+  const TICKET='CAFE-08OCT26';
+  const PRECIO_G=0.34;                    // $340 el kilo
+  const GRAMOS=1000;                      // el kilo que compró
+  const canon=D.inventario.find(i=>normInvNombre(i.nombre)==='cafe');
+  const dup=D.inventario.find(i=>normInvNombre(i.nombre)==='cafemolido');
+  let item=canon||dup, fusionadas=0;
+  // ── 1. Si existen los dos, queda uno ──
+  if(canon&&dup&&canon.id!==dup.id){
+    for(const r of D.recetas){
+      const ings=r.ings||[];
+      if(!ings.some(i=>i.invId===dup.id)) continue;
+      const upd={...r,ings:ings.map(i=>i.invId===dup.id?{...i,invId:canon.id,nombre:canon.nombre}:i)};
+      await fsSet('recetas',upd);
+      const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+      fusionadas++;
+    }
+    await fsDel('inventario',dup.id);
+    const iy=D.inventario.findIndex(i=>i.id===dup.id); if(iy>=0) D.inventario.splice(iy,1);
+    item=canon;
+  }
+  // ── 2. El kilo y su precio ──
+  // Se FIJA la existencia, no se suma. Si la migración corre dos veces
+  // —y puede: el registro de migraciones viaja a Firestore y una recarga
+  // rápida alcanza a correrla otra vez— sumar dejaría 2 kg de café que
+  // nadie compró. Este artículo no llevaba existencia (venía en 0), así
+  // que el kilo comprado ES la existencia; la captura del día la corrige
+  // en cuanto alguien cuente el frasco.
+  if(item){
+    const g=normUnit(item.unit)==='kg'?GRAMOS/1000:GRAMOS;
+    const upd={...item,qty:g,precio:normUnit(item.unit)==='kg'?340:PRECIO_G};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===item.id); if(ix>=0) D.inventario[ix]=upd;
+    item=upd;
+  }
+  // ── 3. El gasto ──
+  // Sin proveedor a propósito: Iván dio el monto, no de dónde lo compra.
+  // El aviso de la semana lo deja marcado hasta que le ponga nombre, que
+  // es mejor que inventarle uno al libro de gastos.
+  if(!D.gastos.find(x=>x.ticket===TICKET)){
+    await fsSet('gastos',{id:Date.now(),fecha:'2026-10-08',cat:'proveedor',prov:'',
+      monto:340,ticket:TICKET,metodo:'efectivo',tipoEstrategico:'operacion',
+      notas:'1 kg de café molido a $340 — falta anotar el proveedor',
+      partidas:[{c:'Café molido',q:1,u:'kg',i:340}]});
+  }
+  logAudit('compra_cafe',{kg:1,monto:340,precioPorGramo:PRECIO_G,
+    articulo:item?item.nombre:'(no encontrado)',existenciaFinal:item?item.qty:null,
+    recetasRepuntadas:fusionadas,
+    motivo:'Iván: "agrega en los gastos 340 de 1 kilo de café, tómalo en cuenta del inventario"'});
+  toast(`✓ Café: 1 kg a $340 en gastos y en inventario${fusionadas?` · ${fusionadas} receta(s) repuntadas`:''}`,5500);
   await markMig(migKey);
 }
 // ══════════════════════════════════════════════════════════════
@@ -10799,6 +10866,14 @@ window.addGasto=async()=>{
   // cajera escribe "costco" o "COSTCO", se guarda "Costco" y el gasto
   // no se parte en tres renglones distintos.
   const prov=provCanonico($('gprov').value);
+  // El proveedor es obligatorio. Iván (8-oct): "a partir de ahora te
+  // cargaré todos los tickets de la semana y vamos haciendo historial".
+  // Un gasto sin proveedor no se puede comparar contra nada el mes que
+  // viene, así que no entra; los del histórico se quedan como están.
+  if(!prov){
+    toast('⚠ Falta el proveedor — elígelo de la lista',3200,'warn');
+    $('gprov').focus(); return;
+  }
   const g=existe?
     {...existe,fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal}:
     {id:Date.now(),fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal};
@@ -10875,6 +10950,22 @@ window.gastoSugiereCat=nombre=>{
   const cat=provCategoria(canon);
   if(cat && $('gc') && [...$('gc').options].some(o=>o.value===cat)) $('gc').value=cat;
 };
+function renderGastosSinProv(){
+  const caja=$('g-sinprov'); if(!caja) return;
+  const sem=getWDays7();
+  const faltan=D.gastos.filter(g=>sem.includes(g.fecha)&&g.cat!=='nomina'&&!(g.prov||'').trim())
+    .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  if(!faltan.length){caja.innerHTML='';return;}
+  const total=r2(faltan.reduce((s2,g)=>s2+(g.monto||0),0));
+  caja.innerHTML=`<div class="card" style="margin-top:10px;border-left:3px solid var(--gold);">
+    <div class="sh"><span class="ct" style="margin-bottom:0">Falta el proveedor</span>
+      <span class="mono" style="font-size:12px;color:var(--text3);">${faltan.length} de esta semana · ${fmt(total)}</span></div>
+    <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Sin nombre no se puede comparar el mes que viene. Ponle el proveedor y la categoría se acomoda sola.</p>
+    ${faltan.map(g=>`<div class="sr"><span style="font-size:12.5px;">${g.fecha}${g.notas?` · <span style="color:var(--text3);">${g.notas.split('—')[0].trim()}</span>`:''}</span>
+      <span style="display:flex;align-items:center;gap:8px;"><span class="mono ar fw7">${fmt(g.monto)}</span>
+      <button class="btn bs bxs" onclick="editGasto(${g.id})">Asignar</button></span></div>`).join('')}
+  </div>`;
+}
 function renderGastos(){
   // La lista del formulario sale del CATÁLOGO, más cualquier proveedor
   // del histórico que todavía no esté en él (para no perderlos de vista)
@@ -10885,6 +10976,12 @@ function renderGastos(){
     $('pvdl').innerHTML=[...delCatalogo,...delHistorico.sort()]
       .map(n=>`<option value="${n}">`).join('');
   }
+  // ══ AVISO: GASTOS DE ESTA SEMANA SIN PROVEEDOR ══
+  // Los del histórico se quedan como están (Iván: "no te preocupes los
+  // sin proveedor mientras sean pasados"). Los de ESTA semana sí se
+  // reclaman, porque de aquí en adelante el historial se construye
+  // completo y un gasto sin nombre no se puede comparar después.
+  renderGastosSinProv();
   const td=today();
   const periodo=$('g-periodo')?.value||'semana';
   const fc=$('gfcat')?.value||'';
@@ -11727,11 +11824,14 @@ function renderProv(){
     hist.slice(0,8).map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
   const mes=agrupar(compras.filter(g=>mOf(g.fecha)===curM()));
   const totMes=r2(mes.reduce((s2,[,v])=>s2+v,0));
-  const sinProv=compras.filter(g=>!g.prov&&!g.concepto).length;
+  // Los de esta semana los reclama el aviso de Gastos; aquí solo se
+  // cuentan los del histórico, que Iván decidió dejar como están.
+  const semAhora=getWDays7();
+  const sinProv=compras.filter(g=>!g.prov&&!g.concepto&&!semAhora.includes(g.fecha)).length;
   if($('pvmes'))$('pvmes').innerHTML=mes.length===0?`<p style="color:var(--text3);font-size:12px;">Sin compras este mes</p>`:
     mes.map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('')+
     `<div class="sr fw7" style="border:none;padding-top:9px;"><span>Total del mes</span><span class="mono ar" style="font-size:15px;">${fmt(totMes)}</span></div>`+
-    (sinProv?`<div style="font-size:11px;color:var(--gold);margin-top:8px;">${sinProv} gasto(s) del histórico sin proveedor anotado — se agrupan como "Sin proveedor"</div>`:'');
+    (sinProv?`<div style="font-size:11px;color:var(--gold);margin-top:8px;">${sinProv} gasto(s) de semanas pasadas sin proveedor anotado — se agrupan como "Sin proveedor". De aquí en adelante el proveedor es obligatorio.</div>`:'');
 }
 
 // ─── SUSCRIPTORES ───
@@ -13765,6 +13865,14 @@ function clasificarCatOf(nombre){
 
 async function ensureInvItem(nombre,cat,unit,catOf){
   let inv=D.inventario.find(i=>i.nombre.toLowerCase()===nombre.toLowerCase());
+  // El nombre pedido puede ser un alias de otro que YA existe ('Café
+  // molido' es 'Café'). Sin esto, cada seed volvía a crear el duplicado
+  // que acabamos de fusionar y el consumo se partía en dos renglones.
+  // Solo se resuelve cuando el canónico existe: nunca crea algo distinto.
+  if(!inv){
+    const canon=ALIAS_INV[normInvNombre(nombre)];
+    if(canon) inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(canon));
+  }
   if(!inv){
     // catOf SIEMPRE presente: antes se creaba sin categoría y el artículo
     // no aparecía en su pestaña de captura
