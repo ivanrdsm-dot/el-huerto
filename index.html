@@ -1963,6 +1963,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <button class="btn bg bsm" onclick="seedRecetasPredefinidas()">📖 Cargar Recetas Predefinidas</button>
     </div>
   </div>
+  <div id="rec-huerfanos"></div>
   <!-- COSTEO GUIADO: qué falta costear, por orden de cuánto dinero mueve -->
   <div class="card" style="margin-bottom:10px;" id="rec-guia-card">
     <div class="sh">
@@ -3006,6 +3007,7 @@ async function completeInit(){
   await migLimpiaInventarioOct2026();
   await migFusionaTapasOct2026();
   await migEnsaladaBowlOct2026();
+  await migUnidadesGramos2026();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -4214,6 +4216,91 @@ async function migTapaDomoSmoothies(){
 // unidades que Iván acaba de aclarar: la miel y el yogurt vienen en
 // litro, no en pieza, y por eso la receta en ml no podía convertirlas.
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// UNIDADES COHERENTES: LO QUE SE PESA, EN GRAMOS (Iván, 9-oct)
+// "el jamón serrano tiene que venir en gramos, al igual que el chorizo,
+// al igual que la pechuga, para que las unidades concuerden".
+//
+// El problema de fondo era peor que la etiqueta: había artículos con
+// unidad "kg" y la CANTIDAD escrita en gramos. 767 kg de aguacate,
+// 5,821 kg de jícama, 2,579 kg de plátano. Como el precio sí era por
+// kilo, el inventario valía una fortuna imaginaria y "stock bajo" no
+// servía para nada.
+//
+// La tabla es explícita a propósito, sin adivinar con reglas: en cada
+// renglón digo si el número guardado eran gramos (se queda igual y solo
+// se corrige la etiqueta y el precio) o kilos de verdad (se multiplica).
+// ══════════════════════════════════════════════════════════════
+const AGRAMOS=[
+  // nombre,                   eranGramos  (true: el número ya estaba en gramos)
+  ['Aguacate',                 true],   // 767 → 767 g
+  ['Avena overnight base',     true],   // 999.84 → casi 1 kg de base preparada
+  ['Açaí pulpa',               true],   // 1000 → la bolsa de 1 kg a $215
+  ['Chorizo pamplona',         true],   // 480 → 480 g
+  ['Jícama',                   true],   // 5821 → 5.8 kg
+  ['Limón agrio',              true],   // 2476 → 2.5 kg
+  ['Mango verde',              true],   // 2633 → 2.6 kg
+  ['Manzana',                  true],   // 1800 → 1.8 kg
+  ['Plátano',                  true],   // 2579.64 → 2.6 kg
+  ['Zanahoria',                true],   // 1950 → 2 kg
+  ['Pepino',                   true],   // está en 0: da igual, solo la etiqueta
+  ['Sandía',                   false],  // 1 → ese sí era 1 kilo de verdad
+];
+async function migUnidadesGramos2026(){
+  const migKey='h5gramos_oct26b';
+  if(await migDone(migKey)) return;
+  const cambios=[];
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+
+  // ── 1. El inventario pasa a gramos ──
+  for(const [nombre,eranGramos] of AGRAMOS){
+    const inv=buscar(nombre); if(!inv) continue;
+    if(normUnit(inv.unit)!=='kg') continue;          // ya está bien, no se toca
+    const qty=eranGramos?(inv.qty||0):r2((inv.qty||0)*1000);
+    // El precio venía por kilo; en gramos es la milésima parte
+    const precio=(inv.precio>0)?Math.round(inv.precio/1000*1000000)/1000000:0;
+    const upd={...inv,unit:'g',qty:Math.round(qty*1000)/1000,precio,
+      min:inv.min>0?(eranGramos?inv.min:r2(inv.min*1000)):inv.min};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    cambios.push(`${inv.nombre}: ${inv.qty} ${inv.unit} → ${upd.qty} g`);
+  }
+
+  // ── 2. Las recetas que pedían en kilos, también en gramos ──
+  // 0.05 kg de pepino se lee mal y se teclea peor. 50 g se entiende.
+  let lineas=0;
+  for(const r of D.recetas){
+    const ings=r.ings||[]; let toco=false;
+    const nuevas=ings.map(i=>{
+      if(normUnit(i.unit)!=='kg') return i;
+      const q=parseFloat(i.qty); if(!(q>0)) return i;
+      toco=true; lineas++;
+      return {...i,qty:Math.round(q*1000*1000)/1000,unit:'g'};
+    });
+    if(!toco) continue;
+    const upd={...r,ings:nuevas};
+    await fsSet('recetas',upd);
+    const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+  }
+
+  // ── 3. "PZ" en mayúsculas es otra unidad para el sistema ──
+  // Se escribe como se lee: el litro va en "L" mayúscula, que es como
+  // se escribe un litro; lo demás en minúscula.
+  const VISIBLE={g:'g',kg:'kg',ml:'ml',l:'L',pz:'pz',paq:'paq'};
+  for(const inv of [...D.inventario]){
+    const n=VISIBLE[normUnit(inv.unit)];
+    if(!inv.unit||!n||inv.unit===n) continue;
+    const upd={...inv,unit:n};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    cambios.push(`${inv.nombre}: unidad "${inv.unit}" → "${n}"`);
+  }
+
+  logAudit('unidades_normalizadas',{cambios,lineasReceta:lineas,
+    motivo:'Iván: lo que se pesa va en gramos. Había artículos en "kg" con la cantidad escrita en gramos'});
+  if(cambios.length||lineas) toast(`✓ Unidades: ${cambios.length} artículo(s) a gramos, ${lineas} línea(s) de receta`,6000);
+  await markMig(migKey);
+}
 async function migEnsaladaBowlOct2026(){
   const migKey='h5ensbowl_oct26';
   if(await migDone(migKey)) return;
@@ -12152,8 +12239,23 @@ window.invAplicarMinSugerido=async productoId=>{
 };
 
 window.delInv=async id=>{
-  if(!confirm('¿Eliminar este producto del inventario?')) return;
-  await fsDel('inventario',id);toast('✓ Eliminado');
+  const inv=D.inventario.find(i=>i.id==id);
+  // Borrar un insumo que una receta usa no rompe nada a gritos: el
+  // producto simplemente deja de costear y nadie se entera. El 9-oct
+  // una limpieza dejó 24 recetas colgando. Aquí se avisa ANTES.
+  const usan=[];
+  D.recetas.forEach(r=>{
+    if(!(r.ings||[]).some(i=>i.invId==id)) return;
+    const p=D.productos.find(x=>x.id===r.prodId);
+    if(p) usan.push(p.nombre+(p.activo?'':' (oculto)'));
+  });
+  if(usan.length){
+    const activos=usan.filter(n=>!n.includes('(oculto)')).length;
+    if(!confirm(`"${inv?.nombre||'Este insumo'}" lo usan ${usan.length} receta(s)${activos?`, ${activos} de productos que hoy se venden`:''}:\n\n${usan.slice(0,8).join('\n')}${usan.length>8?`\n…y ${usan.length-8} más`:''}\n\nSi lo borras, esos productos dejan de costear.\n¿Borrarlo de todos modos?`)) return;
+  }else if(!confirm(`¿Eliminar "${inv?.nombre||'este artículo'}" del inventario?`)) return;
+  await fsDel('inventario',id);
+  if(inv) logAudit('insumo_eliminado',{insumo:inv.nombre,qty:inv.qty,unit:inv.unit,recetasAfectadas:usan});
+  toast(usan.length?`✓ Eliminado · ${usan.length} receta(s) quedaron sin ese insumo`:'✓ Eliminado',usan.length?5000:2000);
 };
 
 // ─── Render principal ───
@@ -13963,6 +14065,96 @@ function calcPendientesCosteo(){
   return {filas,pend,activos:act.length,listos:act.length-pend.length,
     dinero:r2(dinero),cubierto:r2(cubierto),pct:dinero>0?Math.round(cubierto/dinero*100):0};
 }
+// ══════════════════════════════════════════════════════════════
+// INGREDIENTES HUÉRFANOS
+// Al limpiar el inventario se puede borrar un artículo que varias
+// recetas usan. La receta no se rompe con un error: se queda apuntando
+// a un insumo que ya no existe y el producto deja de costear, callado.
+// El 9-oct una limpieza dejó 24 recetas apuntando a "Vaso plástico 16
+// oz" y 20 a "Platos desechables".
+// Aquí se ven todos y se arreglan en un toque: o se vinculan al
+// artículo que se quedó, o se vuelve a crear el que faltaba.
+// ══════════════════════════════════════════════════════════════
+let HUERF=[];
+function calcHuerfanos(){
+  const m={};
+  D.recetas.forEach(r=>{
+    const p=D.productos.find(x=>x.id===r.prodId);
+    (r.ings||[]).forEach(i=>{
+      const inv=D.inventario.find(x=>x.id==i.invId)
+        ||D.inventario.find(x=>normInvNombre(x.nombre)===normInvNombre(i.nombre||''));
+      if(inv) return;
+      const k=normInvNombre(i.nombre||'?')||'?';
+      if(!m[k]) m[k]={nombre:i.nombre||'?',unit:i.unit||'',recetas:[],activos:0};
+      m[k].recetas.push({recId:r.id,prod:p?p.nombre:'?',activo:!!(p&&p.activo)});
+      if(p&&p.activo) m[k].activos++;
+    });
+  });
+  // Primero los que afectan productos que hoy se venden
+  return Object.values(m).sort((a,b)=>b.activos-a.activos||b.recetas.length-a.recetas.length);
+}
+function renderHuerfanos(){
+  const caja=$('rec-huerfanos'); if(!caja) return;
+  HUERF=calcHuerfanos();
+  if(!HUERF.length){ caja.innerHTML=''; return; }
+  const activos=HUERF.filter(h=>h.activos>0).length;
+  const opciones=[...D.inventario].sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    .map(i=>`<option value="${i.id}">${i.nombre} (${i.unit||'?'})</option>`).join('');
+  caja.innerHTML=`<div class="card" style="margin-bottom:10px;border-left:3px solid var(--red);">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Recetas apuntando a insumos que ya no existen</span>
+      <span style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;">${HUERF.length} insumo(s)${activos?` · ${activos} afectan productos activos`:''}</span></div>
+    <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Se borraron del inventario pero las recetas los siguen pidiendo. Esos productos dejan de costear sin avisar. Vincúlalos al artículo que se quedó, o vuelve a crearlos.</p>
+    ${HUERF.map((h,ix)=>`<div class="sr" style="align-items:center;gap:8px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:150px;">
+        <div style="font-size:12.5px;font-weight:600;">${h.nombre} <span style="color:var(--text3);font-weight:400;">${h.unit||'?'}</span></div>
+        <div style="font-size:11px;color:var(--text3);">${h.recetas.length} receta(s)${h.activos?` · ${h.activos} de productos activos`:' · solo productos ocultos'}: ${[...new Set(h.recetas.map(r=>r.prod))].slice(0,3).join(', ')}${h.recetas.length>3?'…':''}</div>
+      </div>
+      <select id="hv-${ix}" style="width:auto;min-width:150px;padding:5px 8px;font-size:11.5px;"><option value="">Vincular a…</option>${opciones}</select>
+      <button class="btn bp bxs" onclick="vincularHuerfano(${ix})">Vincular</button>
+      <button class="btn bs bxs" onclick="crearHuerfano(${ix})">Crear</button>
+    </div>`).join('')}
+  </div>`;
+}
+// Repunta TODAS las líneas de receta que pedían ese nombre
+async function repuntarHuerfano(h,inv){
+  let n=0;
+  for(const r of D.recetas){
+    const ings=r.ings||[]; let toco=false;
+    const nuevas=ings.map(i=>{
+      const existe=D.inventario.find(x=>x.id==i.invId);
+      if(existe||normInvNombre(i.nombre||'')!==normInvNombre(h.nombre)) return i;
+      toco=true; return {...i,invId:inv.id,nombre:inv.nombre};
+    });
+    if(!toco) continue;
+    const upd={...r,ings:nuevas};
+    await fsSet('recetas',upd);
+    const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+    n++;
+  }
+  return n;
+}
+window.vincularHuerfano=async ix=>{
+  const h=HUERF[ix]; if(!h) return;
+  const id=$(`hv-${ix}`)?.value;
+  if(!id){toast('⚠ Elige a qué artículo vincularlo',2600,'warn');return;}
+  const inv=D.inventario.find(i=>i.id==id); if(!inv) return;
+  const n=await repuntarHuerfano(h,inv);
+  logAudit('insumo_vinculado',{de:h.nombre,a:inv.nombre,recetas:n});
+  toast(`✓ ${n} receta(s): "${h.nombre}" ahora usa "${inv.nombre}"`,4000);
+  renderRecetas();
+};
+window.crearHuerfano=async ix=>{
+  const h=HUERF[ix]; if(!h) return;
+  if(!confirm(`¿Crear "${h.nombre}" en inventario, en ${h.unit||'pz'}?\n\nEntra en cero y sin precio: hay que capturarlos.`)) return;
+  const inv={id:Date.now(),nombre:h.nombre,cat:'otros',catOf:clasificarCatOf(h.nombre),
+    qty:0,unit:h.unit||'pz',min:0,precio:0};
+  await fsSet('inventario',inv);
+  D.inventario.push(inv);
+  const n=await repuntarHuerfano(h,inv);
+  logAudit('insumo_recreado',{insumo:h.nombre,unidad:inv.unit,recetas:n});
+  toast(`✓ "${inv.nombre}" creado y ${n} receta(s) reconectadas — ponle existencia y precio`,5000);
+  renderRecetas();
+};
 // El Panel usa el costo que cada venta guardó al cobrarse, así que
 // arreglar una receta hoy no mueve lo de ayer. Esto lo dice en voz alta
 // y ofrece rehacer SOLO las que quedaron sin costo.
@@ -14176,6 +14368,7 @@ window.cstSiguiente=()=>{
 };
 
 function renderRecetas(){
+  renderHuerfanos();
   renderCosteoGuia();
   renderFoodCost();
   const q=($('rec-q')?.value||'').toLowerCase();
