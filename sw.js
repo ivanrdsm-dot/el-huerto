@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.82'; // Conciliación de tarjeta con los cobros reales de la Point
+const CACHE_NAME = 'el-huerto-v14.83'; // Rediseño: superficies neutras, tipografía del sistema, iconos
 const ASSETS = [
   '/',
   '/index.html',
