@@ -3010,6 +3010,7 @@ async function completeInit(){
   await migUnidadesGramos2026();
   await migHuerfanosOct2026();
   await migSusaliasOct2026();
+  await migSerranoSusalia2026();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -4270,6 +4271,62 @@ const AGRAMOS=[
 // eso no es una bolsa de papas, es el paquete. Mejor sin precio y a la
 // vista en Costeo guiado que con un número que ensucie el margen.
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// JAMÓN SERRANO EN GRAMOS, Y EL PRECIO DE LA SUSALIA (Iván, 9-oct)
+// "el jamón serrano trae 1 kilo y el costo x susalia es de 15.4"
+// El serrano estaba en "paq" a $649 y la receta pedía 0.06 paq, que no
+// se lee ni se teclea. Con el kilo confirmado: 1 paq = 1000 g, $0.649
+// el gramo, y la receta pasa a 60 g.
+// ══════════════════════════════════════════════════════════════
+async function migSerranoSusalia2026(){
+  const migKey='h5serrano_oct26';
+  if(await migDone(migKey)) return;
+  const hecho=[];
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+
+  // ── Jamón serrano: de paquete a gramos ──
+  const jam=buscar('Jamón serrano');
+  if(jam){
+    const GRAMOS_PAQ=1000;                       // el paquete trae 1 kilo
+    const esPaq=normUnit(jam.unit)!=='g';
+    const qty=esPaq?r2((jam.qty||0)*GRAMOS_PAQ):(jam.qty||0);
+    const precioG=esPaq?Math.round((jam.precio||0)/GRAMOS_PAQ*1000000)/1000000:jam.precio;
+    const upd={...jam,unit:'g',qty,precio:precioG,min:jam.min>0&&esPaq?r2(jam.min*GRAMOS_PAQ):jam.min};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===jam.id); if(ix>=0) D.inventario[ix]=upd;
+    hecho.push(`jamón serrano: ${qty} g a $${precioG}/g`);
+    // La receta pedía 0.06 paq = 60 g
+    for(const r of D.recetas){
+      const ings=r.ings||[]; let toco=false;
+      const nuevas=ings.map(i=>{
+        if(i.invId!=jam.id||normUnit(i.unit)==='g') return i;
+        const q=parseFloat(i.qty)||0;
+        toco=true;
+        return {...i,qty:Math.round(q*GRAMOS_PAQ*1000)/1000,unit:'g'};
+      });
+      if(!toco) continue;
+      const rec={...r,ings:nuevas};
+      await fsSet('recetas',rec);
+      const iy=D.recetas.findIndex(x=>x.id===r.id); if(iy>=0) D.recetas[iy]=rec;
+      const p=D.productos.find(x=>x.id===r.prodId);
+      hecho.push(`${p?p.nombre:'receta'}: ${nuevas.find(i=>i.invId==jam.id).qty} g de serrano`);
+    }
+  }
+
+  // ── Susalias: $15.40 la bolsa ──
+  const sus=buscar('Susalias');
+  if(sus){
+    const upd={...sus,precio:15.4,unit:'pz'};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===sus.id); if(ix>=0) D.inventario[ix]=upd;
+    hecho.push('susalias a $15.40 la bolsa');
+  }
+
+  logAudit('costo_insumo',{cambios:hecho,
+    motivo:'Iván: "el jamón serrano trae 1 kilo y el costo x susalia es de 15.4"'});
+  if(hecho.length) toast(`✓ ${hecho.join(' · ')}`,6500);
+  await markMig(migKey);
+}
 async function migSusaliasOct2026(){
   const migKey='h5susalias_oct26';
   if(await migDone(migKey)) return;
