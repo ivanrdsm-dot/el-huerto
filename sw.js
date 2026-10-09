@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v14.87'; // Fusión de las tapas en una sola
+const CACHE_NAME = 'el-huerto-v14.88'; // La tapa domo entra a los smoothies
 const ASSETS = [
   '/',
   '/index.html',

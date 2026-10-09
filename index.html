@@ -2948,6 +2948,7 @@ async function completeInit(){
   await migPartidasGastosOct2026();
   await migLimpiaInventarioOct2026();
   await migFusionaTapasOct2026();
+  await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
   await migRecetasJul2026();
@@ -3892,6 +3893,36 @@ async function migLimpiaInventarioOct2026(){
     logAudit('inventario_limpieza',{borrados,fusionados,protegidos:protegidos.length?protegidos:undefined,
       motivo:'Duplicados y artículos en desuso, a pedido de Iván'});
     toast(`✓ Inventario: ${borrados.length} duplicado(s) fuera${fusionados.length?`, ${fusionados.length} fusionado(s)`:''}`,5000);
+  }
+  await markMig(migKey);
+}
+// ══ LA TAPA DOMO ENTRA A LOS SMOOTHIES (8-oct) ══
+// Había 250 tapas domo en existencia que se consumían en cada smoothie
+// y NINGUNA receta las descontaba ni las costeaba: stock que se iba sin
+// que el sistema lo viera, y $0.50 de costo fuera del margen.
+// Se filtra por CATEGORÍA, no por vaso: el vaso de 16 oz también lo
+// usan los cafés grandes, y ésos llevan tapa de café, no domo.
+async function migTapaDomoSmoothies(){
+  const migKey='h5tapadomo_oct26';
+  if(await migDone(migKey)) return;
+  const TAPA=7508;
+  const tapa=D.inventario.find(i=>i.id===TAPA);
+  if(!tapa){ await markMig(migKey); return; }
+  const puestas=[];
+  for(const r of D.recetas){
+    const prod=D.productos.find(x=>x.id===r.prodId);
+    if(!prod || prod.cat!=='smoothie') continue;
+    const ings=r.ings||[];
+    if(ings.some(i=>i.invId===TAPA)) continue;
+    const upd={...r, ings:[...ings,{invId:TAPA,nombre:tapa.nombre,unit:'pz',qty:'1'}]};
+    await fsSet('recetas',upd);
+    const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+    puestas.push(prod.nombre);
+  }
+  if(puestas.length){
+    logAudit('recetas_tapa_domo',{productos:puestas,costoUnitario:tapa.precio,
+      motivo:'La tapa domo se consumía en cada smoothie y no estaba en ninguna receta'});
+    toast(`✓ Tapa domo agregada a ${puestas.length} smoothie(s)`,4500);
   }
   await markMig(migKey);
 }
