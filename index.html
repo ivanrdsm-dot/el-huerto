@@ -3008,6 +3008,7 @@ async function completeInit(){
   await migFusionaTapasOct2026();
   await migEnsaladaBowlOct2026();
   await migUnidadesGramos2026();
+  await migHuerfanosOct2026();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -4246,6 +4247,125 @@ const AGRAMOS=[
   ['Pepino',                   true],   // está en 0: da igual, solo la etiqueta
   ['Sandía',                   false],  // 1 → ese sí era 1 kilo de verdad
 ];
+// ══════════════════════════════════════════════════════════════
+// LAS RESPUESTAS DE IVÁN A LOS INSUMOS HUÉRFANOS (9-oct)
+// Cada decisión es suya, textual, y queda anotada en el renglón:
+//   · el vaso de 16 oz NO es el de café — lo sustituyó el de smoothie
+//   · perlas explosivas = perlas de tapioca brown sugar, y tiene 2 paquetes
+//   · la avena suelta no es la base de overnight: fuera, y la base
+//     se queda llamándose "Avena" a secas
+//   · el coco rallado ya no se vende
+//   · granola, jitomate y pechuga de pavo sí los tiene: se crean
+// ══════════════════════════════════════════════════════════════
+async function migHuerfanosOct2026(){
+  const migKey='h5huerf_oct26';
+  if(await migDone(migKey)) return;
+  const hecho=[];
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  const esHuerfano=i=>!D.inventario.find(x=>x.id==i.invId);
+  // Repunta todas las líneas que piden `nombreViejo` hacia `inv`
+  const repuntar=async(nombreViejo,inv)=>{
+    let n=0;
+    for(const r of D.recetas){
+      const ings=r.ings||[]; let toco=false;
+      const nuevas=ings.map(i=>{
+        if(!esHuerfano(i)||normInvNombre(i.nombre||'')!==normInvNombre(nombreViejo)) return i;
+        toco=true; return {...i,invId:inv.id,nombre:inv.nombre};
+      });
+      if(!toco) continue;
+      const upd={...r,ings:nuevas};
+      await fsSet('recetas',upd);
+      const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+      n++;
+    }
+    return n;
+  };
+  // Saca de las recetas un ingrediente que ya no va
+  const quitar=async nombreViejo=>{
+    let n=0; const prods=[];
+    for(const r of D.recetas){
+      const ings=r.ings||[];
+      const nuevas=ings.filter(i=>!(esHuerfano(i)&&normInvNombre(i.nombre||'')===normInvNombre(nombreViejo)));
+      if(nuevas.length===ings.length) continue;
+      const upd={...r,ings:nuevas};
+      await fsSet('recetas',upd);
+      const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+      const p=D.productos.find(x=>x.id===r.prodId); if(p) prods.push(p.nombre);
+      n++;
+    }
+    return {n,prods};
+  };
+  const crear=async(nombre,unit,extra)=>{
+    let inv=buscar(nombre);
+    if(!inv){
+      inv={id:Date.now()+Math.floor(Math.random()*1000),nombre,cat:'otros',
+        catOf:clasificarCatOf(nombre),qty:0,unit,min:0,precio:0,...(extra||{})};
+      await fsSet('inventario',inv);
+      D.inventario.push(inv);
+    }
+    return inv;
+  };
+
+  // ── 1. El vaso de los smoothies ──
+  // No es el de café: es el de plástico de 16 oz, que él llama "el de
+  // smoothie". Se repone con el último precio conocido ($1.08) y la
+  // existencia que tenía al borrarse (274); la captura del día manda.
+  const vaso=await crear('Vaso smoothie 16 oz','pz',{cat:'empaque',catOf:'desechables',qty:274,min:30,precio:1.08});
+  const nV=await repuntar('Vaso plástico 16 oz',vaso);
+  if(nV) hecho.push(`${nV} recetas al "Vaso smoothie 16 oz"`);
+
+  // ── 2. Las perlas ──
+  // "Las perlas explosivas es la perla de tapioca brown sugar, esa es la
+  // misma, y de esa tengo dos paquetes completos" → 2 kg.
+  const perlas=buscar('Perlas de tapioca brown sugar');
+  if(perlas){
+    const nP=await repuntar('Perlas explosivas (boba)',perlas);
+    const upd={...perlas,qty:2000};           // 2 paquetes de 1 kg
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===perlas.id); if(ix>=0) D.inventario[ix]=upd;
+    hecho.push(`perlas unificadas (${nP} receta) y 2 kg en existencia`);
+  }
+
+  // ── 3. La avena ──
+  // "Avena no es lo mismo que overnight oat base, así que elimínalo. El
+  // avena overnight base, solo déjalo como avena."
+  // Primero se quitan las líneas de la avena suelta —si no, al renombrar
+  // la base caerían encima de ella por nombre— y después el renombre.
+  const sinAvena=await quitar('Avena');
+  if(sinAvena.n) hecho.push(`avena suelta fuera de ${sinAvena.n} receta(s): ${sinAvena.prods.join(', ')}`);
+  const base=buscar('Avena overnight base');
+  if(base){
+    const upd={...base,nombre:'Avena'};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===base.id); if(ix>=0) D.inventario[ix]=upd;
+    // El nombre también viaja dentro de las recetas, para que se lea bien
+    for(const r of D.recetas){
+      const ings=r.ings||[];
+      if(!ings.some(i=>i.invId==base.id)) continue;
+      const rec={...r,ings:ings.map(i=>i.invId==base.id?{...i,nombre:'Avena'}:i)};
+      await fsSet('recetas',rec);
+      const iy=D.recetas.findIndex(x=>x.id===r.id); if(iy>=0) D.recetas[iy]=rec;
+    }
+    hecho.push('"Avena overnight base" ahora se llama "Avena"');
+  }
+
+  // ── 4. El coco rallado ya no se vende ──
+  const sinCoco=await quitar('Coco rallado');
+  if(sinCoco.n) hecho.push(`coco rallado fuera de ${sinCoco.prods.join(', ')}`);
+
+  // ── 5. Los que sí tiene y había que reponer ──
+  // Entran en cero y sin precio a propósito: que los capture él, no yo.
+  for(const [nombre,unit] of [['Granola','g'],['Jitomate','g'],['Pechuga de pavo','g']]){
+    const inv=await crear(nombre,unit);
+    const n=await repuntar(nombre,inv);
+    hecho.push(`${nombre} repuesto en ${unit} (${n} receta${n===1?'':'s'})`);
+  }
+
+  logAudit('huerfanos_resueltos',{cambios:hecho,
+    motivo:'Decisiones de Iván sobre los insumos que quedaron huérfanos tras su limpieza del inventario'});
+  if(hecho.length) toast(`✓ Insumos: ${hecho.length} cambio(s) aplicados`,6500);
+  await markMig(migKey);
+}
 async function migUnidadesGramos2026(){
   const migKey='h5gramos_oct26b';
   if(await migDone(migKey)) return;
