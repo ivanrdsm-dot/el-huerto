@@ -74,6 +74,21 @@ migFns.forEach(fn => {
 });
 if (!errors.some(e => e.includes('migración'))) ok('todas las migraciones están conectadas al init');
 
+// ── 4b. Interfaz: iconos y <option> ──
+// Dos errores que ya ocurrieron y no se ven hasta que alguien abre la pantalla:
+//  · un <use href="#i-x"> que apunta a un icono que no está en el sprite = hueco mudo
+//  · un <svg> dentro de un <option>: el navegador NO lo dibuja y la opción sale vacía
+console.log('\n[4b/5] Interfaz');
+const sprite = new Set([...html.matchAll(/<g id="(i-[a-z]+)">/g)].map(m => m[1]));
+const usados = new Set([...html.matchAll(/<use href="#(i-[a-z]+)"\/>/g)].map(m => m[1]));
+const faltan = [...usados].filter(i => !sprite.has(i));
+if (faltan.length) fail(`iconos usados que no existen en el sprite: ${faltan.join(', ')}`);
+else ok(`${usados.size} iconos usados, todos existen`);
+const optSvg = [...html.matchAll(/<option\b[^>]*>(?:(?!<\/option>)[^])*?<svg/g)].length;
+if (optSvg) fail(`${optSvg} <option> con <svg> dentro (no se dibuja)`); else ok('ningún <option> con SVG');
+const btnVacio = [...html.matchAll(/<button\b[^>]*>\s*<\/button>/g)].length;
+if (btnVacio) fail(`${btnVacio} botón(es) sin contenido`); else ok('ningún botón vacío');
+
 // ── 5. Service worker versionado ──
 console.log('\n[5/5] Service worker');
 const sw = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
