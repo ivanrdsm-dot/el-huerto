@@ -2897,22 +2897,42 @@ const fsSet=async(c,item)=>{
 // como fuente para sincronizar migraciones ya corridas.
 // ══════════════════════════════════════════════════════════════
 let MIG={};
+// ══════════════════════════════════════════════════════════════
+// REGISTRO DE MIGRACIONES — SE BORRABA SOLO
+// Tres fallas encadenadas, y son la causa de fondo de que hoy varias
+// migraciones corrieran dos veces y duplicaran existencias:
+//  1. Se guardaba con `setDoc(doc, MIG)` SIN merge: cada pestaña escribía
+//     el mapa completo que leyó al arrancar, borrando las llaves que
+//     otra pestaña hubiera guardado mientras tanto. Caja y pantalla de
+//     cocina arrancando juntas se pisaban.
+//  2. Si la lectura fallaba, `MIG={}` y la primera escritura dejaba el
+//     documento compartido con una sola llave. Las ~70 migraciones
+//     volvían a correr en TODOS los dispositivos.
+//  3. `await setDoc` sin red no resuelve nunca y dejaba el arranque
+//     colgado antes de la pantalla de acceso.
+// Ahora: merge por llave, no se escribe encima si no se pudo leer, y la
+// espera pasa por escrituraOk.
+// ══════════════════════════════════════════════════════════════
+let MIG_LEIDO=false;
 async function loadMigrations(){
   try{
     const snap=await getDoc(doc(db,'sistema','migrations'));
     MIG=snap.exists()?snap.data():{};
+    MIG_LEIDO=true;
   }catch(e){
     console.warn('No se pudo leer sistema/migrations:',e.code||e.message);
-    MIG={};
+    MIG={}; MIG_LEIDO=false;
   }
 }
+// Guarda UNA llave, sin tocar las demás
+const guardaMig=key=>escrituraOk(setDoc(doc(db,'sistema','migrations'),{[key]:true},{merge:true}));
 async function migDone(key){
+  // Si no se pudo leer el registro, se da todo por hecho. Volver a correr
+  // una migración destruye datos; no correrla solo aplaza el cambio.
+  if(!MIG_LEIDO) return true;
   // Legacy: si este dispositivo ya la corrió (localStorage), enséñaselo a Firestore
   if(localStorage.getItem(key)){
-    if(!MIG[key]){
-      MIG[key]=true;
-      setDoc(doc(db,'sistema','migrations'),MIG).catch(()=>{});
-    }
+    if(!MIG[key]){ MIG[key]=true; guardaMig(key).catch(()=>{}); }
     return true;
   }
   return !!MIG[key];
@@ -2920,7 +2940,7 @@ async function migDone(key){
 async function markMig(key){
   MIG[key]=true;
   try{localStorage.setItem(key,'1');}catch(e){}
-  try{await setDoc(doc(db,'sistema','migrations'),MIG);}catch(e){console.warn('markMig:',key,e.code||e.message);}
+  try{await guardaMig(key);}catch(e){console.warn('markMig:',key,e.code||e.message);}
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -8761,7 +8781,7 @@ function printComandaHTML(v){
   setTimeout(()=>{
     $('ticket-print').innerHTML=`<div class="ticket-thermal">
       <div class="tk-center"><div class="tk-logo">COMANDA</div><div class="tk-sub">${v.ticket} · ${v.hora}</div></div>
-      ${v.cliente?`<div style="font-size:11px;">Cliente: <b>${v.cliente}</b></div>`:''}
+      ${v.cliente?`<div style="font-size:11px;">Cliente: <b>${esc(v.cliente)}</b></div>`:''}
       ${v.nota?`<div style="font-size:11px;font-weight:700;">** ${v.nota} **</div>`:''}
       <hr class="tk-sep">
       ${v.items.map(i=>`<div style="font-size:15px;font-weight:900;margin:6px 0 2px;">${i.qty}× ${i.nombre.toUpperCase()}</div>
@@ -9376,7 +9396,7 @@ function renderTarjetaPublica(){
       ?`<div style="padding:60px 24px;text-align:center;font-family:'DM Sans',sans-serif;color:#8a7a68;">
           <div style="font-size:42px;margin-bottom:12px;">🌱</div>
           <div style="font-family:'Playfair Display',serif;font-size:22px;color:#D9481C;font-weight:800;margin-bottom:8px;">El Huerto</div>
-          <div style="font-size:14px;margin-bottom:6px;">No encontramos la tarjeta <b>${_tarjetaCode}</b></div>
+          <div style="font-size:14px;margin-bottom:6px;">No encontramos la tarjeta <b>${esc(_tarjetaCode)}</b></div>
           <div style="font-size:12px;">Revisa el link o pide tu tarjeta en el mostrador de Ciudad UP.</div>
         </div>`
       :'<div style="padding:70px 20px;text-align:center;font-family:sans-serif;color:#888;">Cargando tu tarjeta… 🌱</div>';
@@ -10179,7 +10199,15 @@ async function descontarInventario(ventaItemsRaw){
       if(!inv) continue;
       // A3: convertir unidad de receta → unidad de inventario (g→kg, ml→L)
       // Antes restaba 15 (g de avena) a 3.02 (kg) y aniquilaba el stock.
-      const qtyReceta=parseFloat(ing.qty||1)*item.qty;
+      // Una cantidad vacía NO es 1. El costeo ya la trata como hueco
+      // (foodCostSimple) y aquí hacía lo contrario: restaba UNA unidad de
+      // inventario. Con la plantilla de café —que deja las cantidades en
+      // blanco a propósito hasta que Iván las escriba— cada café habría
+      // bajado 1 LITRO de leche. Si falta la cantidad, no se descuenta y
+      // se avisa; el Costeo guiado ya dice cuáles son.
+      const qReceta=parseFloat(ing.qty);
+      if(!(qReceta>0)){alertas.push(`⚠ ${inv.nombre}: la receta no tiene cantidad — no se descontó`);continue;}
+      const qtyReceta=qReceta*item.qty;
       const qtyDescontar=qtyToInvUnit(qtyReceta, ing.unit, inv.unit);
       if(qtyDescontar==null){alertas.push(`⚠ ${inv.nombre}: receta en ${ing.unit} vs inventario en ${inv.unit} — no se descontó`);continue;}
       const newQty=Math.max(0,(inv.qty||0)-qtyDescontar);
@@ -10581,7 +10609,9 @@ async function reponerInventario(ventaItemsRaw){
       if(!inv&&ing.nombre) inv=D.inventario.find(i=>i.nombre.toLowerCase()===ing.nombre.toLowerCase());
       if(!inv) continue;
       // A3: misma conversión de unidades que el descuento (simetría exacta)
-      const qtyRecetaRep=parseFloat(ing.qty||1)*item.qty;
+      const qRep=parseFloat(ing.qty);
+      if(!(qRep>0)) continue;            // sin cantidad no se descontó: no hay nada que reponer
+      const qtyRecetaRep=qRep*item.qty;
       const qtyReponer=qtyToInvUnit(qtyRecetaRep, ing.unit, inv.unit);
       if(qtyReponer==null) continue; // unidades incompatibles: simetría con el descuento
       inv.qty=Math.round(((inv.qty||0)+qtyReponer)*1000)/1000;
@@ -11752,7 +11782,11 @@ window.togglePartidas=id=>{
   if(car) car.textContent=abierto?'▸':'▾';
 };
 window.addGasto=async()=>{
-  const fecha=$('gf').value||today(); const monto=parseFloat($('gm').value);
+  // En sábado o domingo la fecha por defecto es el lunes que surte, la
+  // misma que mira "Esta semana". Si no, el gasto capturado el domingo
+  // caía en la semana que ya cerró y no aparecía en la lista — invitando
+  // a capturarlo otra vez.
+  const fecha=$('gf').value||hoyOperativo(); const monto=parseFloat($('gm').value);
   if(!monto||monto<=0){toast('⚠ Monto inválido');return;}
   const tipoEst=$('g-tipoest')?.value||'general';
   const canal=tipoEst==='marketing'?($('g-canal')?.value||'otros'):null;
@@ -17418,7 +17452,11 @@ function renderAll(){
 
 function initD(){
   const t=today();
-  ['cf','gf','pvf','sbi','vh-fecha','vend-fecha','ret-fecha'].forEach(id=>{if($(id))$(id).value=t;});
+  ['cf','pvf','sbi','vh-fecha','vend-fecha','ret-fecha'].forEach(id=>{if($(id))$(id).value=t;});
+  // La fecha del gasto sigue la semana operativa: en fin de semana se
+  // propone el lunes que surte, que es la semana que muestra la lista.
+  // Lo de caja y retiros NO: esos son del día real.
+  if($('gf'))$('gf').value=hoyOperativo();
   // Pre-fill caja form: si ya hay corte de hoy, mostrarlo; si no, limpiar campos
   const hoy=D.caja.find(c=>c.fecha===t);
   if($('cef')){
