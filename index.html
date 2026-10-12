@@ -2365,15 +2365,17 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="ct">🔐 Cuentas de acceso (Firebase)</div>
     <div style="font-size:11.5px;color:var(--text2);line-height:1.6;margin-bottom:10px;">
       Hoy todo el sistema entra con <b>una sola sesión anónima</b>, así que Firestore no puede distinguir
-      a Claudia del dueño, y los hashes de las contraseñas viajan dentro del código de la página.
-      Con una cuenta por persona eso se cierra.
-      <br><br><b>Antes de crearlas:</b> en la consola de Firebase, Authentication → Sign-in method →
-      activa <b>Correo electrónico/contraseña</b>.
+      a Claudia del dueño, y los hashes de las contraseñas <b>viajan dentro del código de la página</b>:
+      cualquiera puede descargarlo y reventar una contraseña corta. Con una cuenta por persona eso se cierra,
+      y la contraseña pasa a vivir solo en Firebase.
+      <br><br>✓ <b>Correo electrónico/contraseña ya está activado</b> en Firebase. Solo falta crear las cuentas aquí.
+      <br>En cuanto cada quien tenga la suya, manda ésa: el hash del código deja de usarse para esa persona.
     </div>
     <div id="cfg-auth-estado" style="font-size:12px;margin-bottom:10px;"></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       <button class="btn bs" onclick="revisarCuentasAuth()">🔍 Revisar estado</button>
       <button class="btn bp" onclick="crearCuentasAuth()">👥 Crear las cuentas</button>
+      <button class="btn bs" onclick="cambiarMiPass()">🔑 Cambiar MI contraseña</button>
     </div>
     <div style="font-size:11px;color:var(--text3);margin-top:9px;line-height:1.5;">
       Crear las cuentas <b>no cambia nada todavía</b>: la app sigue funcionando igual.
@@ -2762,7 +2764,7 @@ nav{padding-top:env(safe-area-inset-top);}
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
-import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
+import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
 const app=initializeApp(FB);
@@ -7997,16 +7999,26 @@ async function checkPIN(){
   if(seg){toast(`🔒 Bloqueado por intentos fallidos — espera ${seg} segundos`,3000,'error');return;}
   const val=$('pin-input').value;
   const valHash=await sha256Hex(val);
-  // Employee PIN check (hash comparison; fallback to legacy plaintext pin field)
+  // ══════════════════════════════════════════════════════════════
+  // MANDA FIREBASE EN CUANTO LA CUENTA EXISTE
+  // Antes la contraseña se comparaba contra un hash ESCRITO EN EL
+  // CÓDIGO (EMP_PASS_HASH). Como index.html es público, cualquiera lo
+  // descarga y revienta una contraseña corta en segundos — y para
+  // cambiarla había que editar el código y volver a publicar.
+  // Ahora se intenta primero la cuenta propia: si entra, entró, y la
+  // contraseña vive solo en Firebase. El hash del código queda como
+  // respaldo SOLO mientras esa persona todavía no tenga cuenta.
+  // Si la cuenta existe y la contraseña está mal, NO hay repesca con
+  // el hash viejo: si no, cambiarla no serviría de nada.
+  // ══════════════════════════════════════════════════════════════
   if(pinTarget==='emp' && pinTargetEmpId){
+    const rFb = await entrarFirebase(pinTargetEmpId,val);
     const empHash = EMP_PASS_HASH[pinTargetEmpId] || '';
     const legacyPin = D.empleados.find(e=>e.id===pinTargetEmpId)?.pin || null;
-    const ok = (empHash && valHash===empHash) || (legacyPin && val===legacyPin);
+    const ok = rFb==='ok' ||
+      (rFb==='sin-cuenta' && ((empHash && valHash===empHash) || (legacyPin && val===legacyPin)));
     if(ok){
       pinExito();
-      // Etapa 1: además del hash local, se intenta la sesión propia.
-      // Si aún no existe la cuenta, seguimos igual que siempre.
-      await entrarFirebase(pinTargetEmpId,val);
       $('pin-modal').style.display='none';
       loginEmp(pinTargetEmpId);
       pinTargetEmpId=null; pinTarget=null;
@@ -8019,10 +8031,10 @@ async function checkPIN(){
     toast('⚠ Contraseña incorrecta',2000);
     return;
   }
-  // Admin PIN check (hash comparison)
-  if(valHash===ADMIN_PASS_HASH){
+  // Admin: mismo criterio — manda la cuenta propia si ya existe
+  const rAdmin = await entrarFirebase('admin',val);
+  if(rAdmin==='ok' || (rAdmin==='sin-cuenta' && valHash===ADMIN_PASS_HASH)){
     pinExito();
-    await entrarFirebase('admin',val);
     SESSION={tipo:'admin',nombre:'Admin',color:'#e8c96a'};
     try{ localStorage.setItem('h5session',JSON.stringify(SESSION)); }catch(e){}
     $('pin-modal').style.display='none';
@@ -16648,6 +16660,33 @@ window.revisarCuentasAuth=async()=>{
     (listas
       ? `<div style="margin-top:9px;padding:9px 11px;border-radius:var(--rsm);background:color-mix(in srgb,var(--accent) 10%,transparent);font-size:12px;color:var(--text);">✓ Las tres tienen cuenta y rol. Ya se pueden publicar las reglas <code>firestore.rules.v3</code>.</div>`
       : `<div style="margin-top:9px;padding:9px 11px;border-radius:var(--rsm);background:color-mix(in srgb,var(--red) 9%,transparent);font-size:12px;color:var(--text);"><b>No publiques <code>firestore.rules.v3</code> todavía.</b> Quien aparezca como pendiente se quedaría dentro de la app pero sin poder leer ni escribir datos.</div>`);
+};
+// ══════════════════════════════════════════════════════════════
+// CAMBIAR LA PROPIA CONTRASEÑA
+// Desde el navegador solo se puede cambiar la contraseña de QUIEN tiene
+// la sesión abierta — Firebase no deja que un cliente le cambie la
+// contraseña a otro. Así que cada quien cambia la suya, con su sesión
+// puesta, que además es como debe ser: Iván reparte una contraseña
+// inicial y cada una la cambia por la que solo ella sabe.
+// ══════════════════════════════════════════════════════════════
+window.cambiarMiPass=async()=>{
+  if(!AUTH_PERFIL||!auth.currentUser||auth.currentUser.isAnonymous){
+    toast('⚠ Primero entra con tu cuenta (sal y vuelve a entrar con tu contraseña)',5000,'warn');return;
+  }
+  const n1=prompt('Tu contraseña NUEVA (mínimo 6 caracteres):');
+  if(!n1) return;
+  if(n1.length<6){alert('Firebase exige al menos 6 caracteres.');return;}
+  const n2=prompt('Escríbela otra vez para confirmar:');
+  if(n1!==n2){alert('No coinciden. No se cambió nada.');return;}
+  try{
+    await updatePassword(auth.currentUser,n1);
+    logAudit('password_cambiada',{quien:AUTH_PERFIL.quien,cuenta:authEmail(AUTH_PERFIL.quien)});
+    toast('✓ Contraseña cambiada. Úsala la próxima vez que entres.',6000);
+  }catch(e){
+    const c=e?.code||'';
+    if(c.includes('requires-recent-login')) alert('Por seguridad, Firebase pide que hayas entrado hace poco.\n\nSal de la app, vuelve a entrar con tu contraseña actual y cámbiala enseguida.');
+    else alert('No se pudo cambiar: '+(e?.message||c));
+  }
 };
 window.crearCuentasAuth=async()=>{
   if(SESSION?.tipo!=='admin'){toast('⚠ Solo administrador',2600,'warn');return;}
