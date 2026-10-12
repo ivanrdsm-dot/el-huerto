@@ -3017,6 +3017,7 @@ async function completeInit(){
   await migSerranoSusalia2026();
   await migCompras11Oct2026();
   await migCorrige11Oct2026();
+  await migRefechaSurtido12Oct();
   await migPanesRenee2026();
   await migTicketRenee19880();
   await migTapaDomoSmoothies();
@@ -4569,6 +4570,32 @@ async function migPanesRenee2026(){
     pendiente:'falta saber si los $46.75 son por pieza o por paquete',
     motivo:'Iván: cada pan tiene que descontarse por separado y poder elegirse al ordenar'});
   toast(`✓ Panes de la Tía Renee: ${PANES_RENEE.length} sabores, cada uno con su inventario`,6000);
+  await markMig(migKey);
+}
+// ══ LAS COMPRAS DEL DOMINGO VUELVEN A SU LUNES ══
+// migCompras11Oct2026 las fechó el lunes 12, que es la semana que
+// surten. fixUTCDates las regresaba al 11 en cada arranque: ese guardia
+// mueve al día de hoy todo lo que tenga fecha de mañana, para tapar un
+// bug viejo de UTC, y no distinguía una fecha puesta a propósito.
+// Ya aprendió a respetar las que traen fechaTicket; aquí se repara lo
+// que alcanzó a mover.
+async function migRefechaSurtido12Oct(){
+  const migKey='h5refecha12oct_26';
+  if(await migDone(migKey)) return;
+  const movidos=[];
+  for(const t of GASTOS_11OCT.map(g=>g.ticket)){
+    const g=D.gastos.find(x=>x.ticket===t);
+    if(!g||g.fecha==='2026-10-12') continue;
+    const upd={...g,fecha:'2026-10-12',fechaTicket:'2026-10-11'};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=upd;
+    movidos.push(`${t} ${g.fecha} → 2026-10-12`);
+  }
+  if(movidos.length){
+    logAudit('gastos_refechados',{tickets:movidos,
+      motivo:'fixUTCDates las regresaba al domingo; pertenecen a la semana que surten'});
+    toast(`✓ ${movidos.length} compra(s) vuelven a la semana del 12`,5000);
+  }
   await markMig(migKey);
 }
 async function migCorrige11Oct2026(){
@@ -7516,6 +7543,13 @@ async function fixUTCDates(){
     const arr=D[col]||[];
     for(const reg of arr){
       if(!reg.fecha) continue;
+      // Un registro con `fechaTicket` fue fechado A PROPÓSITO: es el
+      // surtido del fin de semana puesto en el lunes que abastece. Este
+      // guardia existe para el bug viejo de UTC —fechas que amanecían un
+      // día adelante sin que nadie las moviera— y ese bug nunca deja
+      // fechaTicket. Sin esta línea, las compras del domingo se
+      // regresaban solas al domingo en el siguiente arranque.
+      if(reg.fechaTicket) continue;
       // Si el registro tiene fecha de mañana, moverlo a hoy (fue bug UTC)
       if(reg.fecha===manana){
         const yaHay=arr.find(r=>r.id!==reg.id&&r.fecha===hoy);
@@ -8035,6 +8069,23 @@ function getWDays7(ref){
   return r;
 }
 function getMonday(ds){const d=new Date(ds+'T12:00:00');const day=d.getDay();d.setDate(d.getDate()-(day===0?6:day-1));return localDate(d);}
+// ══ EL FIN DE SEMANA YA ES LA SEMANA QUE ENTRA ══
+// El Huerto abre lunes a viernes. El sábado y el domingo que Iván va a
+// Central de Abasto o a Costco ya está trabajando para la semana que
+// empieza el lunes: "es lo que compramos para usar esta semana".
+// Por eso "Esta semana" se para en el lunes siguiente cuando hoy cae en
+// fin de semana, y lo que acaba de surtir se ve donde lo busca.
+// Solo mueve la vista de HOY: una fecha elegida a mano no se toca, y la
+// nómina y el reloj checador siguen con la semana del calendario, que
+// es la que se paga.
+function hoyOperativo(){
+  const d=new Date(today()+'T12:00:00');
+  const day=d.getDay();
+  if(day===6) d.setDate(d.getDate()+2);        // sábado → lunes
+  else if(day===0) d.setDate(d.getDate()+1);   // domingo → lunes
+  return localDate(d);
+}
+const enFinDeSemana=()=>hoyOperativo()!==today();
 // ══════════════════════════════════════════════════════════════
 // GASTO OPERATIVO BASE POR SEMANA
 // Iván (28-sep-2026): "nuestros gastos en promedio a la semana es de
@@ -11794,7 +11845,7 @@ window.marcarPagado=async id=>{
 };
 function renderGastosSinProv(){
   const caja=$('g-sinprov'); if(!caja) return;
-  const sem=getWDays7();
+  const sem=getWDays7(hoyOperativo());
   const faltan=D.gastos.filter(g=>sem.includes(g.fecha)&&g.cat!=='nomina'&&!(g.prov||'').trim())
     .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
   if(!faltan.length){caja.innerHTML='';return;}
@@ -11837,7 +11888,7 @@ function renderGastos(){
     // La semana operativa es lun→vie, pero las compras grandes (Costco,
     // El Zorro) caen en sábado: se filtran los 7 días para no perderlas
     // y la etiqueta dice a qué semana de trabajo pertenecen.
-    const wd=getWDays7(td);
+    const wd=getWDays7(hoyOperativo());
     filtDates=new Set(wd);
     periodoLabel=`Semana ${wd[0]} → ${wd[4]} (con compras del fin de semana)`;
   } else if(periodo==='mes'){
@@ -12669,7 +12720,7 @@ function renderProv(){
   const totMes=r2(mes.reduce((s2,[,v])=>s2+v,0));
   // Los de esta semana los reclama el aviso de Gastos; aquí solo se
   // cuentan los del histórico, que Iván decidió dejar como están.
-  const semAhora=getWDays7();
+  const semAhora=getWDays7(hoyOperativo());
   const sinProv=compras.filter(g=>!g.prov&&!g.concepto&&!semAhora.includes(g.fecha)).length;
   if($('pvmes'))$('pvmes').innerHTML=mes.length===0?`<p style="color:var(--text3);font-size:12px;">Sin compras este mes</p>`:
     mes.map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('')+
@@ -15360,8 +15411,10 @@ function dbRango(){
     const cm=curM(), dias=diasDelMes(cm);
     return {p:'mes',vent:dias,gast:dias,label:'Mes '+cm};
   }
-  const wd=getWDays(td);
-  return {p:'semana',vent:wd,gast:getWDays7(td),label:`Semana ${fmtFecha(wd[0])} → ${fmtFecha(wd[4])}`};
+  const ref=hoyOperativo();
+  const wd=getWDays(ref);
+  return {p:'semana',vent:wd,gast:getWDays7(ref),
+    label:`Semana ${fmtFecha(wd[0])} → ${fmtFecha(wd[4])}${enFinDeSemana()?' · empieza el lunes':''}`};
 }
 function renderDashboard(){
   renderEventosAtencion();

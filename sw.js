@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.04'; // El surtido del domingo cuenta en su semana
+const CACHE_NAME = 'el-huerto-v15.06'; // El surtido del domingo cuenta en su semana
 const ASSETS = [
   '/',
   '/index.html',
