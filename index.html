@@ -939,6 +939,10 @@ nav{padding-top:env(safe-area-inset-top);}
       🔐 Acceso Administrador
     </button>
   </div>
+  <!-- Saber QUÉ versión trae el aparato. Sin esto, cuando una tablet se
+       queda con la copia vieja no hay forma de distinguir "está roto" de
+       "todavía no le llega el arreglo". -->
+  <div id="lock-ver" style="margin-top:14px;font-size:10.5px;color:#9db394;opacity:.75;font-variant-numeric:tabular-nums;"></div>
 </div>
 
 <!-- ══ PIN MODAL (Admin + Empleadas) ══ -->
@@ -3114,6 +3118,10 @@ async function completeInit(){
   // la única forma de pintar la pantalla de acceso.
   await cargarPersonalPublico();
   renderLock();
+  try{
+    const v=(await (await fetch('sw.js',{cache:'no-store'})).text()).match(/el-huerto-v([\d.]+)/);
+    if($('lock-ver')) $('lock-ver').textContent='v'+(v?v[1]:'?');
+  }catch(e){ if($('lock-ver')) $('lock-ver').textContent='sin conexión'; }
   // Si hay admin y la lista está vieja o no existe, se republica sola.
   if(SESSION?.tipo==='admin') publicarPersonal();
   if(!SESSION){
@@ -8130,7 +8138,15 @@ async function checkPIN(){
     toast('⚠ No se pudo confirmar tu acceso — revisa la señal e intenta otra vez',5000,'error');
     $('pin-input').value=''; return;
   }
-  if(rAdmin==='ok' || (rAdmin==='sin-cuenta' && valHash===ADMIN_PASS_HASH)){
+  // Si Firebase la rechaza pero la contraseña SÍ es la del sistema, no se
+  // le cierra la puerta al dueño: se le deja entrar y se le dice exactamente
+  // qué pasa. Quedarse fuera de tu propio negocio sin explicación es peor
+  // que entrar con una sesión limitada.
+  const desfasada = rAdmin==='mala-pass' && valHash===ADMIN_PASS_HASH;
+  if(desfasada){
+    toast('⚠ Tu contraseña de admin NO coincide con la de Firebase. Entras, pero puede que no cargue información. Pídele a Claude que la restablezca.',12000,'error');
+  }
+  if(rAdmin==='ok' || desfasada || (rAdmin==='sin-cuenta' && valHash===ADMIN_PASS_HASH)){
     pinExito();
     SESSION={tipo:'admin',nombre:'Admin',color:'#e8c96a'};
     try{ localStorage.setItem('h5session',JSON.stringify(SESSION)); }catch(e){}
