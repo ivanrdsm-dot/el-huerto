@@ -1,0 +1,35 @@
+rules_version = '2';
+// ══════════════════════════════════════════════════════════════
+// EL HUERTO — Reglas de seguridad Firestore (Fase A4 — v2)
+//
+// v1: solo usuarios autenticados (Anonymous Auth de la app).
+// v2: la bitácora auditLog es INMUTABLE — solo se puede crear,
+//     nunca modificar ni borrar (ni siquiera el admin).
+//
+// Nota técnica: las reglas de Firestore son una unión permisiva —
+// si cualquier match concede acceso, se concede. Por eso el
+// wildcard EXCLUYE explícitamente a auditLog con la condición
+// collection != 'auditLog'.
+//
+// CÓMO PUBLICAR: Firebase Console → Firestore Database → Rules →
+// pegar este archivo completo → Publish.
+// ══════════════════════════════════════════════════════════════
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Colecciones operativas (excepto auditLog): solo autenticados
+    match /{collection}/{docId} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && collection != 'auditLog';
+    }
+
+    // Bitácora de auditoría: append-only
+    // - leer: cualquier usuario autenticado
+    // - crear: cualquier usuario autenticado
+    // - modificar o borrar: NADIE
+    match /auditLog/{logId} {
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+  }
+}

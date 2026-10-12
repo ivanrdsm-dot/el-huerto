@@ -2886,7 +2886,17 @@ const escrituraOk=async p=>{
 };
 const fsSet=async(c,item)=>{
   try{ await escrituraOk(setDoc(docRef(c,item.id),item)); return true; }
-  catch(e){ toast('⚠ '+e.message,4000,'error'); console.error('fsSet error:',c,e); return false; }
+  catch(e){
+    // Antes de que alguien entre, la sesión es anónima y las reglas
+    // rechazan casi toda escritura — es lo que deben hacer. Sacarle a la
+    // cajera un toast rojo de "permisos insuficientes" al abrir la app
+    // asusta sin motivo: eso se queda en la consola. Un permiso negado
+    // CON sesión propia sí es un problema y sí se avisa.
+    const permiso=(e?.code||'').includes('permission-denied');
+    if(permiso && !AUTH_PERFIL) console.warn('escritura no permitida sin sesión propia:',c);
+    else { toast('⚠ '+e.message,4000,'error'); console.error('fsSet error:',c,e); }
+    return false;
+  }
 };
 
 // ══════════════════════════════════════════════════════════════
@@ -2992,8 +3002,16 @@ async function completeInit(){
     }
   }catch(e){}
   try{const v=localStorage.getItem('h5vend');if(v)activeVend=JSON.parse(v);}catch(e){}
-  if(D.productos.length===0) await seedMenu();
-  if(D.empleados.length===0) await seedEmps();
+  // ══ NO SEMBRAR CON SESIÓN ANÓNIMA ══
+  // Con las reglas v3, antes de que alguien entre la app no puede LEER
+  // empleados — así que `D.empleados` llega vacío aunque existan. Si se
+  // deja sembrar, intenta recrearlos en cada arranque de cada tablet:
+  // las reglas lo rechazan (bien) pero llena la consola de errores, y
+  // el día que una regla fuera más laxa duplicaría al personal.
+  // Vacío por falta de permiso NO es lo mismo que vacío de verdad.
+  const puedeSembrar=()=>!!AUTH_PERFIL;
+  if(D.productos.length===0 && puedeSembrar()) await seedMenu();
+  if(D.empleados.length===0 && puedeSembrar()) await seedEmps();
   const loader=document.getElementById('loader');
   if(loader) loader.style.display='none';
   // Si un render truena aquí, antes se abortaba completeInit entero: no
