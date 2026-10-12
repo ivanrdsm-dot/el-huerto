@@ -2994,7 +2994,12 @@ async function completeInit(){
   if(D.empleados.length===0) await seedEmps();
   const loader=document.getElementById('loader');
   if(loader) loader.style.display='none';
-  initD(); renderAll();
+  // Si un render truena aquí, antes se abortaba completeInit entero: no
+  // corrían las migraciones, no se restauraba la sesión y no aparecía la
+  // pantalla de acceso. La caja quedaba muerta por un dato raro.
+  try{ initD(); renderAll(); }
+  catch(e){ console.error('Fallo al pintar en el arranque:',e);
+    try{ toast('⚠ Algo no se pudo pintar al arrancar. El resto del sistema sigue.',6000,'warn'); }catch(_){} }
   try{const sv=localStorage.getItem('h5session');if(sv){SESSION=JSON.parse(sv);
     // El rol se recalcula desde el empleado real (no se confía en lo guardado):
     // si Iván asciende o degrada a alguien, aplica en cuanto recarga.
@@ -3973,8 +3978,8 @@ async function migCafe08Oct2026(){
   if(canon&&dup&&canon.id!==dup.id){
     for(const r of D.recetas){
       const ings=r.ings||[];
-      if(!ings.some(i=>i.invId===dup.id)) continue;
-      const upd={...r,ings:ings.map(i=>i.invId===dup.id?{...i,invId:canon.id,nombre:canon.nombre}:i)};
+      if(!ings.some(i=>i.invId==dup.id)) continue;   // == a propósito: la UI guarda el invId como texto
+      const upd={...r,ings:ings.map(i=>i.invId==dup.id?{...i,invId:canon.id,nombre:canon.nombre}:i)};
       await fsSet('recetas',upd);
       const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
       fusionadas++;
@@ -4770,7 +4775,8 @@ async function migSusaliasOct2026(){
     const ings=r.ings||[]; let toco=false;
     const nuevas=ings.map(i=>{
       const existe=D.inventario.find(x=>x.id==i.invId);
-      const esSusalia=idsFuera.has(i.invId)
+      // La UI guarda invId como texto: se compara también convertido
+      const esSusalia=idsFuera.has(i.invId)||idsFuera.has(Number(i.invId))
         ||(!existe&&normInvNombre(i.nombre||'').startsWith('susalia'));
       if(!esSusalia) return i;
       toco=true; return {...i,invId:upd.id,nombre:'Susalias',unit:i.unit||'pz'};
@@ -8995,9 +9001,14 @@ window.cerrarScan=()=>{
 window.buscarLealtadUI=q=>{
   q=(q||'').trim().toLowerCase();
   const res=!q?[]:D.lealtad.filter(c=>c.codigo.toLowerCase().includes(q)||(c.nombre||'').toLowerCase().includes(q)||(c.tel||'').includes(q)).slice(0,6);
-  $('scan-results').innerHTML=res.map(c=>`<button class="prep-chip" style="text-align:left;" onclick="asignarLealtadPorCodigo('${esc(c.codigo)}')">🎟 <b>&nbsp;${esc(c.nombre)}</b>&nbsp;· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?' · 🎁'+c.premios:''}</button>`).join('');
+  $('scan-results').innerHTML=res.map(c=>`<button class="prep-chip" style="text-align:left;" onclick="asignarLealtadPorCodigo('${encodeURIComponent(c.codigo||'')}')">🎟 <b>&nbsp;${esc(c.nombre)}</b>&nbsp;· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?' · 🎁'+c.premios:''}</button>`).join('');
 };
 window.asignarLealtadPorCodigo=cod=>{
+  // El código viaja codificado dentro del atributo onclick: escapar a
+  // HTML no sirve ahí, porque el navegador decodifica antes de que el JS
+  // lo lea, y una comilla rompería el atributo. Un código normal no
+  // lleva %, así que decodificar no lo altera.
+  try{ cod=decodeURIComponent(String(cod)); }catch(e){ cod=String(cod); }
   const c=D.lealtad.find(x=>x.codigo===cod);
   if(!c){toast('⚠ Tarjeta no encontrada: '+cod,2600,'warn');return;}
   lealtadActual=c;
@@ -9140,7 +9151,7 @@ function renderMenuPublico(){
       `).join('')}
     </div>
     <div class="mv-bar">
-      <input id="mv-nombre" placeholder="¿A nombre de quién?" autocomplete="name" maxlength="40" value="${MV.nombre||''}" oninput="mvNombre(this.value)">
+      <input id="mv-nombre" placeholder="¿A nombre de quién?" autocomplete="name" maxlength="40" value="${esc(MV.nombre)}" oninput="mvNombre(this.value)">
       <button class="mv-go" onclick="mvApartar()" ${n===0||!(MV.nombre||'').trim()?'disabled':''}>
         ${n===0?'Elige algo del menú':`Apartar lugar · ${n} producto${n>1?'s':''} · ${fmt(t)}`}
       </button>
@@ -9163,7 +9174,7 @@ window.mvApartar=async()=>{
   }catch(e){}
   const btn=document.querySelector('#menu-view .mv-go'); if(btn){btn.disabled=true;btn.textContent='Apartando…';}
   const id=Date.now();
-  const folio='Q'+String(id).slice(-4);
+  const folio='Q'+String(id).slice(-4)+'ABCDEFGHJKMNPQRSTUVWXYZ'[Math.floor(Math.random()*23)];
   const items=Object.entries(MV.items).map(([pid,q])=>{
     const p=D.productos.find(x=>String(x.id)===String(pid));
     return {id:p.id,nombre:p.nombre,precio:p.precio,qty:q};
@@ -9239,7 +9250,7 @@ function renderPantallaCliente(d){
   }
   const filas=(d.items||[]).map(i=>`<div class="pv-row">
       <span class="pv-q">${i.q}×</span>
-      <span class="pv-n">${i.n}${i.prep?`<span class="pv-prep">${i.prep}</span>`:''}</span>
+      <span class="pv-n">${esc(i.n)}${i.prep?`<span class="pv-prep">${esc(i.prep)}</span>`:''}</span>
       <span class="pv-p">${fmt(i.p*i.q)}</span>
     </div>`).join('');
   const cobrando=d.estado==='cobro';
@@ -9256,7 +9267,7 @@ function renderPantallaCliente(d){
            </div>
          </div>`
       : ((d.sugeridos||[]).length
-          ? `<div class="pv-sug">${d.sugeridos.map(sg=>`<span class="pv-chip">+ ${sg.n} · ${fmt(sg.p)}</span>`).join('')}</div>`
+          ? `<div class="pv-sug">${d.sugeridos.map(sg=>`<span class="pv-chip">+ ${esc(sg.n)} · ${fmt(sg.p)}</span>`).join('')}</div>`
           : ''));
 }
 if(MODO_PANTALLA){
@@ -10210,6 +10221,9 @@ async function descontarInventario(ventaItemsRaw){
       const qtyReceta=qReceta*item.qty;
       const qtyDescontar=qtyToInvUnit(qtyReceta, ing.unit, inv.unit);
       if(qtyDescontar==null){alertas.push(`⚠ ${inv.nombre}: receta en ${ing.unit} vs inventario en ${inv.unit} — no se descontó`);continue;}
+      // Si no alcanza, el stock se queda en 0 pero el consumo se pierde y
+      // el cierre del día lo leería como "sobra". Que al menos se avise.
+      if(qtyDescontar>(inv.qty||0)+0.0001) alertas.push(`⚠ ${inv.nombre}: se vendió más de lo que el sistema tenía — el conteo saldrá con sobrante`);
       const newQty=Math.max(0,(inv.qty||0)-qtyDescontar);
       inv.qty=Math.round(newQty*1000)/1000;
       await fsSet('inventario',inv);
@@ -10888,8 +10902,12 @@ function renderDbMargenes(){
     map[k].qty+=it.qty||1; map[k].venta+=(it.precio||0)*(it.qty||1);
   }));
   const filas=Object.entries(map).map(([id,x])=>{
+    // Solo entra lo que está costeado COMPLETO. Antes, un producto con
+    // receta a medias devolvía costo 0 y aparecía aquí con 100% de
+    // margen, arriba de todo. Los combos se quedan fuera: su costo
+    // depende de la variante que eligió el cliente, no del producto.
     const fc=(typeof foodCostProducto==='function')?foodCostProducto(Number(id)):null;
-    const costo=fc&&fc.costo!=null?fc.costo*x.qty:null;
+    const costo=(fc&&fc.completo&&fc.costo!=null&&!COMBO_FIJOS[Number(id)])?fc.costo*x.qty:null;
     return {...x, costo, ganancia:costo!=null?r2(x.venta-costo):null,
       margen:costo!=null&&x.venta>0?Math.round((x.venta-costo)/x.venta*100):null};
   }).filter(x=>x.ganancia!=null).sort((a,b)=>b.ganancia-a.ganancia);
@@ -10917,16 +10935,19 @@ function renderPrepedidos(){
   const list=prepNuevos();
   if(!list.length){el.style.display='none';el.innerHTML='';_prepVistos=0;return;}
   el.style.display='flex';
+  // Un pre-pedido con datos manipulados —items ausente, id con comillas—
+  // tronaba este render y la franja de órdenes se quedaba muerta, sin
+  // forma de borrarlo desde la app. Ahora se normaliza antes de pintar.
   el.innerHTML=list.map(p=>`
     <div style="background:#eef7e6;border:1.5px solid var(--accent);border-radius:var(--rsm);padding:9px 11px;display:flex;align-items:center;gap:10px;">
       <span class="mono" style="font-weight:800;font-size:13px;color:var(--accent2);">${esc(p.folio)}</span>
       <div style="flex:1;min-width:0;">
         <div style="font-size:13px;font-weight:800;">${esc(p.cliente)}</div>
-        <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.items.map(i=>i.qty+'× '+i.nombre).join(' · '))}</div>
+        <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc((Array.isArray(p.items)?p.items:[]).map(i=>`${i?.qty||0}× ${i?.nombre||'?'}`).join(' · '))}</div>
       </div>
       <span class="mono" style="font-size:12px;font-weight:700;">${fmt(p.total)}</span>
-      <button class="btn bp bsm" onclick="cargarPrepedido(${p.id})">Cargar</button>
-      <button class="btn bd bxs" onclick="descartarPrepedido(${p.id})" title="Descartar">✕</button>
+      <button class="btn bp bsm" onclick="cargarPrepedido(${Number(p.id)||0})">Cargar</button>
+      <button class="btn bd bxs" onclick="descartarPrepedido(${Number(p.id)||0})" title="Descartar">✕</button>
     </div>`).join('');
   // Campanita solo cuando llega uno nuevo
   if(list.length>_prepVistos){
@@ -10947,12 +10968,21 @@ window.cargarPrepedido=async id=>{
   // Los productos con variantes abren su modal: si la cajera cancela uno,
   // ese renglón NO entra al carrito. Por eso se avisa cuántos van a pedir
   // detalle, para que cuadre contra lo que el cliente aparto.
-  let conVariantes=0;
-  for(const it of p.items){
-    if(PROD_PREP[it.id]&&!PROD_PREP[it.id].fijo) conVariantes+=(it.qty||1);
-    for(let k=0;k<(it.qty||1);k++) addItem(it.id);
+  // Tope por renglón: el pedido viene del celular de un cliente. Una
+  // cantidad de 1,000,000 —tecleada o inyectada— colgaba la caja en un
+  // bucle del que no se sale.
+  const MAX_POR_RENGLON=20;
+  let conVariantes=0, topados=0;
+  for(const it of (Array.isArray(p.items)?p.items:[])){
+    if(!it||it.id==null) continue;
+    let q=Math.floor(Number(it.qty)||1);
+    if(!(q>0)) q=1;
+    if(q>MAX_POR_RENGLON){ q=MAX_POR_RENGLON; topados++; }
+    if(PROD_PREP[it.id]&&!PROD_PREP[it.id].fijo) conVariantes+=q;
+    for(let k=0;k<q;k++) addItem(it.id);
   }
-  if($('op-cliente')) $('op-cliente').value=p.cliente||'';
+  if(topados) toast(`⚠ ${topados} renglón(es) traían una cantidad absurda — se cargaron ${MAX_POR_RENGLON}`,5000,'warn');
+  if($('op-cliente')) $('op-cliente').value=limpiaTextoPublico(p.cliente,40);
   await fsSet('prepedidos',{...p,estado:'tomado',tomadoTs:Date.now(),tomadoPor:SESSION?.nombre||activeVend?.nombre||'—'});
   logAudit('prepedido_tomado',{folio:p.folio,cliente:p.cliente,total:p.total});
   toast(conVariantes
@@ -11945,7 +11975,7 @@ function renderGastos(){
     const delHistorico=[...new Set(D.gastos.map(g=>(g.prov||'').trim()).filter(Boolean))]
       .filter(n=>!delCatalogo.some(c=>normInvNombre(c)===normInvNombre(n)));
     $('pvdl').innerHTML=[...delCatalogo,...delHistorico.sort()]
-      .map(n=>`<option value="${n}">`).join('');
+      .map(n=>`<option value="${esc(n)}">`).join('');
   }
   // ══ AVISO: GASTOS DE ESTA SEMANA SIN PROVEEDOR ══
   // Los del histórico se quedan como están (Iván: "no te preocupes los
@@ -11976,7 +12006,7 @@ function renderGastos(){
   }
 
   // Filtrar gastos
-  let rows=[...D.gastos].sort((a,b)=>b.fecha.localeCompare(a.fecha));
+  let rows=[...D.gastos].sort((a,b)=>String(b.fecha||'').localeCompare(String(a.fecha||'')));
   if(filtDates && filtDates._mes){
     rows=rows.filter(r=>mOf(r.fecha)===filtDates._mes);
   } else if(filtDates){
@@ -12060,7 +12090,7 @@ function renderGastos(){
     Object.entries(bC).sort((a,b)=>b[1]-a[1]).map(([c,v])=>`<div style="margin-bottom:8px;"><div style="display:flex;justify-content:space-between;margin-bottom:3px;"><span style="font-size:12px;">${catL[c]||c}</span><span class="mono ar" style="font-size:11px;">${fmt(v)}</span></div><div class="prog"><div class="pf" style="background:var(--red);width:${totG?Math.round(v/totG*100):0}%;"></div></div></div>`).join('')+
     `<div class="div"></div><div class="sr fw7"><span>Total ${periodo==='semana'?'semana':'período'}</span><span class="mono ar" style="font-size:14px;">${fmt(totG)}</span></div>`;
 
-  if($('pvdl'))$('pvdl').innerHTML=[...new Set(D.pedidos.map(p=>p.nombre))].map(n=>`<option value="${n}">`).join('');
+  if($('pvdl'))$('pvdl').innerHTML=[...new Set(D.pedidos.map(p=>p.nombre))].map(n=>`<option value="${esc(n)}">`).join('');
 }
 
 // ─── NÓMINA SEMANAL + EXTRAS ───
@@ -12668,7 +12698,8 @@ window.recibirOrdenCompra=async id=>{
       await fsSet('inventario',inv);
       // Sincronizar captura del día
       const capHoy=D.invDiario.find(c=>c.productoId===inv.id&&c.fecha===today());
-      if(capHoy) await fsSet('invDiario',{...capHoy,qty:inv.qty,ts:Date.now()});
+      if(capHoy) await fsSet('invDiario',{...capHoy,qty:inv.qty,ts:Date.now(),
+        diferencia:capHoy.esperado!=null?r2(inv.qty-capHoy.esperado):capHoy.diferencia});
     }
   }
   await fsSet('ordenesCompra',{...oc,estado:'recibida',recibidaTs:Date.now(),recibidaPor:SESSION?.nombre||'—'});
@@ -12790,10 +12821,10 @@ function renderProv(){
   };
   const rows=[...compras].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')).slice(0,40);
   if($('pvtable'))$('pvtable').innerHTML=rows.length===0?`<tr><td colspan="5" style="color:var(--text3);text-align:center;padding:14px;">Sin compras registradas</td></tr>`:
-    rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${nombreProv(r)}</td><td><span class="badge xb">${catL[r.cat]||r.cat||'—'}</span></td><td class="mono" style="color:var(--text2);">${r.ticket||'—'}</td><td class="mono ar fw7">${fmt(r.monto)}</td></tr>`).join('');
+    rows.map(r=>`<tr><td class="mono">${r.fecha}</td><td>${esc(nombreProv(r))}</td><td><span class="badge xb">${esc(catL[r.cat]||r.cat)||'—'}</span></td><td class="mono" style="color:var(--text2);">${esc(r.ticket)||'—'}</td><td class="mono ar fw7">${fmt(r.monto)}</td></tr>`).join('');
   const hist=agrupar(compras);
   if($('pvfreq'))$('pvfreq').innerHTML=hist.length===0?`<p style="color:var(--text3);font-size:12px;">Sin historial</p>`:
-    hist.slice(0,8).map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
+    hist.slice(0,8).map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${esc(n)}</span><span class="mono ar">${fmt(v)}</span></div>`).join('');
   const mes=agrupar(compras.filter(g=>mOf(g.fecha)===curM()));
   const totMes=r2(mes.reduce((s2,[,v])=>s2+v,0));
   // Los de esta semana los reclama el aviso de Gastos; aquí solo se
@@ -12801,7 +12832,7 @@ function renderProv(){
   const semAhora=getWDays7(hoyOperativo());
   const sinProv=compras.filter(g=>!g.prov&&!g.concepto&&!semAhora.includes(g.fecha)).length;
   if($('pvmes'))$('pvmes').innerHTML=mes.length===0?`<p style="color:var(--text3);font-size:12px;">Sin compras este mes</p>`:
-    mes.map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${n}</span><span class="mono ar">${fmt(v)}</span></div>`).join('')+
+    mes.map(([n,v])=>`<div class="sr"><span style="font-size:12.5px;">${esc(n)}</span><span class="mono ar">${fmt(v)}</span></div>`).join('')+
     `<div class="sr fw7" style="border:none;padding-top:9px;"><span>Total del mes</span><span class="mono ar" style="font-size:15px;">${fmt(totMes)}</span></div>`+
     (sinProv?`<div style="font-size:11px;color:var(--gold);margin-top:8px;">${sinProv} gasto(s) de semanas pasadas sin proveedor anotado — se agrupan como "Sin proveedor". De aquí en adelante el proveedor es obligatorio.</div>`:'');
 }
@@ -13037,10 +13068,14 @@ window.invGuardarCantidad=async(productoId,qty)=>{
   // Hasta hoy el conteo lo pisaba y la diferencia se perdía — que es
   // justo el dato que convierte el inventario en control: lo que falta
   // es merma, receta mal medida, o algo que salió sin cobrarse.
-  // Si vuelven a capturar el mismo día se conserva el esperado de la
-  // PRIMERA toma: después de esa, inventario.qty ya trae el conteo y
-  // compararse contra sí mismo siempre daría cero.
-  const esperado=(existe&&existe.esperado!=null)?existe.esperado:(inv?r2(inv.qty||0):null);
+  // Se compara contra lo que el sistema cree AHORA, en cada captura.
+  // Conservar el esperado de la primera toma estaba mal: si cuentan en
+  // la mañana (100) y recuentan en la tarde después de vender 20, el
+  // sistema ya cree 80 y el conteo de 80 cuadra; con el esperado viejo
+  // salían −20 de "merma" que en realidad eran ventas. Corrigiendo un
+  // dedazo también sale bien: el sistema sigue creyendo el primer
+  // número y la diferencia contra el bueno es la de verdad.
+  const esperado=inv?r2(inv.qty||0):null;
   const diferencia=esperado!=null?r2(valor-esperado):null;
   const empNombre=SESSION?.nombre||(SESSION?.tipo==='admin'?'Admin':'Sin sesión');
   const extra={esperado,diferencia,precioUnit:inv?.precio||0,unit:inv?.unit||''};
@@ -14711,6 +14746,14 @@ function foodCostProducto(prodId,prep){
   if(COMBO_FIJOS[prodId]){
     const ids=comboComponentes({id:prodId,prep});
     if(!ids||!ids.length) return {costo:null,completo:false,faltantes:['combo sin variante registrada']};
+    // Un combo con componentes FIJOS daba `completo:true` aunque faltara
+    // lo que elige el cliente. El Mañanero contaba solo el capuchino y
+    // el panini salía gratis: margen inflado en "Lo que más deja".
+    const pasosC=(typeof prepPasosDe==='function'?prepPasosDe(prodId):null)||[];
+    const pidePartes=pasosC.filter(x=>x&&x.pre).map(x=>String(x.pre).toLowerCase());
+    const yaElegidas=(prep||[]).map(l=>String(l).split(':')[0].trim().toLowerCase());
+    const sinElegir=pidePartes.filter(r=>!yaElegidas.includes(r));
+    if(sinElegir.length) return {costo:null,completo:false,faltantes:[`falta elegir: ${sinElegir.join(', ')}`]};
     let costo=0; const faltantes=[]; let alguno=false;
     ids.forEach(id=>{
       const r=foodCostProducto(id);
@@ -14833,8 +14876,11 @@ window.guardarMerma=async()=>{
   await fsSet('inventario',{...inv,qty:nuevoQty});
   // 2) Sincronizar la captura del día si existe (stock visible coincide)
   const td=today();
+  // La captura del día también mueve su diferencia: si no, el cierre
+  // seguiría comparando contra un esperado viejo.
   const capHoy=D.invDiario.find(c=>c.productoId===inv.id&&c.fecha===td);
-  if(capHoy) await fsSet('invDiario',{...capHoy,qty:nuevoQty,ts:Date.now()});
+  if(capHoy) await fsSet('invDiario',{...capHoy,qty:nuevoQty,ts:Date.now(),
+    diferencia:capHoy.esperado!=null?r2(nuevoQty-capHoy.esperado):capHoy.diferencia});
   // 3) Registrar merma con costo (alimenta el KPI de mermas)
   await fsSet('kpiCaptura',{
     id:Date.now(),fecha:td,tipo:'merma',
@@ -14897,7 +14943,9 @@ function movimientoPorProducto(semanas){
 function calcPendientesCosteo(){
   const mov=movimientoPorProducto();
   const act=D.productos.filter(p=>p.activo);
-  const filas=act.map(p=>({p,fc:foodCostProducto(p.id),mov:mov[p.id]||{u:0,imp:0}}));
+  // Los combos se costean en cada venta, con la variante que eligió el
+  // cliente: aquí nunca podrían darse por listos y serían ruido eterno.
+  const filas=act.filter(p=>!COMBO_FIJOS[p.id]).map(p=>({p,fc:foodCostProducto(p.id),mov:mov[p.id]||{u:0,imp:0}}));
   const pend=filas.filter(x=>!x.fc.completo).sort((a,b)=>b.mov.imp-a.mov.imp);
   const dinero=filas.reduce((s,x)=>s+x.mov.imp,0);
   const cubierto=filas.filter(x=>x.fc.completo).reduce((s,x)=>s+x.mov.imp,0);
@@ -14937,7 +14985,7 @@ function renderHuerfanos(){
   HUERF=calcHuerfanos();
   if(!HUERF.length){ caja.innerHTML=''; return; }
   const activos=HUERF.filter(h=>h.activos>0).length;
-  const opciones=[...D.inventario].sort((a,b)=>a.nombre.localeCompare(b.nombre))
+  const opciones=[...D.inventario].sort((a,b)=>String(a.nombre||'').localeCompare(String(b.nombre||'')))
     .map(i=>`<option value="${i.id}">${esc(i.nombre)} (${esc(i.unit)||'?'})</option>`).join('');
   caja.innerHTML=`<div class="card" style="margin-bottom:10px;border-left:3px solid var(--red);">
     <div class="sh"><span class="ct" style="margin-bottom:0;">Recetas apuntando a insumos que ya no existen</span>
@@ -15068,7 +15116,12 @@ window.recostearVentas=async()=>{
     // Mismo candado que al cobrar: si el costo supera la venta, hay un
     // precio mal escalado. Mejor sin dato que con dato podrido.
     if(!completo||(fc>v.total&&v.total>0)){siguen++;continue;}
-    const upd={...v,foodCost:r2(fc),foodCostCompleto:true};
+    // Se relee del arreglo vivo: entre que empezó el lote y llega este
+    // renglón, otra tablet pudo anular la venta. Escribir la copia vieja
+    // la revisaría.
+    const actual=D.ventas.find(x=>x.id===v.id);
+    if(!actual||actual.anulada){siguen++;continue;}
+    const upd={...actual,foodCost:r2(fc),foodCostCompleto:true};
     lote.push(upd);
     const ix=D.ventas.findIndex(x=>x.id===v.id); if(ix>=0) D.ventas[ix]=upd;
     ok++;
@@ -15150,7 +15203,11 @@ function renderCosteoModal(){
     r.innerHTML=`<div style="font-size:12px;color:var(--gold);">Falta: ${esc((fc.faltantes||['sin receta']).join(' · '))}</div>`;
   }
 }
-window.cstQty=(ix,v)=>{const g=cstIngs(); if(!g[ix])return; g[ix]={...g[ix],qty:v}; cstGuardar(g);};
+// Una cantidad negativa se trata como hueco al costear, pero al vender
+// SUMARÍA inventario en vez de restarlo. No entra.
+window.cstQty=(ix,v)=>{
+  if(v!==''&&!(parseFloat(v)>=0)){toast('⚠ La cantidad no puede ser negativa',2600,'warn');renderCosteoModal();return;}
+  const g=cstIngs(); if(!g[ix])return; g[ix]={...g[ix],qty:v}; cstGuardar(g);};
 window.cstUnit=(ix,v)=>{const g=cstIngs(); if(!g[ix])return; g[ix]={...g[ix],unit:v}; cstGuardar(g);};
 window.cstQuitar=ix=>{const g=cstIngs(); g.splice(ix,1); cstGuardar(g);};
 window.cstAgregar=()=>{
@@ -15159,7 +15216,9 @@ window.cstAgregar=()=>{
   if(!inv){toast('⚠ Ese insumo no está en inventario',3000,'warn');return;}
   const g=cstIngs();
   if(g.some(x=>x.invId==inv.id)){toast('⚠ Ya está en la receta',2400,'warn');return;}
-  g.push({invId:inv.id,nombre:inv.nombre,qty:$('cst-qty')?.value||'',unit:$('cst-unit')?.value||inv.unit||''});
+  const qNueva=$('cst-qty')?.value||'';
+  if(qNueva!==''&&!(parseFloat(qNueva)>=0)){toast('⚠ La cantidad no puede ser negativa',2600,'warn');return;}
+  g.push({invId:inv.id,nombre:inv.nombre,qty:qNueva,unit:$('cst-unit')?.value||inv.unit||''});
   ['cst-ins','cst-qty','cst-unit'].forEach(id=>{if($(id))$(id).value='';});
   cstGuardar(g);
 };
@@ -17102,9 +17161,9 @@ function renderBitacora(){
       return `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 4px;border-bottom:1px solid var(--border);font-size:11.5px;">
         <span style="font-size:15px;flex-shrink:0;">${ico}</span>
         <div style="min-width:0;flex:1;">
-          <span style="font-weight:700;color:${color};">${(l.accion||'').replace(/_/g,' ')}</span>
-          ${resumen?`<span style="color:var(--text2);"> — ${resumen}</span>`:''}
-          <div style="font-size:10px;color:var(--text3);font-family:'DM Mono',monospace;">${l.fecha} ${l.hora} · ${l.unombre||'—'}</div>
+          <span style="font-weight:700;color:${color};">${esc((l.accion||'').replace(/_/g,' '))}</span>
+          ${resumen?`<span style="color:var(--text2);"> — ${esc(resumen)}</span>`:''}
+          <div class="mono" style="font-size:10px;color:var(--text3);">${esc(l.fecha)} ${esc(l.hora)} · ${esc(l.unombre)||'—'}</div>
         </div>
       </div>`;
     }).join('');
@@ -17152,7 +17211,7 @@ function renderAjustes(){
           <span style="font-size:15px;flex-shrink:0;">${AUDIT_ICONS[l.accion]||'📌'}</span>
           <div style="flex:1;min-width:0;">
             <div><strong>${AUDIT_LABELS[l.accion]||l.accion}</strong> <span style="color:var(--text3);">· ${l.unombre||'—'}</span></div>
-            <div style="color:var(--text2);word-break:break-word;">${resumen}</div>
+            <div style="color:var(--text2);word-break:break-word;">${esc(resumen)}</div>
           </div>
           <span class="mono" style="font-size:10px;color:var(--text3);flex-shrink:0;">${l.fecha||''}<br>${l.hora||''}</span>
         </div>`;
