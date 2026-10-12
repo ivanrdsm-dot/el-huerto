@@ -3011,6 +3011,8 @@ async function completeInit(){
   await migHuerfanosOct2026();
   await migSusaliasOct2026();
   await migSerranoSusalia2026();
+  await migCompras11Oct2026();
+  await migCorrige11Oct2026();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -3999,6 +4001,7 @@ const PROVEEDORES=[
   {n:'Materias Primas La Nueva',    cat:'proveedor', alias:['materiasprimaslanueva','lanueva','materiasprimas']},
   {n:'Plastidoro',                  cat:'proveedor', alias:['plastidoro','comercializadoraplastidoro']},
   {n:'Coffee Shop 2',               cat:'proveedor', alias:['coffeeshop2','coffeeshop']},
+  {n:'HM Central de Alimentos',     cat:'proveedor', alias:['hmcentraldealimentos','hm','hectormunozcontreras','centraldealimentos']},
   {n:'Grupo El Zorro',              cat:'proveedor', alias:['grupoelzorro','elzorro','zorro','zorroabarrotero','zorroabarroterolasarmas','zorromediomayoreo']},
   {n:'La Chispa',                   cat:'proveedor', alias:['lachispa','chispa']},
   {n:'Naranjarillo',                cat:'proveedor', alias:['naranjarillo','naranjarillobodegasatizapan']},
@@ -4278,6 +4281,229 @@ const AGRAMOS=[
 // se lee ni se teclea. Con el kilo confirmado: 1 paq = 1000 g, $0.649
 // el gramo, y la receta pasa a 60 g.
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// COMPRAS DEL DOMINGO 11-OCT (surten la semana del 12-oct)
+// Seis tickets fotografiados más la lista de fruta y verdura que Iván
+// dictó. Como siempre: la fecha impresa va en `fechaTicket` y el gasto
+// cuenta en la semana que surte.
+//
+// COSTCO, ticket 3220 — $2,019.05
+// El "CUPÓN DE DESCUENTO" de $81.58 es exactamente el 25% de $326.32,
+// que es lo que cuestan el Matcha Latte y el Chai Latte (idénticos).
+// El cupón es de uno de los dos y el ticket no dice cuál, así que se
+// reparte entre ambos; el "Descuento" de $46.37 sí es global y se
+// prorratea. Los netos caen en números redondos —88, 359.01, 84, 315.01,
+// 169, 149, 189— que es la señal de que la reconstrucción cuadra.
+// Dos pesos confirman el reparto: las tiras de pechuga quedan en
+// $0.26398/g y las moras en $0.13897/g, los MISMOS precios por gramo de
+// la compra anterior.
+// ══════════════════════════════════════════════════════════════
+const COMPRAS_11OCT=[
+  // [nombres candidatos, cantidad, unidad, precio por unidad, catOf]
+  // ── Costco 3220 ──
+  [['Tomate cherry'],              907,'g',   0.097023,  'frutas_verduras'],
+  [['Lechuga'],                   1816,'g',   0.059350,  'frutas_verduras'],  // 2 × ens. italiana 908 g
+  [['Tiras de pollo','Pollo'],    1360,'g',   0.263978,  'lacteos_proteinas'],
+  [['Matcha'],                     800,'g',   0.348913,  'abarrotes'],
+  [['Espinaca'],                   454,'g',   0.185022,  'frutas_verduras'],
+  [['Crema de almendras'],           1,'pz', 169.00,     'lacteos_proteinas'],
+  [['Chai'],                       700,'g',   0.398757,  'abarrotes'],
+  [['Crutones'],                   907,'g',   0.164278,  'abarrotes'],
+  [['Blueberry','Moras azules'],  1360,'g',   0.138971,  'frutas_verduras'],
+  // La mezcla de 4 quesos entró a $315.01 pero el ticket no dice el peso
+  // del paquete: se registra el gasto y NO se toca su precio por gramo,
+  // que inventarlo es justo lo que envenena el food cost.
+  // ── La Molinera 23875 ──
+  [['Salsa chipotle'],               6,'pz',  34.17,     'abarrotes'],
+  [['Avena'],                     5000,'g',    0.016,    'abarrotes'],        // granel, $16 el kilo
+  [['Aceitunas negras'],          3050,'g',    0.060656, 'abarrotes'],        // lata Carbonell 3.05 kg
+  // ── Materias Primas La Nueva 217077 ──
+  [['Tenedores'],                  100,'pz',   0.36,     'desechables'],
+  [['Bolsas de basura'],             1,'rollo',43.00,    'desechables'],
+  [['Servilleta'],                 710,'pz',   0.0563,   'desechables'],      // 2 paquetes
+  // ── HM Central de Alimentos 987898 ──
+  [['Pechuga de pavo'],           2000,'g',    0.112,    'lacteos_proteinas'],
+  [['Queso panela'],              1190,'g',    0.105,    'lacteos_proteinas'],
+  [['Queso mozzarella'],          2000,'g',    0.090,    'lacteos_proteinas'],
+  [['Jamón serrano'],             2000,'g',    0.575,    'lacteos_proteinas'],
+  // El chorizo pamplona entró como 1 PIEZA a $295 y el ticket no dice
+  // cuánto pesa. Sin el peso no hay precio por gramo honesto: queda
+  // pendiente y el Costeo guiado lo reclama.
+  // ── Plastidoro AG-37179 y AG-37186 ──
+  [['Contenedor papel 8 oz'],       50,'pz',   1.580062, 'desechables'],
+  [['Tapa p/bowl kraft'],           50,'pz',   1.760974, 'desechables'],
+  [['Cofia'],                      100,'pz',   1.459999, 'desechables'],
+  // ── Fruta y verdura que dictó Iván ──
+  [['Jícama'],                    8000,'g',    0.020,    'frutas_verduras'],
+  [['Pepino'],                    8000,'g',    0.018,    'frutas_verduras'],
+  [['Zanahoria'],                 3000,'g',    0.014,    'frutas_verduras'],
+  [['Piña'],                         3,'pz',  26.666667, 'frutas_verduras'],  // 3 piezas por $80
+  [['Mango verde','Mango'],       4000,'g',    0.045,    'frutas_verduras'],
+  [['Fresa'],                      907,'g',    0.121279, 'frutas_verduras'],
+  [['Limón agrio','Limón'],       3000,'g',    0.015,    'frutas_verduras'],
+  [['Jitomate'],                  3000,'g',    0.018,    'frutas_verduras'],
+  [['Plátano'],                   7000,'g',    0.015,    'frutas_verduras'],
+  [['Aguacate'],                  2000,'g',    0.050,    'frutas_verduras'],
+];
+const GASTOS_11OCT=[
+  {ticket:'COSTCO-3220',      prov:'Costco',                   cat:'costco',    monto:2019.05, metodo:'tarjeta',
+   notas:'11 partidas: tomate glory, 2× ensalada italiana, tiras de pechuga, matcha latte, espinaca, mezcla 4 quesos, crema de almendras, chai latte, crutones, moras azules. Cupón $81.58 (25% de un latte) y descuento global $46.37',
+   partidas:[{c:'Tomate Glory 907 g',q:907,u:'g',i:88.00},{c:'Ensalada italiana 908 g',q:2,u:'pz',i:107.78},
+     {c:'Tiras de pechuga de pollo',q:1360,u:'g',i:359.01},{c:'Matcha Latte 800 g',q:800,u:'g',i:279.13},
+     {c:'Espinaca 454 g',q:454,u:'g',i:84.00},{c:'Mezcla de 4 quesos',q:1,u:'pz',i:315.01},
+     {c:'KS Crema de almendras',q:1,u:'pz',i:169.00},{c:'Chai Latte 700 g',q:700,u:'g',i:279.13},
+     {c:'Crutones 907 g',q:907,u:'g',i:149.00},{c:'Moras azules',q:1360,u:'g',i:189.00}]},
+  {ticket:'MOLINERA-23875',   prov:'La Molinera de Abastos',   cat:'proveedor', monto:470.02,  metodo:'efectivo',
+   notas:'Aderezo chipotle MCC ×6, avena en hojuela a granel 5 kg, aceituna negra Carbonell 3.05 kg',
+   partidas:[{c:'Aderezo MCC chipotle 310 g',q:6,u:'pz',i:205.02},{c:'Avena en hojuela a granel',q:5,u:'kg',i:80.00},
+     {c:'Aceituna negra Carbonell en rodajas',q:1,u:'pz',i:185.00}]},
+  {ticket:'LANUEVA-217077',   prov:'Materias Primas La Nueva', cat:'proveedor', monto:265.00,  metodo:'efectivo',
+   notas:'Tenedor sopero ×100, bolsa de basura 60×90, charola núm 4 ×100, servilleta verde ×2',
+   partidas:[{c:'Classy tenedor sopero',q:100,u:'pz',i:36.00},{c:'Can rollo negra 60×90',q:1,u:'rollo',i:43.00},
+     {c:'Universal charola núm 4',q:100,u:'pz',i:146.00},{c:'Verde servilleta',q:2,u:'paq',i:40.00}]},
+  {ticket:'HM-987898',        prov:'HM Central de Alimentos',  cat:'proveedor', monto:1973.95, metodo:'efectivo',
+   notas:'Pechuga de pavo Bafar 2 kg, queso panela 1.19 kg, mozzarella cubicado 2 kg, jamón serrano español 2 kg, chorizo Wunsch pamplona 1 pz',
+   partidas:[{c:'Pechuga de pavo Bafar',q:2,u:'kg',i:224.00},{c:'Queso panela',q:1.19,u:'kg',i:124.95},
+     {c:'Queso mozzarella cubicado Alpino',q:1,u:'pz',i:180.00},{c:'Jamón serrano español',q:2,u:'kg',i:1150.00},
+     {c:'Chorizo Wunsch pamplona',q:1,u:'pz',i:295.00}]},
+  {ticket:'PLASTIDORO-37179', prov:'Plastidoro',               cat:'proveedor', monto:367.00,  metodo:'efectivo',
+   notas:'Bolsa semikraft #4 ×100, contenedor papel 8 oz ×50, cofia negra ×100, tapa p/bowl kraft ×50',
+   partidas:[{c:'Bolsa semikraft #4 blanca',q:100,u:'pz',i:54.00},{c:'Contenedor papel 8 oz',q:50,u:'pz',i:79.00},
+     {c:'Cofia negra',q:100,u:'pz',i:146.00},{c:'Tapa p/bowl kraft',q:50,u:'pz',i:88.00}]},
+  {ticket:'PLASTIDORO-37186', prov:'Plastidoro',               cat:'proveedor', monto:15.00,   metodo:'efectivo',
+   notas:'Bolsa de empaque',
+   partidas:[{c:'Bolsa de empaque',q:1,u:'pz',i:15.00}]},
+  {ticket:'REYES-11OCT26',    prov:'Reyes Ramiro',             cat:'proveedor', monto:1020.00, metodo:'efectivo',
+   notas:'Fruta y verdura dictada por Iván, sin ticket: jícama 8 kg, pepino 8 kg, zanahoria 3 kg, piña 3 pz, mango 4 kg, fresa 907 g, limón 3 kg, jitomate 3 kg, plátano 7 kg, aguacate 2 kg',
+   partidas:[{c:'Jícama',q:8,u:'kg',i:160.00},{c:'Pepino',q:8,u:'kg',i:144.00},{c:'Zanahoria',q:3,u:'kg',i:42.00},
+     {c:'Piña',q:3,u:'pz',i:80.00},{c:'Mango',q:4,u:'kg',i:180.00},{c:'Fresa',q:907,u:'g',i:110.00},
+     {c:'Limón',q:3,u:'kg',i:45.00},{c:'Jitomate',q:3,u:'kg',i:54.00},{c:'Plátano',q:7,u:'kg',i:105.00},
+     {c:'Aguacate',q:2,u:'kg',i:100.00}]},
+];
+async function migCompras11Oct2026(){
+  const migKey='h5compras_11oct26';
+  if(await migDone(migKey)) return;
+  // Centinela: si los gastos ya están, el surtido ya entró. Así una
+  // segunda corrida no vuelve a sumar existencias.
+  const yaEntro=GASTOS_11OCT.every(g=>D.gastos.some(x=>x.ticket===g.ticket));
+  const creados=[], omitidos=[];
+  if(!yaEntro){
+    let nid=Date.now();
+    const buscar=cands=>{
+      for(const c of cands){ const hit=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(c)); if(hit) return hit; }
+      for(const c of cands){
+        const alias=ALIAS_INV[normInvNombre(c)];
+        if(alias){ const hit=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(alias)); if(hit) return hit; }
+      }
+      return null;
+    };
+    for(const [cands,qty,unit,precioUnit,catOf] of COMPRAS_11OCT){
+      let inv=buscar(cands);
+      if(inv){
+        const q=qtyToInvUnit(qty,unit,inv.unit);
+        if(q==null){ omitidos.push(`${inv.nombre} (${unit} vs ${inv.unit})`); continue; }
+        inv={...inv,qty:Math.round(((inv.qty||0)+q)*1000)/1000,
+          precio:Math.round(precioUnit*(qty/q)*1000000)/1000000};
+      }else{
+        inv={id:++nid,nombre:cands[0],cat:'otros',catOf,qty,unit,min:0,precio:precioUnit};
+        creados.push(cands[0]);
+      }
+      await fsSet('inventario',inv);
+      const ix=D.inventario.findIndex(i=>i.id===inv.id);
+      if(ix>=0) D.inventario[ix]=inv; else D.inventario.push(inv);
+    }
+  }
+  // ── Los gastos: domingo en el ticket, lunes en los números ──
+  let gid=Date.now()+5000, nuevos=0, total=0;
+  for(const g of GASTOS_11OCT){
+    if(D.gastos.find(x=>x.ticket===g.ticket)) continue;
+    await fsSet('gastos',{id:++gid,fecha:'2026-10-12',fechaTicket:'2026-10-11',
+      tipoEstrategico:'operacion',...g});
+    nuevos++; total=r2(total+g.monto);
+  }
+  logAudit('compras_registradas',{lote:'domingo 11-oct-2026',tickets:GASTOS_11OCT.length,
+    gastosNuevos:nuevos,total,articulosNuevos:creados,sinCostear:omitidos,
+    supuestos:['cupón Costco $81.58 repartido entre matcha y chai: es 25% de uno de los dos y el ticket no dice cuál',
+               'tiras de pechuga 1360 g y moras 1360 g: el precio por gramo coincide con la compra anterior',
+               'mezcla de 4 quesos sin peso en el ticket: se registra el gasto, no se toca su precio por gramo',
+               'chorizo pamplona 1 pz $295 sin peso: queda sin precio por gramo'],
+    motivo:'El surtido del domingo cuenta en la semana que abastece; la fecha impresa queda en fechaTicket'});
+  if(nuevos) toast(`✓ ${nuevos} compra(s) del 11-oct por ${fmt(total)} · ${creados.length} artículo(s) nuevos`,7000);
+  await markMig(migKey);
+}
+// ══════════════════════════════════════════════════════════════
+// EL SURTIDO DEL 11-OCT SE SUMÓ DOS VECES — SE DESCUENTA UNA
+// migCompras11Oct2026 corrió dos veces. El candado que puse miraba si
+// los gastos ya estaban, y en la segunda corrida todavía no se leían
+// desde Firestore: dio luz verde y volvió a sumar cada existencia.
+// Los gastos sí se salvaron (ésos van por número de ticket), pero el
+// inventario quedó al doble: 6 piñas de 3, 21.8 kg de jícama de 8.
+//
+// Esta corrección usa un candado QUE VIAJA EN EL MISMO DOCUMENTO: la
+// marca `c11oct` se escribe junto con la cantidad, en el mismo fsSet.
+// Si esto corre dos veces, la segunda ve la marca y no hace nada. Es la
+// única forma de que un ajuste que RESTA sea seguro.
+// ══════════════════════════════════════════════════════════════
+async function migCorrige11Oct2026(){
+  const migKey='h5corr11oct_26';
+  if(await migDone(migKey)) return;
+  const ajustados=[];
+  for(const [cands,qty,unit] of COMPRAS_11OCT){
+    // La fresa nunca entró (el artículo estaba en "domo" y la compra en
+    // gramos, así que se omitió las dos veces): no hay nada que restar.
+    if(normInvNombre(cands[0])==='fresa') continue;
+    let inv=null;
+    for(const c of cands){ inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(c)); if(inv) break; }
+    if(!inv||inv.c11oct===true) continue;
+    const q=qtyToInvUnit(qty,unit,inv.unit);
+    if(q==null){ continue; }
+    const nueva=Math.max(0,Math.round(((inv.qty||0)-q)*1000)/1000);
+    const upd={...inv,qty:nueva,c11oct:true};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    ajustados.push(`${inv.nombre}: ${inv.qty} → ${nueva} ${inv.unit}`);
+  }
+  // ── El jamón serrano, aparte ──
+  // Arrastraba 1 g de una conversión que no multiplicó. Lo real: el kilo
+  // que ya tenía más los 2 kg de hoy.
+  const jam=D.inventario.find(i=>normInvNombre(i.nombre)==='jamonserrano');
+  if(jam&&jam.c11octJam!==true){
+    const upd={...jam,unit:'g',qty:3000,precio:0.575,c11octJam:true};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===jam.id); if(ix>=0) D.inventario[ix]=upd;
+    ajustados.push(`Jamón serrano: ${jam.qty} → 3000 g`);
+  }
+  // ── La fresa pasa a gramos ──
+  // El domo es de 907 g (es el que compra, $110). En "domo" la compra en
+  // gramos no se podía convertir y se perdía cada vez.
+  const fre=D.inventario.find(i=>normInvNombre(i.nombre)==='fresa');
+  if(fre&&fre.c11octFre!==true){
+    const DOMO=907;
+    const previas=normUnit(fre.unit)==='g'?(fre.qty||0):r2((fre.qty||0)*DOMO);
+    const upd={...fre,unit:'g',qty:r2(previas+907),precio:0.121279,
+      min:fre.min>0?r2(fre.min*DOMO):fre.min,c11octFre:true};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===fre.id); if(ix>=0) D.inventario[ix]=upd;
+    ajustados.push(`Fresa: ${fre.qty} ${fre.unit} → ${upd.qty} g`);
+    for(const r of D.recetas){
+      const ings=r.ings||[]; let toco=false;
+      const nuevas=ings.map(i=>{
+        if(i.invId!=fre.id||normUnit(i.unit)==='g') return i;
+        const q=parseFloat(i.qty)||0; toco=true;
+        return {...i,qty:Math.round(q*DOMO*1000)/1000,unit:'g'};
+      });
+      if(!toco) continue;
+      const rec={...r,ings:nuevas};
+      await fsSet('recetas',rec);
+      const iy=D.recetas.findIndex(x=>x.id===r.id); if(iy>=0) D.recetas[iy]=rec;
+    }
+  }
+  logAudit('inventario_corregido',{ajustes:ajustados,
+    causa:'migCompras11Oct2026 corrió dos veces y sumó el surtido dos veces; el candado leía los gastos, que todavía no se habían propagado',
+    remedio:'la marca c11oct viaja en el mismo documento que la cantidad'});
+  if(ajustados.length) toast(`✓ Inventario corregido: ${ajustados.length} artículo(s) venían al doble`,6500);
+  await markMig(migKey);
+}
 async function migSerranoSusalia2026(){
   const migKey='h5serrano_oct26';
   if(await migDone(migKey)) return;
