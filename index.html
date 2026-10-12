@@ -3013,6 +3013,7 @@ async function completeInit(){
   await migSerranoSusalia2026();
   await migCompras11Oct2026();
   await migCorrige11Oct2026();
+  await migPanesRenee2026();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -4444,6 +4445,83 @@ async function migCompras11Oct2026(){
 // Si esto corre dos veces, la segunda ve la marca y no hace nada. Es la
 // única forma de que un ajuste que RESTA sea seguro.
 // ══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// CADA PAN DE LA TÍA RENEE, POR SEPARADO (Iván, 12-oct)
+// "que se descuente correctamente del inventario ya sea chilaquiles
+// verdes, rojos, queso o pizza, que aparezca al momento de ordenar
+// para que la cajera seleccione cuál se llevará y todo esté costeado".
+//
+// Hasta hoy los cuatro panes eran productos distintos en la caja pero
+// las CUATRO recetas descontaban del mismo renglón genérico "Pan tía
+// Renee": se vendía uno de queso y bajaba el inventario de "pan", sin
+// saber de cuál. Ahora cada sabor tiene su artículo y su receta.
+//
+// Los chilaquiles se parten en verdes y rojos, que es lo que pidió.
+// Rajas Poblanas ya existía como producto y no tenía artículo propio:
+// se le crea también, porque si no quedaba como el único sin descontar.
+//
+// Ids fijos a propósito. Con ids calculados, una segunda corrida —y en
+// este proyecto las hay— crea el duplicado; escribiendo siempre el
+// mismo id, la segunda corrida sobreescribe y no duplica.
+// ══════════════════════════════════════════════════════════════
+const PANES_RENEE=[
+  {prod:1044, pNom:'Pan tía Renee - Queso',              inv:7411, iNom:'Pan Tía Renee — Queso'},
+  {prod:1045, pNom:'Pan tía Renee - Chilaquiles Verdes', inv:7410, iNom:'Pan Tía Renee — Chilaquiles Verdes'},
+  {prod:1075, pNom:'Pan tía Renee - Chilaquiles Rojos',  inv:7413, iNom:'Pan Tía Renee — Chilaquiles Rojos'},
+  {prod:1046, pNom:'Pan tía Renee - Pizza',              inv:7412, iNom:'Pan Tía Renee — Pizza'},
+  {prod:1047, pNom:'Pan tía Renee - Rajas Poblanas',     inv:7414, iNom:'Pan Tía Renee — Rajas Poblanas'},
+];
+async function migPanesRenee2026(){
+  const migKey='h5panesrenee_oct26';
+  if(await migDone(migKey)) return;
+  const PRECIO_PAN=46.75;        // lo que dice el sistema hoy; falta saber si es por pieza o por paquete
+  const generico=D.inventario.find(i=>normInvNombre(i.nombre)==='pantiarenee');
+  // El resto de la receta (servitoallas, plato) se toma de la que ya
+  // existe en vez de escribirla a mano: así no se desincroniza si él la
+  // cambia después.
+  const modelo=D.recetas.find(r=>r.prodId===1044)||D.recetas.find(r=>PANES_RENEE.some(x=>x.prod===r.prodId));
+  const comunes=(modelo?.ings||[]).filter(i=>!(generico&&i.invId==generico.id)
+    &&!/^pantiarenee/.test(normInvNombre(i.nombre||'')));
+  const hecho=[];
+  for(const v of PANES_RENEE){
+    // ── El producto ──
+    let prod=D.productos.find(p=>p.id===v.prod);
+    const prodUpd=prod?{...prod,nombre:v.pNom}
+      :{id:v.prod,nombre:v.pNom,cat:'pan',precio:85,desc:'',activo:true};
+    await fsSet('productos',prodUpd);
+    const ip=D.productos.findIndex(p=>p.id===v.prod);
+    if(ip>=0) D.productos[ip]=prodUpd; else D.productos.push(prodUpd);
+    if(!prod) hecho.push(`producto nuevo: ${v.pNom}`);
+    // ── El artículo de inventario ──
+    let inv=D.inventario.find(i=>i.id===v.inv);
+    const invUpd=inv?{...inv,nombre:v.iNom}
+      :{id:v.inv,nombre:v.iNom,cat:'granos',catOf:'abarrotes',qty:0,unit:'pz',min:0,precio:PRECIO_PAN};
+    await fsSet('inventario',invUpd);
+    const ii=D.inventario.findIndex(i=>i.id===v.inv);
+    if(ii>=0) D.inventario[ii]=invUpd; else D.inventario.push(invUpd);
+    // ── La receta: lo común más SU pan ──
+    const ings=[...comunes.map(i=>({...i})),{invId:v.inv,nombre:v.iNom,qty:1,unit:'pz'}];
+    const rec=D.recetas.find(r=>r.prodId===v.prod);
+    const recUpd=rec?{...rec,ings}:{id:Date.now()+v.prod,prodId:v.prod,ings};
+    await fsSet('recetas',recUpd);
+    const ir=D.recetas.findIndex(r=>r.prodId===v.prod);
+    if(ir>=0) D.recetas[ir]=recUpd; else D.recetas.push(recUpd);
+  }
+  // ── El genérico deja de usarse ──
+  // No se borra: tiene existencia real que hay que repartir entre los
+  // cinco sabores en la captura del día. Se renombra para que se note.
+  if(generico&&normInvNombre(generico.nombre)!=='pantiareneeporclasificar'){
+    const upd={...generico,nombre:'Pan Tía Renee (por clasificar)',min:0};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===generico.id); if(ix>=0) D.inventario[ix]=upd;
+    hecho.push(`el genérico queda con ${generico.qty} pz por repartir`);
+  }
+  logAudit('panes_renee_separados',{variantes:PANES_RENEE.map(v=>v.pNom),cambios:hecho,
+    pendiente:'falta saber si los $46.75 son por pieza o por paquete',
+    motivo:'Iván: cada pan tiene que descontarse por separado y poder elegirse al ordenar'});
+  toast(`✓ Panes de la Tía Renee: ${PANES_RENEE.length} sabores, cada uno con su inventario`,6000);
+  await markMig(migKey);
+}
 async function migCorrige11Oct2026(){
   const migKey='h5corr11oct_26';
   if(await migDone(migKey)) return;
@@ -8154,7 +8232,7 @@ const PREP_LISTAS={
   coctel:['Fresa','Plátano','Mango','Manzana','Sandía','Piña','Pepino','Jícama','Zanahoria'],
   smoothies:["Pal'Fresa","Pal'Mamado","Pal'Sediento","Pal'Crudo","Pal'Changuito","Pal'Berry Fuerte","Pal'Matcha Gains","Pal'Chai Lover"],
   paninis:['Mozzarella','4 Quesos','Pechuga de pavo','Jamón serrano','Chorizo pamplona'],
-  panes:['Queso','Chilaquiles','Pizza','Rajas poblanas'],
+  panes:['Queso','Chilaquiles verdes','Chilaquiles rojos','Pizza','Rajas poblanas'],
   panini_verduras:['Jitomate','Pepino','Aceitunas'],
   panini_aderezo:['Chipotle','Guacamole','Chipotle y guacamole','Sin aderezo'],
   smoothie_leche:['Deslactosada','Light'],
