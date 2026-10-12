@@ -3018,6 +3018,7 @@ async function completeInit(){
   await migCompras11Oct2026();
   await migCorrige11Oct2026();
   await migRefechaSurtido12Oct();
+  await migReneeALaSemana12();
   await migPanesRenee2026();
   await migTicketRenee19880();
   await migTapaDomoSmoothies();
@@ -4579,6 +4580,28 @@ async function migPanesRenee2026(){
 // bug viejo de UTC, y no distinguía una fecha puesta a propósito.
 // Ya aprendió a respetar las que traen fechaTicket; aquí se repara lo
 // que alcanzó a mover.
+// ══ EL PAN DE RENEE SE PASA A LA SEMANA EN QUE SE PAGA ══
+// Iván: "muévelo a ésta, Grace sí me da crédito y pagaré con las
+// primeras ventas de mañana". El pedido surtió a caballo entre las dos
+// semanas, así que el desempate lo pone el dinero: cuenta en la semana
+// del 12, que es cuando sale de la cuenta.
+// Sigue en "Lo que debes" hasta que lo marque pagado.
+async function migReneeALaSemana12(){
+  const migKey='h5reneesem12_oct26';
+  if(await migDone(migKey)) return;
+  const g=D.gastos.find(x=>x.ticket==='RENEE-19880');
+  if(g&&g.fecha!=='2026-10-12'){
+    const upd={...g,fecha:'2026-10-12',fechaTicket:'2026-09-28',
+      notas:(g.notas||'').replace(/Surtió la semana del 5-oct[^.]*\./,
+        'Surtió a caballo entre las dos semanas; cuenta en la del 12 porque es cuando se paga.')};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=upd;
+    logAudit('gasto_refechado',{ticket:'RENEE-19880',de:g.fecha,a:'2026-10-12',
+      motivo:'Grace da crédito; el pago cae en la semana del 12'});
+    toast('✓ Tía Renee $1,870 pasa a la semana del 12',4500);
+  }
+  await markMig(migKey);
+}
 async function migRefechaSurtido12Oct(){
   const migKey='h5refecha12oct_26';
   if(await migDone(migKey)) return;
