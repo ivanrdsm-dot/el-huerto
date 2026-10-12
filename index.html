@@ -7954,7 +7954,21 @@ window.openEmpPIN = function(empId){
 };
 
 function loginEmp(id){
-  const e = D.empleados.find(x=>x.id===id); if(!e) return;
+  // ══════════════════════════════════════════════════════════════
+  // AQUÍ SE QUEDABA ATORADO EL ACCESO
+  // Con las reglas v3, en la pantalla de acceso la sesión todavía es
+  // anónima y `empleados` NO se puede leer: D.empleados llega vacío.
+  // Este `find` no encontraba a nadie y la función SALÍA EN SILENCIO —
+  // la contraseña se aceptaba, el modal se cerraba, y la pantalla de
+  // acceso seguía ahí. Se veía exactamente como "pongo la contraseña y
+  // me regresa".
+  // Ahora, si el empleado todavía no se puede leer, se arma la sesión
+  // con la lista pública (nombre y color). El rol se corrige solo en
+  // cuanto llegan los datos reales, que es en el siguiente arranque.
+  // ══════════════════════════════════════════════════════════════
+  const e = D.empleados.find(x=>x.id===id)
+    || (PERSONAL_PUB||[]).find(x=>String(x.id)===String(id));
+  if(!e){ toast('⚠ No se pudo cargar tu perfil — recarga la app',5000,'error'); return; }
   SESSION = {tipo:'emp', id:e.id, nombre:e.nombre, color:e.color||'var(--accent)', rol:(e.rol||'').toLowerCase()==='gerente'?'gerente':'emp'};
   activeVend = {id:e.id, nombre:e.nombre, color:e.color||'var(--accent)'};
   try{ localStorage.setItem('h5vend', JSON.stringify(activeVend)); }catch(er){}
@@ -7963,7 +7977,7 @@ function loginEmp(id){
   updateNavForSession();
   renderVendedorBar();
   // Check-in flow
-  registrarCheckin(e);
+  try{ registrarCheckin(e); }catch(err){ console.warn('check-in:',err); }
   logAudit('sesion_iniciada',{perfil:e.nombre,tipo:'empleada'});
   go('miperfil');
   toast(`✓ Hola ${e.nombre}! Turno iniciado 🛒`);
@@ -8092,6 +8106,13 @@ async function checkPIN(){
     if(ok){
       pinExito();
       $('pin-modal').style.display='none';
+      // Con la sesión propia recién abierta, `empleados` ya es legible:
+      // se le dan unos instantes al oyente para que llegue y la sesión
+      // se arme con el dato bueno (incluido el rol de gerente).
+      if(rFb==='ok' && !D.empleados.find(x=>x.id===pinTargetEmpId)){
+        for(let i=0;i<12 && !D.empleados.find(x=>x.id===pinTargetEmpId);i++)
+          await new Promise(r=>setTimeout(r,250));
+      }
       loginEmp(pinTargetEmpId);
       pinTargetEmpId=null; pinTarget=null;
       return;
