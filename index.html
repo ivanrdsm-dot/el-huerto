@@ -3140,6 +3140,7 @@ async function completeInit(){
   await setMinimosInteligentes();
   await seedInventarioOficial();
   await migrateUnidadesV3();
+  await migUnidadEtiqueta13Oct2026();
   await migrarRecategorizacionV1();
   await autoSeedRecetas();
   await migRecetasExtras_v1();
@@ -5000,6 +5001,66 @@ async function migHuerfanosOct2026(){
   if(hecho.length) toast(`✓ Insumos: ${hecho.length} cambio(s) aplicados`,6500);
   await markMig(migKey);
 }
+// ═══════════════════════════════════════════════════════════
+// LA PANTALLA DE CONTEO DECÍA "kg" Y EL DATO ERA GRAMOS — 13-oct
+//
+// Cada insumo lleva dos unidades: `unit`, con la que se hacen TODAS
+// las cuentas (costeo y descuento de stock), y `unidadOf`, que es
+// solo la etiqueta que se pinta. En diez insumos no coincidían:
+// `unit` decía g —correcto, el costeo siempre estuvo bien— y
+// `unidadOf` decía kg, porque el catálogo oficial lo traía así y
+// migrateUnidadesV3 lo reimponía en cada arranque.
+//
+// Suena menor y no lo es: la captura del día enseña "Unidad: kg ·
+// Ayer: 2415 kg" para un aguacate que en realidad son 2,415 g. Quien
+// cuenta teclea 2.5 pensando en kilos y se guardan 2.5 GRAMOS. El
+// inventario del día siguiente queda inservible y el cierre reporta
+// una merma que nunca ocurrió.
+//
+// La regla: manda `unit`, porque es con la que se calcula. La
+// etiqueta se alinea. El catálogo oficial ya quedó en gramos para
+// que no vuelva a imponerse.
+// ═══════════════════════════════════════════════════════════
+// Precios que Iván dio el 13-oct. Se FIJAN, no se suman.
+const PRECIOS13=[
+  ['Jitomate',          0.016],  // $16/kg
+  ['Granola',           0.015],  // $15/kg
+  ['Avena',             0.015],  // $15/kg
+  ['Chorizo pamplona',  0.295],  // $295 la pieza, y la pieza es de 1 kg (ticket: 1 pz $295)
+];
+async function migUnidadEtiqueta13Oct2026(){
+  const migKey='h5unidadof_13oct26';
+  if(await migDone(migKey)) return;
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  const cambios=[];
+
+  // 1) La etiqueta se alinea con la unidad real. Nunca al revés.
+  for(const inv of [...D.inventario]){
+    if(!inv.unit || !inv.unidadOf) continue;
+    if(normUnit(inv.unidadOf)===normUnit(inv.unit)) continue;
+    const upd={...inv,unidadOf:inv.unit};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    cambios.push(`${inv.nombre}: la pantalla decía ${inv.unidadOf}, el dato es ${inv.unit}`);
+  }
+
+  // 2) Los precios que faltaban (por gramo, como el resto de lo que se pesa)
+  for(const [nombre,precio] of PRECIOS13){
+    const inv=buscar(nombre); if(!inv) continue;
+    if(inv.precio===precio) continue;
+    const upd={...inv,precio};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    cambios.push(`${inv.nombre}: precio $${inv.precio||0} → $${precio}/g`);
+  }
+
+  if(cambios.length){
+    logAudit('unidades_etiqueta',{cambios,
+      motivo:'La captura del día enseñaba kg sobre datos en gramos: quien cuenta teclea kilos y se guardan gramos'});
+    toast(`✓ Inventario: ${cambios.length} corrección(es) de unidad y precio`,5000);
+  }
+  await markMig(migKey);
+}
 async function migUnidadesGramos2026(){
   const migKey='h5gramos_oct26b';
   if(await migDone(migKey)) return;
@@ -6786,32 +6847,32 @@ async function loadInventarioCostcoRenee(){
 // IDs estables 7100-7599 para no chocar con productos viejos
 const INVENTARIO_OFICIAL = [
   // FRUTAS Y VERDURAS (7101-7115)
-  {id:7101,nombre:'Plátano',catOf:'frutas_verduras',unidadOf:'kg',cat:'frutas',unit:'kg'},
+  {id:7101,nombre:'Plátano',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
   {id:7102,nombre:'Piña',catOf:'frutas_verduras',unidadOf:'pieza',cat:'frutas',unit:'pz'},
   {id:7103,nombre:'Sandía',catOf:'frutas_verduras',unidadOf:'pieza',cat:'frutas',unit:'pz'},
   {id:7104,nombre:'Fresa',catOf:'frutas_verduras',unidadOf:'domo',cat:'frutas',unit:'domo'},
-  {id:7105,nombre:'Mango verde',catOf:'frutas_verduras',unidadOf:'kg',cat:'frutas',unit:'kg'},
-  {id:7106,nombre:'Manzana',catOf:'frutas_verduras',unidadOf:'kg',cat:'frutas',unit:'kg'},
-  {id:7107,nombre:'Aguacate',catOf:'frutas_verduras',unidadOf:'kg',cat:'frutas',unit:'kg'},
-  {id:7108,nombre:'Limón agrio',catOf:'frutas_verduras',unidadOf:'kg',cat:'frutas',unit:'kg'},
-  {id:7109,nombre:'Jitomate',catOf:'frutas_verduras',unidadOf:'kg',cat:'verduras',unit:'kg'},
-  {id:7110,nombre:'Zanahoria',catOf:'frutas_verduras',unidadOf:'kg',cat:'verduras',unit:'kg'},
-  {id:7111,nombre:'Jícama',catOf:'frutas_verduras',unidadOf:'kg',cat:'verduras',unit:'kg'},
-  {id:7112,nombre:'Pepino',catOf:'frutas_verduras',unidadOf:'kg',cat:'verduras',unit:'kg'},
+  {id:7105,nombre:'Mango verde',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
+  {id:7106,nombre:'Manzana',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
+  {id:7107,nombre:'Aguacate',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
+  {id:7108,nombre:'Limón agrio',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
+  {id:7109,nombre:'Jitomate',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
+  {id:7110,nombre:'Zanahoria',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
+  {id:7111,nombre:'Jícama',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
+  {id:7112,nombre:'Pepino',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
   {id:7113,nombre:'Aceitunas negras',catOf:'frutas_verduras',unidadOf:'gramos',cat:'verduras',unit:'g'},
   // LÁCTEOS Y PROTEÍNAS (7201-7215)
   {id:7201,nombre:'Queso Philadelphia',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
-  {id:7202,nombre:'Queso mozzarella',catOf:'lacteos_proteinas',unidadOf:'kg',cat:'lacteos',unit:'kg'},
+  {id:7202,nombre:'Queso mozzarella',catOf:'lacteos_proteinas',unidadOf:'g',cat:'lacteos',unit:'g'},
   {id:7203,nombre:'Yogurth natural',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
   {id:7204,nombre:'Crema de almendras',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
   {id:7205,nombre:'Crema de cacahuate',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
   {id:7206,nombre:'Jamón serrano',catOf:'lacteos_proteinas',unidadOf:'paquete',cat:'proteinas',unit:'paq'},
-  {id:7207,nombre:'Chorizo pamplona',catOf:'lacteos_proteinas',unidadOf:'kg',cat:'proteinas',unit:'kg'},
-  {id:7208,nombre:'Pechuga de pavo',catOf:'lacteos_proteinas',unidadOf:'kg',cat:'proteinas',unit:'kg'},
+  {id:7207,nombre:'Chorizo pamplona',catOf:'lacteos_proteinas',unidadOf:'g',cat:'proteinas',unit:'g'},
+  {id:7208,nombre:'Pechuga de pavo',catOf:'lacteos_proteinas',unidadOf:'g',cat:'proteinas',unit:'g'},
   {id:7209,nombre:'Proteína',catOf:'lacteos_proteinas',unidadOf:'gramos',cat:'proteinas',unit:'g'},
   // ABARROTES (7301-7320)
-  {id:7301,nombre:'Avena',catOf:'abarrotes',unidadOf:'kg',cat:'granos',unit:'kg'},
-  {id:7302,nombre:'Azúcar',catOf:'abarrotes',unidadOf:'kg',cat:'granos',unit:'kg'},
+  {id:7301,nombre:'Avena',catOf:'abarrotes',unidadOf:'g',cat:'granos',unit:'g'},
+  {id:7302,nombre:'Azúcar',catOf:'abarrotes',unidadOf:'g',cat:'granos',unit:'g'},
   {id:7303,nombre:'Miel',catOf:'abarrotes',unidadOf:'pieza',cat:'otros',unit:'pz'},
   {id:7304,nombre:'Chai',catOf:'abarrotes',unidadOf:'gramos',cat:'bebidas',unit:'g'},
   {id:7305,nombre:'Matcha',catOf:'abarrotes',unidadOf:'gramos',cat:'bebidas',unit:'g'},
@@ -11051,17 +11112,61 @@ function renderDbPeriodo(){
   const estimado=Math.max(0,r2(base-gd.sinNomina));
   const gasto=r2(gd.sinNomina+estimado);
   const nom=nominaDevengada(R.vent);
-  const util=r2(ing-gasto-nom);
+
+  // ══ LO CORRIDO CONTRA LO CORRIDO ══════════════════════════
+  // El lunes el Panel comparaba las ventas de UN día contra la compra
+  // de TODA la semana: "Utilidad −$7,806 · margen −603%". Cada lunes
+  // anunciaba una quiebra que no existía, y un número que grita
+  // catástrofe cada lunes es un número que se deja de mirar.
+  //
+  // La nómina ya venía bien (nominaDevengada prorratea a los días
+  // corridos). El gasto no: entraba completo. Ahora el gasto se
+  // prorratea igual, y la tarjeta dice a qué día de la semana va.
+  //
+  // El TOTAL del período se sigue enseñando tal cual en la tarjeta de
+  // Gastos —lo que compró, lo compró—; lo que se prorratea es solo la
+  // parte que se compara contra lo vendido hasta hoy.
+  const diasOper=R.vent.length||1;                                  // días hábiles del período
+  const diasCorridos=Math.max(1,R.vent.filter(f=>f<=td).length);    // los que ya pasaron
+  const enCurso=diasCorridos<diasOper;
+  const avance=diasCorridos/diasOper;
+  // Solo se prorratea lo CAPTURADO (la compra cubre todo el período).
+  // La parte estimada ya viene prorrateada por gastoBasePeriodo, que
+  // cuenta días hábiles corridos: prorratearla otra vez la encogería.
+  //
+  // "Hoy" necesita el mismo trato por otra vía: el día que Iván surte,
+  // todo el gasto de la semana cae en esa fecha. Compararlo contra las
+  // ventas de ese día declaraba −$7,182 cada lunes de compra. Al día le
+  // toca la parte que le corresponde del gasto de SU semana.
+  let gastoDev,opexDev;
+  if(R.p==='hoy'){
+    const ref=hoyOperativo(), diasSem=getWDays(ref).length||5;
+    const gSem=desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha)));
+    const baseSem=gastoBasePeriodo('semana',{_sem:td});
+    const extraSem=Math.max(0,r2(baseSem-gSem.sinNomina));
+    gastoDev=r2((gSem.sinNomina+extraSem)/diasSem);
+    opexDev=r2((gSem.opex+extraSem)/diasSem);   // la renta no cae toda en el día que se paga
+  } else {
+    gastoDev=enCurso?r2(gd.sinNomina*avance+estimado):gasto;
+    opexDev =enCurso?r2(gd.opex*avance+estimado):r2(gd.opex+estimado);
+  }
+  const util=r2(ing-gastoDev-nom);
   const margen=ing>0?Math.round(util/ing*100):0;
+  const dePeriodo=R.p==='mes'?'del mes':R.p==='semana'?'de la semana':'';
+  const corrido=enCurso?` · día ${diasCorridos} de ${diasOper}`:'';
   const kc=(label,val,sub,color,extra)=>`<div class="card" style="text-align:center;">
     <div class="ct">${label}</div>
     <div class="kv" style="color:${color};">${val}</div>
     <div style="font-size:11px;color:var(--text3);margin-top:3px;">${sub}</div>${extra||''}</div>`;
   if($('db-dinero'))$('db-dinero').innerHTML=
-    kc('Ventas',fmt(ing),`${ventas.length} ticket${ventas.length===1?'':'s'}`,'var(--accent)')+
-    kc('Gastos',fmt(gasto),gd.sinNomina>0?`${fmt(gd.sinNomina)} capturado${estimado>0?` · ${fmt(estimado)} est.`:''}`:`${fmt(estimado)} estimado`,'var(--red)')+
+    kc('Ventas',fmt(ing),`${ventas.length} ticket${ventas.length===1?'':'s'}${corrido}`,'var(--accent)')+
+    kc('Gastos',fmt(gasto),
+      (gd.sinNomina>0?`${fmt(gd.sinNomina)} capturado${estimado>0?` · ${fmt(estimado)} est.`:''}`:`${fmt(estimado)} estimado`)
+      +(enCurso?` · ${fmt(gastoDev)} corren a hoy`:(R.p==='hoy'?` · ${fmt(gastoDev)} le tocan al día`:'')),'var(--red)')+
     kc('Nómina',fmt(nom),nom>gd.nomina?'devengada':'pagada','var(--gold)')+
-    kc('Utilidad',fmt(util),`Margen ${margen}%`,util>=0?'var(--teal)':'var(--red)');
+    kc('Utilidad',fmt(util),`Margen ${margen}%`,util>=0?'var(--teal)':'var(--red)',
+      enCurso?`<div style="font-size:10.5px;margin-top:4px;color:var(--text3);">lo vendido contra lo que corre ${dePeriodo} a hoy</div>`
+      :(R.p==='hoy'?`<div style="font-size:10.5px;margin-top:4px;color:var(--text3);">contra la parte del gasto semanal que le toca al día</div>`:''));
 
   // ── Salud: los números que dicen si el modelo aguanta ──
   // La cobertura se mide en DINERO y solo cuenta el ticket COMPLETO.
@@ -11080,12 +11185,22 @@ function renderDbPeriodo(){
   const prime=ing>0?Math.round(fcPct+nom/ing*100):0;
   const dias=new Set(ventas.map(v=>v.fecha)).size||1;
   const mBruta=ing>0?(ing-cogs)/ing:0;
-  const equil=mBruta>0?r2((nom+gasto)/dias/mBruta):null;
-  const vtaDia=r2(ing/dias);
+  // El punto de equilibrio repartía el gasto de TODA la semana entre
+  // los días que ya vendieron: el lunes lo dividía entre 1 y pedía
+  // $12,974 al día. Ahora el costo fijo se reparte entre los días
+  // hábiles del período, que es lo que significa "al día".
+  // El punto de equilibrio son los costos FIJOS entre el margen bruto.
+  // Metía ahí la compra de insumos, que no es fija y que ya está
+  // contada dentro del margen bruto (es el food cost): los ingredientes
+  // entraban dos veces y el lunes pedía $12,974 al día. Aquí va solo la
+  // nómina y el opex —renta, servicios, mantenimiento—, igual que en
+  // Reportes, para que los dos números digan lo mismo.
+  const equil=mBruta>0?r2((nom+opexDev)/diasCorridos/mBruta):null;
+  const vtaDia=r2(ing/diasCorridos);
   const ticket=ventas.length?r2(ing/ventas.length):0;
   const sem=(ok,txt)=>`<div style="font-size:10.5px;margin-top:4px;color:${ok?'var(--accent)':'var(--red)'};font-weight:560;">${txt}</div>`;
   if($('db-salud'))$('db-salud').innerHTML=
-    kc('Ticket promedio',fmt(ticket),`${Math.round(ventas.length/dias)} tickets/día · ${dias} día${dias===1?'':'s'}`,'var(--text)')+
+    kc('Ticket promedio',fmt(ticket),`${Math.round(ventas.length/diasCorridos)} tickets/día${enCurso?` · día ${diasCorridos} de ${diasOper}`:` · ${dias} día${dias===1?'':'s'}`}`,'var(--text)')+
     kc('Food cost',ventaCubierta>0?fcPct+'%':'—',cobert>=100?'todo el menú costeado':`solo ${cobert}% de la venta está costeada`,'var(--text)',
       ventaCubierta===0?'':(cobert<80
         ? `<div style="font-size:10.5px;margin-top:4px;color:var(--gold);font-weight:560;">⚠ falta costear el resto — el dato todavía no es de fiar</div>`
@@ -13750,7 +13865,22 @@ function renderInvAdmin(){
     const ca=(a.catOf||'zzz').localeCompare(b.catOf||'zzz');
     return ca!==0?ca:a.nombre.localeCompare(b.nombre);
   });
-  let html=`<div class="card" style="margin-bottom:12px;">
+  // ── Aviso: la etiqueta no coincide con la unidad real ──
+  // `unit` es con la que se calcula; `unidadOf` es la que se pinta en
+  // la captura del día. Si no coinciden, quien cuenta ve una unidad y
+  // el sistema guarda otra. Ya pasó con diez insumos en kg/g.
+  const dudosos=D.inventario.filter(i=>i.unit&&i.unidadOf&&normUnit(i.unidadOf)!==normUnit(i.unit));
+  let aviso='';
+  if(dudosos.length){
+    aviso=`<div class="card" style="margin-bottom:12px;border-left:3px solid var(--gold);">
+      <div style="font-size:13px;font-weight:600;color:var(--goldd);margin-bottom:4px;">${dudosos.length} insumo(s) con la unidad mal etiquetada</div>
+      <div style="font-size:12px;color:var(--text2);margin-bottom:8px;">La captura del día enseña una unidad distinta a la que usa el sistema para calcular. Quien cuenta teclea una cosa y se guarda otra.</div>
+      ${dudosos.slice(0,12).map(i=>`<div style="font-size:12px;padding:3px 0;color:var(--text2);">${esc(i.nombre)} — se ve <b>${esc(i.unidadOf)}</b>, se calcula en <b>${esc(i.unit)}</b></div>`).join('')}
+      ${dudosos.length>12?`<div style="font-size:11px;color:var(--text3);margin-top:4px;">y ${dudosos.length-12} más</div>`:''}
+    </div>`;
+  }
+
+  let html=aviso+`<div class="card" style="margin-bottom:12px;">
     <div class="sh">
       <span class="ct" style="margin-bottom:0;">Configuración de Productos</span>
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
@@ -17116,10 +17246,17 @@ function renderReportes(){
   // ══ KPIs DE DIRECCIÓN (benchmarks de industria restaurantera) ══
   if($('rp-dir')){
     const _dias=new Set(ventas.map(v=>v.fecha)).size||1;
+    // El denominador son los días hábiles CORRIDOS, no los que
+    // alcanzaron a vender: si el martes no se abrió, su costo fijo
+    // existe igual y no debe cargárselo al lunes. Corridos y no
+    // totales porque aquí la nómina y el opex ya vienen medidos sobre
+    // lo que lleva el período —dividir entre los cinco días los
+    // diluiría y el punto de equilibrio saldría ridículamente bajo.
+    const _diasPer=Math.max(1,diasHabilesPeriodo(p,fechas));
     const _ticket=ventas.length?_ing/ventas.length:0;
     const _primePct=_ing>0?Math.round((_cogs+_nom)/_ing*100):0;
     const _laborPct=_ing>0?Math.round(_nom/_ing*100):0;
-    const _fijosDia=(_nom+_opex)/_dias;
+    const _fijosDia=(_nom+_opex)/_diasPer;
     const _breakEven=_mBruta>0?_fijosDia/(_mBruta/100):null;
     const kk=(l,v,ok,sub)=>`<div class="card" style="text-align:center;">
       <div class="ct">${l}</div><div class="kv ${ok===null?'':ok?'ag':'red'}">${v}</div>

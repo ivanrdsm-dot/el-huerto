@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.19'; // Una sola tipografía, iconos en vez de emoji en la interfaz
+const CACHE_NAME = 'el-huerto-v15.20'; // El Panel ya no compara un día de ventas contra la compra de la semana
 const ASSETS = [
   '/',
   '/index.html',
