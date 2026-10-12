@@ -1691,10 +1691,14 @@ nav{padding-top:env(safe-area-inset-top);}
         </div>
       </div>
       <div class="fg"><label>Notas</label><input type="text" id="gnota" placeholder="Opcional"></div>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--text2);margin-bottom:10px;cursor:pointer;">
+        <input type="checkbox" id="g-porpagar-chk" style="width:auto;margin:0;"> Todavía no lo pago
+      </label>
       <button class="btn bp bfull" onclick="addGasto()">+ Registrar Gasto</button>
     </div>
     <div class="card"><div class="ct" id="gcats-titulo">Distribución</div><div id="gcats"></div></div>
   </div>
+  <div id="g-porpagar"></div>
   <div id="g-sinprov"></div>
   <div class="card" style="margin-top:10px;">
     <div class="sh">
@@ -3014,6 +3018,7 @@ async function completeInit(){
   await migCompras11Oct2026();
   await migCorrige11Oct2026();
   await migPanesRenee2026();
+  await migTicketRenee19880();
   await migTapaDomoSmoothies();
   await migrateMenuAbril2026();
   await migrateMenuJul2026();
@@ -4006,7 +4011,7 @@ const PROVEEDORES=[
   {n:'Grupo El Zorro',              cat:'proveedor', alias:['grupoelzorro','elzorro','zorro','zorroabarrotero','zorroabarroterolasarmas','zorromediomayoreo']},
   {n:'La Chispa',                   cat:'proveedor', alias:['lachispa','chispa']},
   {n:'Naranjarillo',                cat:'proveedor', alias:['naranjarillo','naranjarillobodegasatizapan']},
-  {n:'Tía Renee',                   cat:'proveedor', alias:['tiarenee','reneefarca','reneefarcatiarenee','panestiarenee']},
+  {n:'Tía Renee',                   cat:'proveedor', alias:['tiarenee','reneefarca','reneefarcatiarenee','panestiarenee','renee','gracerenee','graceroffe','panesdelatiarenee']},
   {n:'Vega Life',                   cat:'proveedor', alias:['vegalife','vega']},
   {n:'La Comer',                    cat:'proveedor', alias:['lacomer','lacomerbosquereal']},
   {n:'Chilapita',                   cat:'proveedor', alias:['chilapita','chilapitaazcapotzalco']},
@@ -4471,6 +4476,50 @@ const PANES_RENEE=[
   {prod:1046, pNom:'Pan tía Renee - Pizza',              inv:7412, iNom:'Pan Tía Renee — Pizza'},
   {prod:1047, pNom:'Pan tía Renee - Rajas Poblanas',     inv:7414, iNom:'Pan Tía Renee — Rajas Poblanas'},
 ];
+// ══════════════════════════════════════════════════════════════
+// EL TICKET DE LA TÍA RENEE (folio 19880) — $1,870
+// 40 panes: 10 de chilaquiles rojos, 10 de verdes, 10 de pizza y 10
+// de queso solo. Lista $55 cada uno, menos 15% de descuento = $46.75.
+// O sea que los $46.75 que ya tenía el sistema SON por pieza, no por
+// paquete: el margen de 43% en los panes de $85 es real.
+//
+// Iván: "este pedido corresponde a los panes que vendí la semana
+// pasada y todavía me quedan algunos para esta semana". Por eso el
+// gasto cuenta en la semana del 5-oct —la que surtió— y la fecha
+// impresa del 28-sep queda en fechaTicket. Cuadra con los datos: de
+// los 40 panes quedan 15 en el renglón "por clasificar".
+//
+// Y no está pagado: "este pago de Renee lo haré esta semana". Entra
+// con pendientePago para que se vea lo que debe sin inventar que ya
+// salió el dinero.
+// ══════════════════════════════════════════════════════════════
+async function migTicketRenee19880(){
+  const migKey='h5renee19880_sep26';
+  if(await migDone(migKey)) return;
+  const TICKET='RENEE-19880';
+  if(!D.gastos.find(x=>x.ticket===TICKET)){
+    await fsSet('gastos',{id:Date.now(),fecha:'2026-10-05',fechaTicket:'2026-09-28',
+      cat:'proveedor',prov:'Tía Renee',pendientePago:true,
+      monto:1870.00,ticket:TICKET,metodo:'transferencia',tipoEstrategico:'operacion',
+      notas:'40 panes con queso: 10 chilaquiles rojos, 10 chilaquiles verdes, 10 pizza, 10 queso. Lista $55 c/u menos 15% = $46.75 neto. Surtió la semana del 5-oct y sobraron panes para la del 12. Pago pendiente.',
+      partidas:[{c:'Pan con queso — chilaquiles rojos',q:10,u:'pz',i:467.50},
+        {c:'Pan con queso — chilaquiles verdes',q:10,u:'pz',i:467.50},
+        {c:'Pan con queso — pizza',q:10,u:'pz',i:467.50},
+        {c:'Pan con queso — queso',q:10,u:'pz',i:467.50}]});
+  }
+  // El precio por pieza queda confirmado en los cinco panes
+  for(const inv of D.inventario.filter(i=>/^pantiarenee/.test(normInvNombre(i.nombre)))){
+    if(inv.precio===46.75) continue;
+    const upd={...inv,precio:46.75};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(x=>x.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+  }
+  logAudit('compra_registrada',{proveedor:'Tía Renee',ticket:TICKET,monto:1870,piezas:40,
+    precioPieza:46.75,lista:55,descuento:'15%',
+    hallazgo:'solo hay 5 gastos de Tía Renee en 6 meses y él la compra cada semana'});
+  toast('✓ Tía Renee 28-sep: $1,870 por 40 panes a $46.75 la pieza',5500);
+  await markMig(migKey);
+}
 async function migPanesRenee2026(){
   const migKey='h5panesrenee_oct26';
   if(await migDone(migKey)) return;
@@ -11627,12 +11676,17 @@ window.addGasto=async()=>{
     toast('⚠ Falta el proveedor — elígelo de la lista',3200,'warn');
     $('gprov').focus(); return;
   }
+  // Un gasto que todavía no se paga igual CUENTA en el mes —se devengó—
+  // pero se marca, para que él sepa qué debe sin inventar que el dinero
+  // ya salió.
+  const pendientePago=!!$('g-porpagar-chk')?.checked;
   const g=existe?
-    {...existe,fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal}:
-    {id:Date.now(),fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal};
+    {...existe,fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal,pendientePago}:
+    {id:Date.now(),fecha,cat:$('gc').value,prov,monto,ticket:$('gtk').value.trim(),metodo:$('gmet').value,notas:$('gnota').value.trim(),tipoEstrategico:tipoEst,canal,pendientePago};
   await fsSet('gastos',g);
   // Resetear form y modo edición
   $('gm').value='';$('gprov').value='';$('gtk').value='';$('gnota').value='';
+  if($('g-porpagar-chk'))$('g-porpagar-chk').checked=false;
   delete $('gm').dataset.editId;
   if($('g-tipoest'))$('g-tipoest').value='general';
   if($('g-canal-wrap'))$('g-canal-wrap').style.display='none';
@@ -11655,6 +11709,7 @@ window.editGasto=id=>{
   if($('gprov'))$('gprov').value=g.prov||'';
   if($('gtk'))$('gtk').value=g.ticket||'';
   if($('gnota'))$('gnota').value=g.notas||'';
+  if($('g-porpagar-chk'))$('g-porpagar-chk').checked=!!g.pendientePago;
   if($('g-tipoest'))$('g-tipoest').value=g.tipoEstrategico||'general';
   if($('g-canal-wrap'))$('g-canal-wrap').style.display=(g.tipoEstrategico==='marketing')?'':'none';
   if($('g-canal')&&g.canal)$('g-canal').value=g.canal;
@@ -11703,6 +11758,40 @@ window.gastoSugiereCat=nombre=>{
   const cat=provCategoria(canon);
   if(cat && $('gc') && [...$('gc').options].some(o=>o.value===cat)) $('gc').value=cat;
 };
+// ══ LO QUE DEBE ══
+// Hay proveedores que le fían —la Tía Renee entrega y cobra después—.
+// El gasto cuenta desde que se devenga, pero el dinero sigue en la
+// cuenta: sin esta lista no hay forma de saber qué está pendiente.
+function renderPorPagar(){
+  const caja=$('g-porpagar'); if(!caja) return;
+  const deb=D.gastos.filter(g=>g.pendientePago)
+    .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  if(!deb.length){caja.innerHTML='';return;}
+  const total=r2(deb.reduce((s2,g)=>s2+(g.monto||0),0));
+  caja.innerHTML=`<div class="card" style="margin-top:10px;border-left:3px solid var(--gold);">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Lo que debes</span>
+      <span class="mono" style="font-size:15px;font-weight:700;color:var(--gold);">${fmt(total)}</span></div>
+    <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Ya cuenta como gasto del mes, pero el dinero no ha salido. Al pagarlo, márcalo aquí.</p>
+    ${deb.map(g=>`<div class="sr" style="align-items:center;gap:10px;">
+      <div style="flex:1;min-width:0;">
+        <div style="font-size:12.5px;font-weight:600;">${g.prov||'Sin proveedor'} <span class="mono" style="color:var(--text3);font-weight:400;">${g.ticket||''}</span></div>
+        <div style="font-size:11px;color:var(--text3);">${g.fecha}${g.fechaTicket&&g.fechaTicket!==g.fecha?` · ticket ${g.fechaTicket}`:''}</div>
+      </div>
+      <span class="mono ar fw7">${fmt(g.monto)}</span>
+      <button class="btn bp bxs" style="flex:none;" onclick="marcarPagado(${g.id})">Pagado</button>
+    </div>`).join('')}
+  </div>`;
+}
+window.marcarPagado=async id=>{
+  const g=D.gastos.find(x=>x.id===id); if(!g) return;
+  if(!confirm(`¿Marcar como pagado?\n${g.prov||''} · ${fmt(g.monto)}`)) return;
+  const upd={...g,pendientePago:false,fechaPago:today()};
+  await fsSet('gastos',upd);
+  const ix=D.gastos.findIndex(x=>x.id===id); if(ix>=0) D.gastos[ix]=upd;
+  logAudit('gasto_pagado',{proveedor:g.prov,ticket:g.ticket,monto:g.monto,fechaPago:today()});
+  toast(`✓ Pagado: ${g.prov||''} ${fmt(g.monto)}`,3000);
+  renderGastos();
+};
 function renderGastosSinProv(){
   const caja=$('g-sinprov'); if(!caja) return;
   const sem=getWDays7();
@@ -11735,6 +11824,7 @@ function renderGastos(){
   // reclaman, porque de aquí en adelante el historial se construye
   // completo y un gasto sin nombre no se puede comparar después.
   renderGastosSinProv();
+  renderPorPagar();
   const td=today();
   const periodo=$('g-periodo')?.value||'semana';
   const fc=$('gfcat')?.value||'';
@@ -11812,7 +11902,7 @@ function renderGastos(){
       <td>${tipoBadge(r.tipoEstrategico,r.canal)}</td>
       <td>${r.prov||'—'}</td>
       <td class="mono" style="color:var(--text2);">${r.ticket||'—'}${pt.length?` <span id="gcar-${r.id}" style="color:var(--text3);">▸</span> <span style="font-size:10.5px;color:var(--text3);">${pt.length} concepto${pt.length>1?'s':''}</span>`:''}</td>
-      <td>${mi[r.metodo]||''}</td>
+      <td>${mi[r.metodo]||''}${r.pendientePago?' <span class="badge xb" style="background:#fff8e1;color:var(--goldd);">por pagar</span>':''}</td>
       <td class="mono ar fw7">${fmt(r.monto)}</td>
       <td style="display:flex;gap:3px;" onclick="event.stopPropagation();">
         <button class="btn bs bxs" onclick="editGasto(${r.id})" title="Editar">✏️</button>
