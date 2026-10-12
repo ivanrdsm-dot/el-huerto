@@ -56,17 +56,5 @@
         "Cache-Control": "public, max-age=0, must-revalidate"
       }
     }
-  ],
-  "headers": [
-    {
-      "source": "/(.*)",
-      "headers": [
-        {
-          "key": "X-Content-Type-Options",
-          "value": "nosniff"
-        }
-      ],
-      "comment": "Vercel ignora este bloque cuando el proyecto usa builds+routes. Las cabeceras buenas van dentro de routes."
-    }
   ]
 }
