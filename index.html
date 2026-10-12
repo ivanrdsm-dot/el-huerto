@@ -957,7 +957,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <button type="button" onclick="const i=$('pin-input');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'🙈';i.focus();"
         style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;font-size:20px;cursor:pointer;padding:6px;line-height:1;">👁</button>
     </div>
-    <button class="btn bp bfull" onclick="checkPIN()" style="margin-bottom:8px;">Entrar</button>
+    <button class="btn bp bfull" id="pin-ok" onclick="checkPIN()" style="margin-bottom:8px;">Entrar</button>
     <button class="btn bs bfull bsm" onclick="closePIN()">Cancelar</button>
   </div>
 </div>
@@ -3116,12 +3116,16 @@ async function completeInit(){
   await migRecetasExtras_v1();
   // La lista pública se lee SIEMPRE: con reglas v3 y sesión anónima es
   // la única forma de pintar la pantalla de acceso.
-  await cargarPersonalPublico();
+  // La pantalla de acceso se pinta YA, con la lista guardada en el
+  // aparato. Antes esperaba dos viajes a la red —la lista y la versión—
+  // antes de enseñar un solo botón. Ahora los dos van por detrás y la
+  // pantalla se repinta sola si algo cambió.
   renderLock();
-  try{
-    const v=(await (await fetch('sw.js',{cache:'no-store'})).text()).match(/el-huerto-v([\d.]+)/);
+  cargarPersonalPublico().then(()=>renderLock());
+  fetch('sw.js',{cache:'no-store'}).then(r=>r.text()).then(t=>{
+    const v=t.match(/el-huerto-v([\d.]+)/);
     if($('lock-ver')) $('lock-ver').textContent='v'+(v?v[1]:'?');
-  }catch(e){ if($('lock-ver')) $('lock-ver').textContent='sin conexión'; }
+  }).catch(()=>{ if($('lock-ver')) $('lock-ver').textContent='sin conexión'; });
   // Si hay admin y la lista está vieja o no existe, se republica sola.
   if(SESSION?.tipo==='admin') publicarPersonal();
   if(!SESSION){
@@ -7920,15 +7924,24 @@ async function registrarCheckout(sess){
 // más— en `sistema/personal`, que sí es legible por cualquier sesión.
 // ══════════════════════════════════════════════════════════════
 const personalRef=()=>doc(db,'sistema','personal');
-let PERSONAL_PUB=[];
+// Se guarda también en el aparato: así el segundo arranque pinta la
+// pantalla de acceso sin esperar a Firestore. La copia de la nube sigue
+// mandando, pero llega sin bloquear.
+let PERSONAL_PUB=(()=>{try{return JSON.parse(localStorage.getItem('h5personal')||'[]');}catch(e){return [];}})();
 async function cargarPersonalPublico(){
-  try{ const sn=await getDoc(personalRef()); if(sn.exists()) PERSONAL_PUB=sn.data().lista||[]; }
-  catch(e){ console.warn('No se pudo leer la lista de personal:',e?.code||e); }
+  try{
+    const sn=await getDoc(personalRef());
+    if(sn.exists()){
+      PERSONAL_PUB=sn.data().lista||[];
+      try{ localStorage.setItem('h5personal',JSON.stringify(PERSONAL_PUB)); }catch(e){}
+    }
+  }catch(e){ console.warn('No se pudo leer la lista de personal:',e?.code||e); }
 }
 async function publicarPersonal(){
   const lista=empsActivos().map(e=>({id:e.id,nombre:e.nombre,color:e.color||''}));
   if(!lista.length) return;
-  try{ await escrituraOk(setDoc(personalRef(),{lista,ts:Date.now()})); PERSONAL_PUB=lista; }
+  try{ await escrituraOk(setDoc(personalRef(),{lista,ts:Date.now()})); PERSONAL_PUB=lista;
+    try{ localStorage.setItem('h5personal',JSON.stringify(lista)); }catch(e){} }
   catch(e){ console.warn('No se pudo publicar la lista de personal:',e?.code||e); }
 }
 window.publicarPersonal=publicarPersonal;
@@ -7961,6 +7974,25 @@ window.openEmpPIN = function(empId){
   setTimeout(()=>$('pin-input').focus(),120);
 };
 
+// El rol (vendedora o gerente) define qué pantallas ve. Si al entrar
+// todavía no habían llegado los empleados, se corrige en silencio en
+// cuanto lleguen, sin hacerla esperar en la puerta.
+function afinarSesionEmp(id){
+  let intentos=0;
+  const t=setInterval(()=>{
+    const e=D.empleados.find(x=>x.id===id);
+    if(e&&SESSION?.tipo==='emp'&&SESSION.id===id){
+      const rol=(e.rol||'').toLowerCase()==='gerente'?'gerente':'emp';
+      if(SESSION.rol!==rol||SESSION.nombre!==e.nombre){
+        SESSION={...SESSION,rol,nombre:e.nombre,color:e.color||SESSION.color};
+        try{ localStorage.setItem('h5session',JSON.stringify(SESSION)); }catch(_){}
+        updateNavForSession(); renderVendedorBar();
+      }
+      clearInterval(t);
+    }
+    if(++intentos>40) clearInterval(t);
+  },250);
+}
 function loginEmp(id){
   // ══════════════════════════════════════════════════════════════
   // AQUÍ SE QUEDABA ATORADO EL ACCESO
@@ -8084,11 +8116,25 @@ function pinFallo(perfil){
 }
 function pinExito(){try{localStorage.removeItem('h5pinlock');}catch(e){}}
 
+let _pinOcupado=false;
 async function checkPIN(){
+  // Doble toque en el botón = dos intentos contra Firebase y un bloqueo
+  // por "demasiados intentos" que nadie entiende.
+  if(_pinOcupado) return;
   const seg=pinBloqueado();
   if(seg){toast(`🔒 Bloqueado por intentos fallidos — espera ${seg} segundos`,3000,'error');return;}
   const val=$('pin-input').value;
   const valHash=await sha256Hex(val);
+  // Mientras va y viene a Firebase el botón lo dice, en vez de parecer
+  // que la app se quedó pensando.
+  _pinOcupado=true;
+  const btnOk=$('pin-ok'); const txtOk=btnOk?btnOk.textContent:'';
+  if(btnOk){ btnOk.disabled=true; btnOk.textContent='Entrando…'; }
+  const soltar=()=>{ _pinOcupado=false; if(btnOk){ btnOk.disabled=false; btnOk.textContent=txtOk||'Entrar'; } };
+  try{ return await checkPINInterno(val,valHash,soltar); }
+  finally{ soltar(); }
+}
+async function checkPINInterno(val,valHash,soltar){
   // ══════════════════════════════════════════════════════════════
   // MANDA FIREBASE EN CUANTO LA CUENTA EXISTE
   // Antes la contraseña se comparaba contra un hash ESCRITO EN EL
@@ -8114,14 +8160,12 @@ async function checkPIN(){
     if(ok){
       pinExito();
       $('pin-modal').style.display='none';
-      // Con la sesión propia recién abierta, `empleados` ya es legible:
-      // se le dan unos instantes al oyente para que llegue y la sesión
-      // se arme con el dato bueno (incluido el rol de gerente).
-      if(rFb==='ok' && !D.empleados.find(x=>x.id===pinTargetEmpId)){
-        for(let i=0;i<12 && !D.empleados.find(x=>x.id===pinTargetEmpId);i++)
-          await new Promise(r=>setTimeout(r,250));
-      }
+      // Se entra YA, con la lista del aparato. Esperar hasta 3 segundos a
+      // que llegara `empleados` se sentía como que la app se trababa justo
+      // en el momento más impaciente del día. El rol se afina solo en
+      // cuanto llegan los datos reales.
       loginEmp(pinTargetEmpId);
+      afinarSesionEmp(pinTargetEmpId);
       pinTargetEmpId=null; pinTarget=null;
       return;
     }
