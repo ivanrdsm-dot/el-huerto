@@ -3143,6 +3143,7 @@ async function completeInit(){
   }
 }
 
+let _unsubs=[];
 function listenAll(){
   // ══════════════════════════════════════════════════════════════
   // QUÉ SE DESCARGA, Y EN QUÉ DISPOSITIVO
@@ -3165,7 +3166,7 @@ function listenAll(){
   const loaded=new Set();
 
   cols.forEach(col=>{
-    onSnapshot(colRef(col), async snap=>{
+    _unsubs.push(onSnapshot(colRef(col), async snap=>{
       D[col]=snap.docs.map(d=>d.data());
 
       if(!READY){
@@ -3196,8 +3197,23 @@ function listenAll(){
           else await completeInit();
         }
       }
-    });
+    }));
   });
+}
+// ══════════════════════════════════════════════════════════════
+// VOLVER A SUSCRIBIR AL ENTRAR
+// Firestore MATA el oyente cuando las reglas niegan el permiso, y no lo
+// reintenta nunca. Al arrancar la sesión es anónima, así que `empleados`,
+// `gastos`, `nomPagos` y `usuarios` quedaban MUERTOS para toda esa carga
+// aunque después entrara Claudia con su cuenta.
+// Eso es lo que dejó la ventana de "¿Quién cobra esta venta?" en blanco:
+// la lista sale de D.empleados, que nunca se llenó. No podían cobrar.
+// Al abrir la sesión propia se tira todo y se vuelve a escuchar.
+// ══════════════════════════════════════════════════════════════
+function resuscribirDatos(){
+  try{ _unsubs.forEach(u=>{ try{u();}catch(e){} }); }finally{ _unsubs=[]; }
+  listenAll();          // READY ya es true: vuelve a escuchar sin re-migrar
+  setTimeout(()=>{ try{ scheduleRender(); }catch(e){} },1200);
 }
 
 // ─── SEED ───
@@ -7785,6 +7801,9 @@ async function entrarFirebase(quien,password){
     const perfil={uid:cred.user.uid,quien};
     AUTH_PERFIL=perfil;
     console.log('✓ Sesión propia de Firebase:',authEmail(quien));
+    // Con la identidad nueva, lo que las reglas negaban al arrancar ya se
+    // puede leer — pero el oyente viejo está muerto. Se vuelve a escuchar.
+    try{ resuscribirDatos(); }catch(e){ console.warn('resuscribir:',e); }
     return 'ok';
   }catch(e){
     const c=e?.code||'';
@@ -8412,17 +8431,17 @@ window.closeModal=closeModal;
 
 // ─── VENDEDOR ───
 window.openVendModal=()=>{
-  $('vm-vendedores').innerHTML=empsActivos().map(e=>`
+  $('vm-vendedores').innerHTML=(empsActivos().length?empsActivos():(PERSONAL_PUB||[])).map(e=>`
     <div style="display:flex;align-items:center;gap:10px;padding:10px;background:var(--surface2);border-radius:var(--rsm);margin-bottom:7px;cursor:pointer;border:2px solid ${activeVend?.id===e.id?e.color||'var(--accent)':'transparent'};" onclick="selVend(${e.id})">
-      <div style="width:38px;height:38px;border-radius:50%;background:${e.color||'var(--accent)'};display:flex;align-items:center;justify-content:center;font-family:'Playfair Display',serif;font-size:16px;font-weight:700;color:#1a2e18;">${e.nombre[0]}</div>
-      <div><div style="font-weight:700;">${e.nombre}</div><div style="font-size:11px;color:var(--text3);">${e.rol}</div></div>
+      <div style="width:38px;height:38px;border-radius:50%;background:${e.color||'var(--accent)'};display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;color:#1a2e18;">${esc((e.nombre||'?')[0])}</div>
+      <div><div style="font-weight:700;">${esc(e.nombre)}</div><div style="font-size:11px;color:var(--text3);">${esc(e.rol)||''}</div></div>
       ${activeVend?.id===e.id?'<span class="badge xg" style="margin-left:auto;">Activo</span>':''}
     </div>`).join('');
   $('vend-modal').style.display='flex';
 };
 window.selVend=id=>{
   if(id===null){activeVend=null;}
-  else{const e=D.empleados.find(x=>x.id===id);if(!e)return;activeVend={id:e.id,nombre:e.nombre,color:e.color||'var(--accent)'};}
+  else{const e=D.empleados.find(x=>x.id===id)||(PERSONAL_PUB||[]).find(x=>String(x.id)===String(id));if(!e)return;activeVend={id:e.id,nombre:e.nombre,color:e.color||'var(--accent)'};}
   try{localStorage.setItem('h5vend',activeVend?JSON.stringify(activeVend):'null');}catch(e){}
   $('vend-modal').style.display='none';
   renderVendedorBar();
@@ -8437,10 +8456,14 @@ let ventaVendedorOk=false; // se resetea al terminar cada venta
 let vendConfNext=null;     // acción a continuar tras confirmar (efectivo/tarjeta)
 window.pedirVendedorVenta=next=>{
   vendConfNext=next||null;
-  const chips=empsActivos().map(e=>`
+  // Si por lo que sea no hay empleados cargados, se usa la lista del
+  // aparato. Que NUNCA se quede en blanco: una caja que no deja elegir
+  // quién cobra es una caja que no vende.
+  const lista=empsActivos().length?empsActivos():(PERSONAL_PUB||[]);
+  const chips=lista.map(e=>`
     <button class="vconf-btn" onclick="confVendedor(${e.id})" style="${activeVend?.id===e.id?`border-color:${e.color||'var(--accent)'};`:''}">
-      <span class="vconf-av" style="background:${e.color||'var(--accent)'};">${e.nombre[0]}</span>
-      <span style="flex:1;text-align:left;">${e.nombre}</span>
+      <span class="vconf-av" style="background:${e.color||'var(--accent)'};">${esc((e.nombre||'?')[0])}</span>
+      <span style="flex:1;text-align:left;">${esc(e.nombre)}</span>
       ${activeVend?.id===e.id?'<span class="badge xg">turno activo</span>':''}
     </button>`).join('');
   const adminChip=SESSION?.tipo==='admin'?`
@@ -8453,7 +8476,11 @@ window.pedirVendedorVenta=next=>{
 };
 window.confVendedor=id=>{
   if(id===1){activeVend={id:1,nombre:'Iván',color:'var(--gold)'};}
-  else{const e=D.empleados.find(x=>x.id===id);if(!e)return;activeVend={id:e.id,nombre:e.nombre,color:e.color||'var(--accent)'};}
+  else{
+    const e=D.empleados.find(x=>x.id===id)||(PERSONAL_PUB||[]).find(x=>String(x.id)===String(id));
+    if(!e){toast('⚠ No se pudo identificar a la vendedora — recarga la app',4000,'error');return;}
+    activeVend={id:e.id,nombre:e.nombre,color:e.color||'var(--accent)'};
+  }
   try{localStorage.setItem('h5vend',JSON.stringify(activeVend));}catch(_){}
   ventaVendedorOk=true;
   renderVendedorBar();
