@@ -7588,6 +7588,25 @@ async function fixUTCDates(){
 }
 
 // ─── UTILS ───
+// ══════════════════════════════════════════════════════════════
+// esc() — TEXTO DE AFUERA QUE SE PINTA COMO HTML
+// Toda la interfaz se arma con plantillas y `innerHTML`. Eso significa
+// que cualquier texto que alguien escriba y luego se pinte, se EJECUTA
+// si trae etiquetas. El agujero no era teórico: el menú QR deja que un
+// cliente escriba su nombre, ese nombre se guarda y aparece en la caja.
+// Un `<img src=x onerror=...>` como nombre corría dentro de la sesión
+// de la cajera, que tiene llave de toda la base.
+// Regla: TODO lo que una persona haya tecleado —nombres, notas,
+// proveedores, folios— se pinta con esc().
+// ══════════════════════════════════════════════════════════════
+const esc=v=>String(v==null?'':v)
+  .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+  .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+// Para lo que entra desde el menú público: además de escapar, se recorta
+// y se quitan los caracteres de control. Un nombre de cliente no
+// necesita 500 letras ni saltos de línea.
+const limpiaTextoPublico=(v,max=40)=>String(v==null?'':v)
+  .replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim().slice(0,max);
 const fmt=n=>'$'+Number(n||0).toLocaleString('es-MX',{minimumFractionDigits:2,maximumFractionDigits:2});
 // Fecha local correcta (evita el bug de UTC que muestra día siguiente en México)
 const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');};
@@ -8956,7 +8975,7 @@ window.cerrarScan=()=>{
 window.buscarLealtadUI=q=>{
   q=(q||'').trim().toLowerCase();
   const res=!q?[]:D.lealtad.filter(c=>c.codigo.toLowerCase().includes(q)||(c.nombre||'').toLowerCase().includes(q)||(c.tel||'').includes(q)).slice(0,6);
-  $('scan-results').innerHTML=res.map(c=>`<button class="prep-chip" style="text-align:left;" onclick="asignarLealtadPorCodigo('${c.codigo}')">🎟 <b>&nbsp;${c.nombre}</b>&nbsp;· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?' · 🎁'+c.premios:''}</button>`).join('');
+  $('scan-results').innerHTML=res.map(c=>`<button class="prep-chip" style="text-align:left;" onclick="asignarLealtadPorCodigo('${esc(c.codigo)}')">🎟 <b>&nbsp;${esc(c.nombre)}</b>&nbsp;· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?' · 🎁'+c.premios:''}</button>`).join('');
 };
 window.asignarLealtadPorCodigo=cod=>{
   const c=D.lealtad.find(x=>x.codigo===cod);
@@ -9010,7 +9029,7 @@ function renderOpLealtad(){
   el.innerHTML=`<div style="background:color-mix(in srgb, var(--gold) 12%, var(--surface));border:1.5px solid var(--gold);border-radius:var(--rsm);padding:8px 10px;display:flex;align-items:center;gap:8px;">
     <span style="font-size:16px;">🎟</span>
     <div style="flex:1;min-width:0;">
-      <div style="font-weight:800;font-size:12.5px;">${c.nombre}</div>
+      <div style="font-weight:800;font-size:12.5px;">${esc(c.nombre)}</div>
       <div style="font-size:10.5px;color:var(--text2);">${c.sellos||0}/${ltMeta()} sellos${(c.premios||0)>0?` · 🎁 ${c.premios}`:''}${canjeActivo?' · <b style="color:var(--accent)">canje aplicado</b>':''}</div>
     </div>
     ${(c.premios||0)>0&&!canjeActivo?`<button class="btn bor bxs" onclick="canjearPremio()">🎁 Canjear</button>`:''}
@@ -9113,7 +9132,9 @@ function renderMenuPublico(){
 window.mvNombre=v=>{MV.nombre=v;const b=document.querySelector('#menu-view .mv-go');if(b)b.disabled=mvCuenta()===0||!v.trim();};
 window.mvOtro=()=>{MV={items:{},cat:'todos',enviado:null,nombre:MV.nombre};renderMenuPublico();};
 window.mvApartar=async()=>{
-  const nombre=(MV.nombre||'').trim();
+  // Se limpia aquí, en la puerta: lo que entra a la base ya va sano,
+  // no solo lo que se pinta.
+  const nombre=limpiaTextoPublico(MV.nombre,40);
   if(!nombre||mvCuenta()===0) return;
   // Freno simple contra spam: un pre-pedido por dispositivo cada 2 minutos
   try{
@@ -9307,7 +9328,7 @@ function renderCampana(){
       <b>${conTel.length}</b> cliente(s) en «${seg.label}»${sinTel?` · ${sinTel} sin WhatsApp registrado`:''} — un toque por mensaje
     </div>
     ${conTel.map(c=>`<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--border);">
-      <span style="font-size:12.5px;min-width:0;"><b>${c.nombre}</b> <span style="color:var(--text3);">· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?` · 🎁${c.premios}`:''} · ${diasSinVisita(c)>900?'sin visitas':diasSinVisita(c)+'d'}</span></span>
+      <span style="font-size:12.5px;min-width:0;"><b>${esc(c.nombre)}</b> <span style="color:var(--text3);">· ${c.sellos||0}/${ltMeta()}${(c.premios||0)>0?` · 🎁${c.premios}`:''} · ${diasSinVisita(c)>900?'sin visitas':diasSinVisita(c)+'d'}</span></span>
       <a class="btn bsm" style="background:#25D366;color:#fff;text-decoration:none;font-size:11.5px;padding:5px 10px;border-radius:7px;white-space:nowrap;" target="_blank" href="https://wa.me/52${c.tel}?text=${encodeURIComponent(ltMensajeFinal(c))}" onclick="logAudit('lealtad_campana',{segmento:'${ltSegActivo}',cliente:'${c.nombre.replace(/'/g,"")}'})">📱 Enviar</a>
     </div>`).join('')}`;
 }
@@ -10868,10 +10889,10 @@ function renderPrepedidos(){
   el.style.display='flex';
   el.innerHTML=list.map(p=>`
     <div style="background:#eef7e6;border:1.5px solid var(--accent);border-radius:var(--rsm);padding:9px 11px;display:flex;align-items:center;gap:10px;">
-      <span style="font-family:'DM Mono',monospace;font-weight:800;font-size:13px;color:var(--accent2);">${p.folio}</span>
+      <span class="mono" style="font-weight:800;font-size:13px;color:var(--accent2);">${esc(p.folio)}</span>
       <div style="flex:1;min-width:0;">
-        <div style="font-size:13px;font-weight:800;">${p.cliente}</div>
-        <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${p.items.map(i=>i.qty+'× '+i.nombre).join(' · ')}</div>
+        <div style="font-size:13px;font-weight:800;">${esc(p.cliente)}</div>
+        <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(p.items.map(i=>i.qty+'× '+i.nombre).join(' · '))}</div>
       </div>
       <span class="mono" style="font-size:12px;font-weight:700;">${fmt(p.total)}</span>
       <button class="btn bp bsm" onclick="cargarPrepedido(${p.id})">Cargar</button>
@@ -11848,7 +11869,7 @@ function renderPorPagar(){
     <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Ya cuenta como gasto del mes, pero el dinero no ha salido. Al pagarlo, márcalo aquí.</p>
     ${deb.map(g=>`<div class="sr" style="align-items:center;gap:10px;">
       <div style="flex:1;min-width:0;">
-        <div style="font-size:12.5px;font-weight:600;">${g.prov||'Sin proveedor'} <span class="mono" style="color:var(--text3);font-weight:400;">${g.ticket||''}</span></div>
+        <div style="font-size:12.5px;font-weight:600;">${esc(g.prov)||'Sin proveedor'} <span class="mono" style="color:var(--text3);font-weight:400;">${esc(g.ticket)}</span></div>
         <div style="font-size:11px;color:var(--text3);">${g.fecha}${g.fechaTicket&&g.fechaTicket!==g.fecha?` · ticket ${g.fechaTicket}`:''}</div>
       </div>
       <span class="mono ar fw7">${fmt(g.monto)}</span>
@@ -11877,7 +11898,7 @@ function renderGastosSinProv(){
     <div class="sh"><span class="ct" style="margin-bottom:0">Falta el proveedor</span>
       <span class="mono" style="font-size:12px;color:var(--text3);">${faltan.length} de esta semana · ${fmt(total)}</span></div>
     <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Sin nombre no se puede comparar el mes que viene. Ponle el proveedor y la categoría se acomoda sola.</p>
-    ${faltan.map(g=>`<div class="sr"><span style="font-size:12.5px;">${g.fecha}${g.notas?` · <span style="color:var(--text3);">${g.notas.split('—')[0].trim()}</span>`:''}</span>
+    ${faltan.map(g=>`<div class="sr"><span style="font-size:12.5px;">${g.fecha}${g.notas?` · <span style="color:var(--text3);">${esc(g.notas.split('—')[0].trim())}</span>`:''}</span>
       <span style="display:flex;align-items:center;gap:8px;"><span class="mono ar fw7">${fmt(g.monto)}</span>
       <button class="btn bs bxs" onclick="editGasto(${g.id})">Asignar</button></span></div>`).join('')}
   </div>`;
@@ -11974,8 +11995,8 @@ function renderGastos(){
       <td class="mono">${r.fecha}${r.fechaTicket&&r.fechaTicket!==r.fecha?`<br><span style="font-size:10px;color:var(--text3);">ticket ${r.fechaTicket}</span>`:''}</td>
       <td><span class="badge xr">${catL[r.cat]||r.cat}</span></td>
       <td>${tipoBadge(r.tipoEstrategico,r.canal)}</td>
-      <td>${r.prov||'—'}</td>
-      <td class="mono" style="color:var(--text2);">${r.ticket||'—'}${pt.length?` <span id="gcar-${r.id}" style="color:var(--text3);">▸</span> <span style="font-size:10.5px;color:var(--text3);">${pt.length} concepto${pt.length>1?'s':''}</span>`:''}</td>
+      <td>${esc(r.prov)||'—'}</td>
+      <td class="mono" style="color:var(--text2);">${esc(r.ticket)||'—'}${pt.length?` <span id="gcar-${r.id}" style="color:var(--text3);">▸</span> <span style="font-size:10.5px;color:var(--text3);">${pt.length} concepto${pt.length>1?'s':''}</span>`:''}</td>
       <td>${mi[r.metodo]||''}${r.pendientePago?' <span class="badge xb" style="background:#fff8e1;color:var(--goldd);">por pagar</span>':''}</td>
       <td class="mono ar fw7">${fmt(r.monto)}</td>
       <td style="display:flex;gap:3px;" onclick="event.stopPropagation();">
@@ -11984,9 +12005,9 @@ function renderGastos(){
       </td>
     </tr>`+(pt.length?`<tr id="gpart-${r.id}" style="display:none;"><td colspan="8" style="padding:0 10px 12px;">
       <div style="background:var(--surface2);border-radius:var(--rsm);padding:11px 13px;">
-        <div style="font-size:12.5px;color:var(--text2);font-weight:510;margin-bottom:7px;">Qué trae el ticket ${r.ticket}</div>
+        <div style="font-size:12.5px;color:var(--text2);font-weight:510;margin-bottom:7px;">Qué trae el ticket ${esc(r.ticket)}</div>
         ${pt.map(x=>`<div style="display:flex;justify-content:space-between;gap:12px;padding:5px 0;border-bottom:.5px solid var(--border);font-size:12.5px;">
-          <span>${x.c}</span>
+          <span>${esc(x.c)}</span>
           <span style="display:flex;gap:14px;flex-shrink:0;">
             <span style="color:var(--text3);">${x.q} ${x.u}</span>
             <span class="mono" style="min-width:76px;text-align:right;font-weight:560;">${fmt(x.i)}</span>
@@ -12957,7 +12978,7 @@ function renderCierreDia(){
     </div>
     ${hay?`<p style="font-size:12px;color:var(--text2);margin:0 0 8px;">Lo que falta es merma, receta mal medida o algo que salió sin cobrarse. Lo que sobra suele ser una compra que no se registró.</p>`+
       R.descuadres.slice(0,10).map(x=>`<div class="sr">
-        <span style="font-size:12.5px;">${x.nombre}</span>
+        <span style="font-size:12.5px;">${esc(x.nombre)}</span>
         <span style="display:flex;gap:12px;align-items:baseline;">
           <span style="font-size:11px;color:var(--text3);">esperaba ${x.esperado} · contó ${x.contado} ${x.unit}</span>
           <span class="mono" style="min-width:58px;text-align:right;color:${x.dif<0?'var(--red)':'var(--accent)'};font-weight:600;">${x.dif>0?'+':''}${x.dif}</span>
@@ -14883,15 +14904,15 @@ function renderHuerfanos(){
   if(!HUERF.length){ caja.innerHTML=''; return; }
   const activos=HUERF.filter(h=>h.activos>0).length;
   const opciones=[...D.inventario].sort((a,b)=>a.nombre.localeCompare(b.nombre))
-    .map(i=>`<option value="${i.id}">${i.nombre} (${i.unit||'?'})</option>`).join('');
+    .map(i=>`<option value="${i.id}">${esc(i.nombre)} (${esc(i.unit)||'?'})</option>`).join('');
   caja.innerHTML=`<div class="card" style="margin-bottom:10px;border-left:3px solid var(--red);">
     <div class="sh"><span class="ct" style="margin-bottom:0;">Recetas apuntando a insumos que ya no existen</span>
       <span style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;">${HUERF.length} insumo(s)${activos?` · ${activos} afectan productos activos`:''}</span></div>
     <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Se borraron del inventario pero las recetas los siguen pidiendo. Esos productos dejan de costear sin avisar. Vincúlalos al artículo que se quedó, o vuelve a crearlos.</p>
     ${HUERF.map((h,ix)=>`<div class="sr" style="align-items:center;gap:8px;flex-wrap:wrap;">
       <div style="flex:1;min-width:150px;">
-        <div style="font-size:12.5px;font-weight:600;">${h.nombre} <span style="color:var(--text3);font-weight:400;">${h.unit||'?'}</span></div>
-        <div style="font-size:11px;color:var(--text3);">${h.recetas.length} receta(s)${h.activos?` · ${h.activos} de productos activos`:' · solo productos ocultos'}: ${[...new Set(h.recetas.map(r=>r.prod))].slice(0,3).join(', ')}${h.recetas.length>3?'…':''}</div>
+        <div style="font-size:12.5px;font-weight:600;">${esc(h.nombre)} <span style="color:var(--text3);font-weight:400;">${esc(h.unit)||'?'}</span></div>
+        <div style="font-size:11px;color:var(--text3);">${h.recetas.length} receta(s)${h.activos?` · ${h.activos} de productos activos`:' · solo productos ocultos'}: ${esc([...new Set(h.recetas.map(r=>r.prod))].slice(0,3).join(', '))}${h.recetas.length>3?'…':''}</div>
       </div>
       <select id="hv-${ix}" style="width:auto;min-width:150px;padding:5px 8px;font-size:11.5px;"><option value="">Vincular a…</option>${opciones}</select>
       <button class="btn bp bxs" onclick="vincularHuerfano(${ix})">Vincular</button>
@@ -14969,8 +14990,8 @@ function renderCosteoGuia(){
       const motivo=(fc.faltantes&&fc.faltantes.length)?fc.faltantes.slice(0,2).join(' · '):'sin receta';
       return `<div class="sr" style="align-items:center;gap:10px;">
         <div style="flex:1;min-width:0;">
-          <div style="font-size:13px;font-weight:600;">${p.nombre} <span class="mono" style="color:var(--text3);font-weight:400;">${fmt(p.precio)}</span></div>
-          <div style="font-size:11px;color:var(--gold);margin-top:1px;">${motivo}</div>
+          <div style="font-size:13px;font-weight:600;">${esc(p.nombre)} <span class="mono" style="color:var(--text3);font-weight:400;">${fmt(p.precio)}</span></div>
+          <div style="font-size:11px;color:var(--gold);margin-top:1px;">${esc(motivo)}</div>
           <div style="font-size:11px;color:var(--text3);">${mov.u?`${Math.round(mov.u)} vendidos · ${fmt(mov.imp)}`:'sin ventas en el periodo'}</div>
         </div>
         <button class="btn bp bxs" onclick="abrirCosteo(${p.id})">Costear</button>
@@ -15074,7 +15095,7 @@ function renderCosteoModal(){
       else if(!(q>0)) aviso='<span style="color:var(--gold);font-size:11px;">falta la cantidad</span>';
       return `<div class="sr" style="align-items:center;gap:7px;">
         <div style="flex:1;min-width:0;">
-          <div style="font-size:12.5px;font-weight:560;">${ing.nombre||inv?.nombre||'?'}</div>
+          <div style="font-size:12.5px;font-weight:560;">${esc(ing.nombre||inv?.nombre||'?')}</div>
           ${aviso?`<div style="margin-top:2px;">${aviso}</div>`:''}
         </div>
         <input type="number" step="0.001" value="${ing.qty||''}" placeholder="0" style="width:68px;padding:5px 7px;font-size:12px;" onchange="cstQty(${ix},this.value)">
@@ -15092,7 +15113,7 @@ function renderCosteoModal(){
         <span class="mono" style="font-size:24px;font-weight:700;color:${col};">${m}%</span></div>
       <div style="font-size:11px;color:var(--text3);margin-top:2px;">margen · food cost ${Math.round(fc.costo/p.precio*100)}%</div>`;
   }else{
-    r.innerHTML=`<div style="font-size:12px;color:var(--gold);">Falta: ${(fc.faltantes||['sin receta']).join(' · ')}</div>`;
+    r.innerHTML=`<div style="font-size:12px;color:var(--gold);">Falta: ${esc((fc.faltantes||['sin receta']).join(' · '))}</div>`;
   }
 }
 window.cstQty=(ix,v)=>{const g=cstIngs(); if(!g[ix])return; g[ix]={...g[ix],qty:v}; cstGuardar(g);};
