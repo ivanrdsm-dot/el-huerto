@@ -3006,6 +3006,18 @@ async function completeInit(){
     // El rol se recalcula desde el empleado real (no se confía en lo guardado):
     // si Iván asciende o degrada a alguien, aplica en cuanto recarga.
     if(SESSION?.tipo==='emp'){const e=D.empleados.find(x=>x.id===SESSION.id);SESSION.rol=(e?.rol||'').toLowerCase()==='gerente'?'gerente':'emp';}
+    // ══ LA SESIÓN GUARDADA NO BASTA ══
+    // Al recargar, la app restauraba la sesión del POS y nunca volvía a
+    // identificarse contra Firebase: la tablet se quedaba con la sesión
+    // ANÓNIMA. Con las reglas v3 eso es una caja abierta que no puede
+    // leer nada. Si la persona ya tiene cuenta y no hay sesión propia,
+    // se pide la contraseña otra vez — una sola vez, al recargar.
+    const quienToca=SESSION?.tipo==='admin'?'admin':SESSION?.id;
+    const tieneCuenta=(D.usuarios||[]).some(u=>String(u.quien)===String(quienToca));
+    if(SESSION && tieneCuenta && !AUTH_PERFIL){
+      console.warn('Sesión del POS sin identidad de Firebase: se pide contraseña de nuevo');
+      SESSION=null; try{localStorage.removeItem('h5session');}catch(_){}
+    }
   }}catch(e){}
   await fixUTCDates();
   await fixEmpleadosTipo();
@@ -3080,7 +3092,12 @@ async function completeInit(){
   await migrarRecategorizacionV1();
   await autoSeedRecetas();
   await migRecetasExtras_v1();
+  // La lista pública se lee SIEMPRE: con reglas v3 y sesión anónima es
+  // la única forma de pintar la pantalla de acceso.
+  await cargarPersonalPublico();
   renderLock();
+  // Si hay admin y la lista está vieja o no existe, se republica sola.
+  if(SESSION?.tipo==='admin') publicarPersonal();
   if(!SESSION){
     $('lock-screen').style.display='flex';
   } else {
@@ -7747,8 +7764,12 @@ async function entrarFirebase(quien,password){
       return 'sin-cuenta';
     }
     if(c.includes('wrong-password')) return 'mala-pass';
+    // Cualquier otra cosa —sin red, Firebase caído, demasiados intentos—
+    // NO es "no tiene cuenta". Devolverlo como tal dejaba entrar con el
+    // hash viejo y con sesión anónima: con las reglas v3, esa persona se
+    // queda dentro de la app sin poder leer ni un dato a media venta.
     console.warn('Auth:',c);
-    return 'sin-cuenta';
+    return 'error-red';
   }
 }
 // Cierra la sesión propia y vuelve a la anónima, para que la app siga
@@ -7862,12 +7883,41 @@ async function registrarCheckout(sess){
   }
 }
 
+// ══════════════════════════════════════════════════════════════
+// LA LISTA DE LA PANTALLA DE ACCESO
+// Con las reglas v3, `empleados` es solo para el personal — y con
+// razón: ese documento guarda el PIN viejo en texto plano y los datos
+// de pago. Pero la pantalla de acceso se pinta ANTES de que nadie
+// entre, cuando la sesión todavía es anónima. Leyendo `empleados` ahí,
+// la lista saldría vacía y NADIE podría entrar: la caja muerta.
+// Por eso se publica una lista mínima —nombre, inicial y color, nada
+// más— en `sistema/personal`, que sí es legible por cualquier sesión.
+// ══════════════════════════════════════════════════════════════
+const personalRef=()=>doc(db,'sistema','personal');
+let PERSONAL_PUB=[];
+async function cargarPersonalPublico(){
+  try{ const sn=await getDoc(personalRef()); if(sn.exists()) PERSONAL_PUB=sn.data().lista||[]; }
+  catch(e){ console.warn('No se pudo leer la lista de personal:',e?.code||e); }
+}
+async function publicarPersonal(){
+  const lista=empsActivos().map(e=>({id:e.id,nombre:e.nombre,color:e.color||''}));
+  if(!lista.length) return;
+  try{ await escrituraOk(setDoc(personalRef(),{lista,ts:Date.now()})); PERSONAL_PUB=lista; }
+  catch(e){ console.warn('No se pudo publicar la lista de personal:',e?.code||e); }
+}
+window.publicarPersonal=publicarPersonal;
+// Para la pantalla de acceso: los empleados reales si se pueden leer;
+// si no (sesión anónima con reglas v3), la lista publicada.
+const personalParaAcceso=()=>{
+  const reales=empsActivos();
+  return reales.length?reales:PERSONAL_PUB;
+};
 function renderLock(){
   const btns=$('lock-emp-btns'); if(!btns) return;
-  btns.innerHTML = empsActivos().map(e=>`
+  btns.innerHTML = personalParaAcceso().map(e=>`
     <button class="lock-btn lock-btn-emp" onclick="openEmpPIN(${e.id})" style="border-radius:var(--rsm);margin-bottom:9px;">
-      <div class="lav" style="background:${e.color||'var(--accent)'};">${e.nombre[0]}</div>
-      <div><div class="lname">${e.nombre}</div><div class="lrole">Vendedor — ingresa tu contraseña</div></div>
+      <div class="lav" style="background:${e.color||'var(--accent)'};">${esc((e.nombre||'?')[0])}</div>
+      <div><div class="lname">${esc(e.nombre)}</div><div class="lrole">Vendedor — ingresa tu contraseña</div></div>
       <span style="margin-left:auto;color:var(--text3);font-size:14px;">🔑</span>
     </button>`).join('');
 }
@@ -8015,6 +8065,10 @@ async function checkPIN(){
     const rFb = await entrarFirebase(pinTargetEmpId,val);
     const empHash = EMP_PASS_HASH[pinTargetEmpId] || '';
     const legacyPin = D.empleados.find(e=>e.id===pinTargetEmpId)?.pin || null;
+    if(rFb==='error-red'){
+      toast('⚠ No se pudo confirmar tu acceso — revisa la señal e intenta otra vez',5000,'error');
+      $('pin-input').value=''; return;
+    }
     const ok = rFb==='ok' ||
       (rFb==='sin-cuenta' && ((empHash && valHash===empHash) || (legacyPin && val===legacyPin)));
     if(ok){
@@ -8033,6 +8087,10 @@ async function checkPIN(){
   }
   // Admin: mismo criterio — manda la cuenta propia si ya existe
   const rAdmin = await entrarFirebase('admin',val);
+  if(rAdmin==='error-red'){
+    toast('⚠ No se pudo confirmar tu acceso — revisa la señal e intenta otra vez',5000,'error');
+    $('pin-input').value=''; return;
+  }
   if(rAdmin==='ok' || (rAdmin==='sin-cuenta' && valHash===ADMIN_PASS_HASH)){
     pinExito();
     SESSION={tipo:'admin',nombre:'Admin',color:'#e8c96a'};
@@ -12454,6 +12512,7 @@ window.toggleEmpActivo=async id=>{
   await fsSet('empleados',darBaja?{...e,activo:false,baja:today()}:{...e,activo:true,baja:null});
   logAudit(darBaja?'empleado_baja':'empleado_reactivado',{nombre:e.nombre,id:e.id});
   toast(darBaja?`🚫 ${e.nombre} dado de baja`:`✓ ${e.nombre} reactivado`);
+  publicarPersonal();
   scheduleRender();
 };
 window.addEmpleado=()=>abrirModalEmpleado(null);
@@ -16732,6 +16791,9 @@ window.crearCuentasAuth=async()=>{
   // Volver a dejar la sesión como admin
   const r=await entrarFirebase('admin',passAdmin);
   if(r!=='ok') await salirFirebase();
+  // Con las reglas v3, la pantalla de acceso ya no podrá leer `empleados`:
+  // se deja publicada la lista mínima antes de que eso pase.
+  await publicarPersonal();
   logAudit('cuentas_auth_creadas',{creadas:hechas,fallidas});
   await revisarCuentasAuth();
   const listas=hechas.length===personas.length && !fallidas.length;
