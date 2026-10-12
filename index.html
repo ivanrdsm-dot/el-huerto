@@ -12828,6 +12828,71 @@ window.setInvCategoria=c=>{
   renderInv();
 };
 
+// ══════════════════════════════════════════════════════════════
+// CIERRE DEL DÍA: LO QUE DEBERÍA HABER CONTRA LO QUE HAY
+// Iván: "el inventario se necesita comparar con el día anterior todos
+// los días con el que capturen las cajeras, hagamos un inventario en
+// tiempo real".
+// El sistema ya llevaba el stock al minuto —cada venta descuenta su
+// receta— pero al capturar el conteo físico lo pisaba y la diferencia
+// se perdía. Esa diferencia es el dato: lo que falta es merma, receta
+// mal medida, o algo que salió sin cobrarse. Y en pesos.
+// ══════════════════════════════════════════════════════════════
+const DESCUADRE_MIN=0.009;        // por debajo de esto es redondeo, no descuadre
+function calcCierreDia(fecha){
+  const f=fecha||today();
+  const caps=D.invDiario.filter(c=>c.fecha===f);
+  const filas=caps.map(c=>{
+    const inv=D.inventario.find(i=>i.id===c.productoId);
+    const dif=c.diferencia;
+    const precio=(c.precioUnit!=null?c.precioUnit:(inv?.precio||0));
+    return {nombre:inv?inv.nombre:'(artículo borrado)',unit:c.unit||inv?.unit||'',
+      contado:c.qty,esperado:c.esperado,dif,
+      pesos:(dif!=null)?r2(dif*precio):null, quien:c.capturadoPorNombre||''};
+  });
+  const conDato=filas.filter(x=>x.dif!=null);
+  const descuadres=conDato.filter(x=>Math.abs(x.dif)>DESCUADRE_MIN)
+    .sort((a,b)=>Math.abs(b.pesos||0)-Math.abs(a.pesos||0));
+  const faltante=r2(descuadres.filter(x=>x.dif<0).reduce((s,x)=>s+(x.pesos||0),0));
+  const sobrante=r2(descuadres.filter(x=>x.dif>0).reduce((s,x)=>s+(x.pesos||0),0));
+  return {fecha:f,contados:caps.length,conDato:conDato.length,descuadres,
+    faltante,sobrante,neto:r2(faltante+sobrante)};
+}
+function renderCierreDia(){
+  const caja=$('inv-cierre'); if(!caja) return;
+  const R=calcCierreDia();
+  if(!R.contados){ caja.innerHTML=''; return; }
+  if(!R.conDato){
+    caja.innerHTML=`<div class="card" style="margin-bottom:12px;">
+      <div class="ct">Cierre del día</div>
+      <p style="font-size:12.5px;color:var(--text2);margin:0;">${R.contados} artículo(s) capturados hoy. La comparación contra lo que el sistema esperaba empieza a partir de las capturas de hoy en adelante.</p></div>`;
+    return;
+  }
+  const hay=R.descuadres.length;
+  const col=Math.abs(R.faltante)>=100?'var(--red)':(hay?'var(--gold)':'var(--accent)');
+  caja.innerHTML=`<div class="card" style="margin-bottom:12px;border-left:3px solid ${col};">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Cierre del día</span>
+      <span style="font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums;">${R.conDato} comparado(s) de ${R.contados} capturado(s)</span></div>
+    <div class="g3" style="gap:8px;margin-bottom:10px;">
+      <div style="text-align:center;"><div style="font-size:11px;color:var(--text3);">Falta</div>
+        <div class="mono" style="font-size:19px;font-weight:700;color:var(--red);">${fmt(Math.abs(R.faltante))}</div></div>
+      <div style="text-align:center;"><div style="font-size:11px;color:var(--text3);">Sobra</div>
+        <div class="mono" style="font-size:19px;font-weight:700;color:var(--accent);">${fmt(R.sobrante)}</div></div>
+      <div style="text-align:center;"><div style="font-size:11px;color:var(--text3);">Neto</div>
+        <div class="mono" style="font-size:19px;font-weight:700;color:${R.neto<0?'var(--red)':'var(--text)'};">${fmt(R.neto)}</div></div>
+    </div>
+    ${hay?`<p style="font-size:12px;color:var(--text2);margin:0 0 8px;">Lo que falta es merma, receta mal medida o algo que salió sin cobrarse. Lo que sobra suele ser una compra que no se registró.</p>`+
+      R.descuadres.slice(0,10).map(x=>`<div class="sr">
+        <span style="font-size:12.5px;">${x.nombre}</span>
+        <span style="display:flex;gap:12px;align-items:baseline;">
+          <span style="font-size:11px;color:var(--text3);">esperaba ${x.esperado} · contó ${x.contado} ${x.unit}</span>
+          <span class="mono" style="min-width:58px;text-align:right;color:${x.dif<0?'var(--red)':'var(--accent)'};font-weight:600;">${x.dif>0?'+':''}${x.dif}</span>
+          <span class="mono" style="min-width:74px;text-align:right;font-weight:600;">${x.pesos!=null?fmt(x.pesos):'—'}</span>
+        </span></div>`).join('')+
+      (hay>10?`<div style="font-size:11px;color:var(--text3);margin-top:6px;">y ${hay-10} más</div>`:'')
+      :`<p style="font-size:12.5px;color:var(--accent);margin:0;">Todo lo contado cuadra con lo que el sistema esperaba.</p>`}
+  </div>`;
+}
 window.invGuardarCantidad=async(productoId,qty)=>{
   const valor=parseFloat(qty);
   if(isNaN(valor)||valor<0){toast('⚠ Cantidad inválida',2400,'warn');return;}
@@ -12835,13 +12900,26 @@ window.invGuardarCantidad=async(productoId,qty)=>{
   // Da igual si la primera la hizo Adilene y la segunda Claudia: solo queda la última.
   const td=today();
   const existe=D.invDiario.find(c=>c.productoId===productoId&&c.fecha===td);
-  const empNombre=SESSION?.nombre||(SESSION?.tipo==='admin'?'Admin':'Sin sesión');
-  const captura=existe?
-    {...existe,qty:valor,ts:Date.now(),capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre}:
-    {id:Date.now()+Math.floor(Math.random()*100),fecha:td,productoId,qty:valor,capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre,ts:Date.now()};
-  await fsSet('invDiario',captura);
-  // Actualizar campo qty del inventario para compatibilidad con sistema viejo
   const inv=D.inventario.find(i=>i.id===productoId);
+  // ══ LO QUE DEBERÍA HABER CONTRA LO QUE HAY ══
+  // `inventario.qty` es lo que el sistema CREE que queda: baja sola con
+  // cada venta (por receta) y sube con cada compra. Justo antes de que
+  // la cajera escriba su conteo, ese número es el "deberías tener".
+  // Hasta hoy el conteo lo pisaba y la diferencia se perdía — que es
+  // justo el dato que convierte el inventario en control: lo que falta
+  // es merma, receta mal medida, o algo que salió sin cobrarse.
+  // Si vuelven a capturar el mismo día se conserva el esperado de la
+  // PRIMERA toma: después de esa, inventario.qty ya trae el conteo y
+  // compararse contra sí mismo siempre daría cero.
+  const esperado=(existe&&existe.esperado!=null)?existe.esperado:(inv?r2(inv.qty||0):null);
+  const diferencia=esperado!=null?r2(valor-esperado):null;
+  const empNombre=SESSION?.nombre||(SESSION?.tipo==='admin'?'Admin':'Sin sesión');
+  const extra={esperado,diferencia,precioUnit:inv?.precio||0,unit:inv?.unit||''};
+  const captura=existe?
+    {...existe,...extra,qty:valor,ts:Date.now(),capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre}:
+    {id:Date.now()+Math.floor(Math.random()*100),fecha:td,productoId,qty:valor,...extra,capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre,ts:Date.now()};
+  await fsSet('invDiario',captura);
+  // El conteo físico manda: lo que se contó es lo que hay
   if(inv){inv.qty=valor;await fsSet('inventario',{...inv,qty:valor});}
 };
 
@@ -13009,6 +13087,7 @@ function renderInvCaptura(){
   const catActiva=productosPorCat.find(c=>c.key===invCategoriaActiva)||productosPorCat[0];
 
   let html=`
+    <div id="inv-cierre"></div>
     <!-- Tabs de categorías con avance -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
       ${avancePorCat.map(c=>{
@@ -13043,6 +13122,11 @@ function renderInvCaptura(){
                 ${consumo!=null&&consumo>0?`· Consumo: <strong class="ar">−${consumo.toFixed(2)}</strong>`:''}
                 ${consumo!=null&&consumo<0?`· Aumentó: <strong class="ag">+${Math.abs(consumo).toFixed(2)}</strong>`:''}
               </div>
+              ${(()=>{const c=D.invDiario.find(x=>x.productoId===p.id&&x.fecha===td);
+                if(!c||c.diferencia==null||Math.abs(c.diferencia)<=0.009) return '';
+                const falta=c.diferencia<0;
+                return `<div style="font-size:11px;margin-top:3px;color:${falta?'var(--red)':'var(--accent)'};font-weight:560;">
+                  El sistema esperaba ${c.esperado} · ${falta?'faltan':'sobran'} ${Math.abs(c.diferencia)}</div>`;})()}
               ${capturado?'':`<div style="font-size:10px;color:var(--orange);margin-top:3px;">⏳ Pendiente de capturar</div>`}
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
@@ -13069,6 +13153,7 @@ function renderInvCaptura(){
     })()}`;
 
   $('inv-content').innerHTML=html;
+  renderCierreDia();
 }
 
 window.invFinalizarConteo=()=>{
