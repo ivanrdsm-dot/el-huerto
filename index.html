@@ -3154,6 +3154,9 @@ async function completeInit(){
   await migrateUnidadesV3();
   await migUnidadEtiqueta13Oct2026();
   await migAcai12Oct2026();
+  await migPanRenee13Oct2026();
+  await migClasificaPanRenee13Oct();
+  await migPanReneeConteo13Oct();
   await migrarRecategorizacionV1();
   await autoSeedRecetas();
   await migRecetasExtras_v1();
@@ -5089,6 +5092,130 @@ const PRECIOS13=[
 // inventario NO se toca, porque no sé cuántas bolsas trae ni a qué
 // precio por gramo, y meter una cantidad inventada ensucia el costeo.
 // ═══════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════
+// LA ENTREGA DE PAN DEL 13-OCT — 10 de cada sabor (Iván, 13-oct)
+// El conteo del día encontró pan de sobra y lo señaló como "llegó
+// mercancía que no está capturada". Iván confirmó la entrega: diez
+// piezas de cada uno de los cinco sabores.
+//
+// 50 piezas × $46.75 = $2,337.50. El precio por pieza no se inventa:
+// es el suyo, confirmado con el ticket 19880 (lista $55 − 15%).
+//
+// Solo entra el GASTO. El inventario NO se toca: el conteo físico de
+// hoy ya absorbió la entrega, y volver a sumarla duplicaría el pan.
+// Queda como pendiente de pago, que es como trabaja con Grace.
+// ═══════════════════════════════════════════════════════════
+const RENEE_SABORES=['Chilaquiles Verdes','Chilaquiles Rojos','Queso','Pizza','Rajas Poblanas'];
+async function migPanRenee13Oct2026(){
+  const migKey='h5renee_13oct26';
+  if(await migDone(migKey)) return;
+  const TICKET='RENEE-13OCT26';
+  if(!D.gastos.find(x=>x.ticket===TICKET)){
+    const PZA=46.75, POR_SABOR=10;
+    const partidas=RENEE_SABORES.map(sab=>({c:`Pan Tía Renee — ${sab}`,q:POR_SABOR,u:'pz',i:r2(POR_SABOR*PZA)}));
+    const monto=r2(partidas.reduce((a,x)=>a+x.i,0));
+    await fsSet('gastos',{
+      id:Date.now(), fecha:'2026-10-13', ticket:TICKET,
+      prov:'Tía Renee', cat:'proveedor', tipoEstrategico:'operacion',
+      metodo:'efectivo', monto, pendientePago:true, partidas,
+      notas:'10 piezas de cada sabor, confirmado por Iván el 13-oct. $46.75 por pieza (lista $55 − 15%). El inventario no se tocó: el conteo del día ya traía la entrega.'
+    });
+    logAudit('compras_registradas',{proveedor:'Tía Renee',ticket:TICKET,monto,piezas:RENEE_SABORES.length*POR_SABOR,
+      motivo:'El conteo del día detectó el pan de sobra; Iván confirmó la entrega'});
+    toast(`✓ Pan Tía Renee ${fmt(monto)} registrado — queda por pagar`,5000);
+  }
+
+  await markMig(migKey);
+}
+async function migClasificaPanRenee13Oct(){
+  const migKey='h5renee_clasif_13oct26';   // llave propia: la de la compra ya corrió
+  if(await migDone(migKey)) return;
+  // ── Repartir lo que quedó en el cubo "por clasificar" ──────
+  // Ninguna receta usa ese artículo: el pan que cae ahí NUNCA se
+  // descuenta al vender, e infla el inventario. Iván dice que hoy
+  // entraron 10 de cada sabor; el conteo lo reflejó en Verdes (10),
+  // Queso (10) y Pizza (9), pero NO en Rojos ni en Rajas Poblanas,
+  // que se quedaron en 15 y 0. Esas 20 piezas están en el montón sin
+  // clasificar.
+  //
+  // Se MUEVEN, no se crean: el total físico (89 piezas) no cambia,
+  // solo se le pone nombre a 20 de ellas. Rajas Poblanas estaba en
+  // CERO, así que el sistema creía que no se podía vender.
+  // Las 25 restantes se quedan en el cubo: no sé de qué sabor son y
+  // repartirlas a ojo sería inventar.
+  const generico=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Pan Tía Renee (por clasificar)'));
+  const reparto=[['Chilaquiles Rojos',10],['Rajas Poblanas',10]];
+  const mueve=reparto.reduce((a2,x)=>a2+x[1],0);
+  if(generico && (generico.qty||0)>=mueve){
+    const movidos=[];
+    for(const [sabor,n] of reparto){
+      const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(`Pan Tía Renee — ${sabor}`));
+      if(!inv) continue;
+      const upd={...inv,qty:r2((inv.qty||0)+n)};
+      await fsSet('inventario',upd);
+      const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+      movidos.push(`${sabor}: ${inv.qty||0} → ${upd.qty} pz`);
+    }
+    if(movidos.length){
+      const upd={...generico,qty:r2((generico.qty||0)-mueve)};
+      await fsSet('inventario',upd);
+      const ix=D.inventario.findIndex(i=>i.id===generico.id); if(ix>=0) D.inventario[ix]=upd;
+      logAudit('inventario_correccion',{movidos,quedan:`${upd.qty} pz sin clasificar`,
+        motivo:'El cubo "por clasificar" no entra en ninguna receta: el pan que cae ahí no se descuenta al vender'});
+      toast(`✓ Pan: ${mueve} piezas clasificadas · quedan ${upd.qty} por repartir`,5500);
+    }
+  }
+
+
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// EL CONTEO TAMBIÉN SE RECLASIFICA — 13-oct
+// Mover solo `inventario.qty` no alcanzaba: TODAS las pantallas
+// prefieren el conteo del día (`invStockHoy`) sobre el qty. El pan
+// habría salido vendible para el descuento y "🔴 AGOTADO" en la
+// pantalla de la cajera. Dos verdades a la vez es peor que una mala.
+//
+// Aquí se fija el valor FINAL de las tres piezas, en el conteo y en
+// el stock, en una sola pasada. Son valores absolutos: corra una o
+// diez veces, el resultado es el mismo. El total físico no cambia —
+// 45 + 15 + 0 = 60 antes, 25 + 25 + 10 = 60 ahora. Solo se le pone
+// nombre a 20 piezas que estaban en el montón sin clasificar.
+// ═══════════════════════════════════════════════════════════
+async function migPanReneeConteo13Oct(){
+  const migKey='h5renee_conteo_13oct26';
+  if(await migDone(migKey)) return;
+  const FINAL=[
+    ['Pan Tía Renee (por clasificar)',      25],
+    ['Pan Tía Renee — Chilaquiles Rojos',   25],
+    ['Pan Tía Renee — Rajas Poblanas',      10],
+  ];
+  const td='2026-10-13', hechos=[];
+  for(const [nombre,valor] of FINAL){
+    const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(nombre));
+    if(!inv) continue;
+    if((inv.qty||0)!==valor){
+      const upd={...inv,qty:valor};
+      await fsSet('inventario',upd);
+      const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    }
+    const cap=D.invDiario.find(c=>c.productoId===inv.id&&c.fecha===td);
+    if(cap && cap.qty!==valor){
+      const upd={...cap,qty:valor,
+        diferencia:(cap.esperado!=null?r2(valor-cap.esperado):cap.diferencia),
+        notaCorreccion:'Reclasificado: el pan estaba contado en el montón sin sabor'};
+      await fsSet('invDiario',upd);
+      const ix=D.invDiario.findIndex(c=>c.id===cap.id); if(ix>=0) D.invDiario[ix]=upd;
+      hechos.push(`${inv.nombre}: ${cap.qty} → ${valor} pz`);
+    }
+  }
+  if(hechos.length){
+    logAudit('inventario_correccion',{cambios:hechos,
+      motivo:'"Por clasificar" no entra en ninguna receta: ese pan nunca se descuenta al vender. Iván confirmó 10 de cada sabor el 13-oct'});
+    toast(`✓ Pan clasificado: ${hechos.length} ajuste(s)`,5000);
+  }
+  await markMig(migKey);
+}
 async function migAcai12Oct2026(){
   const migKey='h5acai_12oct26';
   if(await migDone(migKey)) return;
@@ -12380,7 +12507,18 @@ function proveedoresHabituales(){
 // enterrada en Inventario; aquí se dice donde se captura el gasto.
 function comprasSinRegistrar(){
   const R=calcCierreDia();
-  return (R.descuadres||[]).filter(x=>x.dif>0&&(x.pesos||0)>=150)
+  // Una sobra deja de ser sospechosa en cuanto su compra SÍ está
+  // capturada: si el ticket de esta semana ya menciona el artículo, el
+  // dinero está contado y seguir señalándolo es gritar en falso. Una
+  // tarjeta que avisa de lo que ya resolviste se vuelve ruido y se
+  // deja de leer, que es justo lo que no queremos que pase.
+  const sem=new Set(getWDays7(hoyOperativo()));
+  const yaFacturado=new Set();
+  for(const g of D.gastos){
+    if(!sem.has(g.fecha)) continue;
+    for(const pt of (g.partidas||[])) yaFacturado.add(normInvNombre(pt.c||''));
+  }
+  return (R.descuadres||[]).filter(x=>x.dif>0&&(x.pesos||0)>=150&&!yaFacturado.has(normInvNombre(x.nombre||'')))
     .sort((a,b)=>(b.pesos||0)-(a.pesos||0)).slice(0,6);
 }
 function renderGastosFaltantes(){

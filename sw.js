@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.22'; // Açaí $907 a Vega Life, capturado en los gastos del 12-oct
+const CACHE_NAME = 'el-huerto-v15.23'; // Entrega de pan del 13-oct y el montón sin clasificar repartido por sabor
 const ASSETS = [
   '/',
   '/index.html',
