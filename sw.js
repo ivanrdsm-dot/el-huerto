@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.21'; // Celular: el Corte de Caja cabía; los datos ya no se borran al fallar el oyente
+const CACHE_NAME = 'el-huerto-v15.22'; // Açaí $907 a Vega Life, capturado en los gastos del 12-oct
 const ASSETS = [
   '/',
   '/index.html',

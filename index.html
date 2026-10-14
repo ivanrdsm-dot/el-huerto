@@ -3153,6 +3153,7 @@ async function completeInit(){
   await seedInventarioOficial();
   await migrateUnidadesV3();
   await migUnidadEtiqueta13Oct2026();
+  await migAcai12Oct2026();
   await migrarRecategorizacionV1();
   await autoSeedRecetas();
   await migRecetasExtras_v1();
@@ -5075,6 +5076,36 @@ const PRECIOS13=[
   ['Avena',             0.015],  // $15/kg
   ['Chorizo pamplona',  0.295],  // $295 la pieza, y la pieza es de 1 kg (ticket: 1 pz $295)
 ];
+// ═══════════════════════════════════════════════════════════
+// EL AÇAÍ DEL 12-OCT — $907 a Vega Life (Iván, 13-oct)
+// Iván pagó el açaí ayer y el gasto nunca se capturó: por eso el
+// Panel no lo veía. Él dio el monto —"el acai 907"— y coincide al
+// centavo con su compra anterior a Vega Life (10-ago, $907.00 por
+// transferencia), así que el proveedor y el método no se adivinan:
+// se repiten los suyos.
+//
+// No lleva partidas: no hay ticket desglosado. El gasto entra
+// completo para que el control por día/semana/mes cuadre; el
+// inventario NO se toca, porque no sé cuántas bolsas trae ni a qué
+// precio por gramo, y meter una cantidad inventada ensucia el costeo.
+// ═══════════════════════════════════════════════════════════
+async function migAcai12Oct2026(){
+  const migKey='h5acai_12oct26';
+  if(await migDone(migKey)) return;
+  const TICKET='ACAI-12OCT26';
+  if(!D.gastos.find(x=>x.ticket===TICKET)){
+    await fsSet('gastos',{
+      id:Date.now(), fecha:'2026-10-12', ticket:TICKET,
+      prov:'Vega Life', cat:'proveedor', tipoEstrategico:'operacion',
+      metodo:'transferencia', monto:907.00,
+      notas:'Açaí. Monto dado por Iván el 13-oct; coincide con la compra del 10-ago. Sin ticket desglosado.'
+    });
+    logAudit('gasto_capturado',{proveedor:'Vega Life',monto:907,fecha:'2026-10-12',
+      motivo:'Pagado el 12-oct y nunca capturado: el Panel no lo veía'});
+    toast('✓ Açaí $907 registrado en los gastos del 12-oct',4500);
+  }
+  await markMig(migKey);
+}
 async function migUnidadEtiqueta13Oct2026(){
   const migKey='h5unidadof_13oct26';
   if(await migDone(migKey)) return;
