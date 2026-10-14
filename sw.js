@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.20'; // El Panel ya no compara un día de ventas contra la compra de la semana
+const CACHE_NAME = 'el-huerto-v15.21'; // Celular: el Corte de Caja cabía; los datos ya no se borran al fallar el oyente
 const ASSETS = [
   '/',
   '/index.html',
