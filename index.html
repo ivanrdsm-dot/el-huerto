@@ -8575,21 +8575,23 @@ async function checkPINInterno(val,valHash,soltar){
     toast('⚠ No se pudo confirmar tu acceso — revisa la señal e intenta otra vez',5000,'error');
     $('pin-input').value=''; return;
   }
-  // Si Firebase la rechaza pero la contraseña SÍ es la del sistema, no se
-  // le cierra la puerta al dueño: se le deja entrar y se le dice exactamente
-  // qué pasa. Quedarse fuera de tu propio negocio sin explicación es peor
-  // que entrar con una sesión limitada.
-  // Si Firebase la rechaza pero la del sistema sí es, no se le cierra la
-  // puerta al dueño — pero el aviso NO puede ser un toast que se va a los
-  // 12 segundos. Entra con sesión anónima: la app se ve entera y no carga
-  // un solo dato. Esa advertencia tiene que quedarse en pantalla hasta
-  // que se arregle, y por eso la pinta la barra de abajo (pintaAvisoDatos
-  // ya sabe distinguir "sin permiso" de "falló la red").
-  const desfasada = rAdmin==='mala-pass' && valHash===ADMIN_PASS_HASH;
-  if(desfasada){
-    toast('⚠ Esa contraseña ya no es la de la base. Entras, pero los datos no van a cargar.',9000,'error');
-  }
-  if(rAdmin==='ok' || desfasada || (rAdmin==='sin-cuenta' && valHash===ADMIN_PASS_HASH)){
+  // ══ SE ACABÓ LA PUERTA DE ATRÁS (Iván, 14-oct) ═══════════
+  // Había un respaldo: si Firebase rechazaba la contraseña pero
+  // coincidía con el hash del código, se le dejaba entrar igual para no
+  // dejar al dueño fuera de su propio negocio. La intención era buena y
+  // el resultado era peor: entraba con sesión ANÓNIMA, la app se veía
+  // completa y no cargaba un solo dato de los suyos —gastos, nómina—.
+  // Dos días buscando un fallo que era esto.
+  //
+  // Él lo pidió con todas sus letras: "mejor pon contraseña incorrecta
+  // antes de que entre mal". Tiene razón: una puerta que te deja pasar a
+  // una casa vacía no es una puerta, es una trampa. Si Firebase dice que
+  // no, es que no.
+  //
+  // Sin red NO se rechaza —eso ya se resolvió arriba con 'error-red'— y
+  // el respaldo del hash sigue vivo solo para quien de verdad todavía no
+  // tiene cuenta ('sin-cuenta'), que es para lo que se hizo.
+  if(rAdmin==='ok' || (rAdmin==='sin-cuenta' && valHash===ADMIN_PASS_HASH)){
     pinExito();
     SESSION={tipo:'admin',nombre:'Admin',color:'#e8c96a'};
     try{ localStorage.setItem('h5session',JSON.stringify(SESSION)); }catch(e){}

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.26'; // Contraseña mal ya no se confunde con 'sin cuenta'; el aviso dice el motivo real
+const CACHE_NAME = 'el-huerto-v15.27'; // Fuera la puerta de atrás del admin: si la contraseña no es, no entra
 const ASSETS = [
   '/',
   '/index.html',
