@@ -3306,8 +3306,10 @@ function listenAll(){
 // colección esté caída, la barra lo enseña para que nadie lea un
 // $0.00 como si fuera la verdad del día.
 const COLS_CAIDAS=new Set();
+let MOTIVO_CAIDA='';
 function marcaColeccionCaida(col,motivo){
   COLS_CAIDAS.add(col);
+  if(motivo) MOTIVO_CAIDA=String(motivo);
   try{ pintaAvisoDatos(); }catch(e){}
   console.warn('colección caída:',col,motivo);
 }
@@ -3316,16 +3318,39 @@ function marcaColeccionViva(col){
 }
 function pintaAvisoDatos(){
   let el=document.getElementById('aviso-datos');
-  if(!COLS_CAIDAS.size){ if(el) el.remove(); return; }
+  // Antes de entrar, por supuesto que no hay permisos: avisarlo en la
+  // pantalla de acceso solo asusta.
+  const enAcceso=(()=>{ const l=document.getElementById('lock-screen');
+    return l && getComputedStyle(l).display!=='none'; })();
+  if(!COLS_CAIDAS.size || enAcceso){ if(el) el.remove(); return; }
   if(!el){
     el=document.createElement('div');
     el.id='aviso-datos';
-    el.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9400;background:var(--gold);color:#fff;padding:9px 14px;font-size:12.5px;font-weight:560;text-align:center;cursor:pointer;';
-    el.onclick=()=>{ try{ resuscribirDatos(); toast('Reintentando…',2000); }catch(e){} };
+    el.style.cssText='position:fixed;left:0;right:0;bottom:0;z-index:9400;color:#fff;padding:9px 14px;font-size:12.5px;font-weight:560;text-align:center;cursor:pointer;';
     document.body.appendChild(el);
   }
   const n=COLS_CAIDAS.size;
-  el.textContent=`No se pudieron leer ${n} grupo${n===1?'':'s'} de datos (${[...COLS_CAIDAS].join(', ')}). Lo que ves puede estar incompleto — toca para reintentar.`;
+  // Sin sesión propia, volver a suscribirse NO arregla nada: las reglas
+  // niegan lo mismo otra vez. Lo que hace falta es volver a entrar con la
+  // contraseña, y eso es lo que tiene que decir el aviso.
+  // El motivo cambia por completo qué hay que hacer, así que se dice:
+  //  · resource-exhausted → se acabó la cuota diaria del plan gratuito.
+  //    Reintentar no sirve de nada hasta que se reinicie a medianoche.
+  //  · permission-denied sin sesión propia → hay que volver a entrar.
+  //  · cualquier otra → señal; reintentar sí tiene sentido.
+  const sinCuota=/resource-exhausted|quota/i.test(MOTIVO_CAIDA);
+  const anonimo=!AUTH_PERFIL && /permission-denied/i.test(MOTIVO_CAIDA);
+  el.style.background=sinCuota?'var(--red)':(anonimo?'var(--red)':'var(--gold)');
+  el.textContent=sinCuota
+    ? `Se acabó la cuota diaria de la base (${n} grupo${n===1?'':'s'} sin cargar). Se reinicia a las 2 de la mañana. Enséñale esto a Iván.`
+    : anonimo
+    ? `La base no reconoce tu sesión, por eso no cargan los datos (${n} grupo${n===1?'':'s'}). Toca aquí para volver a entrar con tu contraseña.`
+    : `No se pudieron leer ${n} grupo${n===1?'':'s'} de datos: ${MOTIVO_CAIDA||'sin detalle'} (${[...COLS_CAIDAS].join(', ')}). Toca para reintentar.`;
+  el.onclick=sinCuota
+    ? ()=>{ toast('No es la señal ni el teléfono: es el tope diario de la base. Iván tiene que subir el plan.',8000,'warn'); }
+    : anonimo
+    ? ()=>{ try{ lockApp(); }catch(e){ location.reload(); } }
+    : ()=>{ try{ resuscribirDatos(); toast('Reintentando…',2000); }catch(e){} };
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -8150,11 +8175,18 @@ async function entrarFirebase(quien,password){
   }catch(e){
     const c=e?.code||'';
     // Cuenta inexistente o proveedor apagado: seguimos con la anónima
-    if(c.includes('user-not-found')||c.includes('invalid-credential')||c.includes('operation-not-allowed')||c.includes('invalid-email')){
+    // OJO: Firebase moderno devuelve `invalid-credential` TANTO para
+    // "no existe la cuenta" como para "la contraseña está mal" — borró la
+    // diferencia a propósito, para no filtrar qué correos existen.
+    // Tratarlo como "sin cuenta" hacía que una contraseña equivocada
+    // colara por el respaldo del hash viejo y dejara a la persona dentro
+    // con sesión ANÓNIMA: la app se ve normal y no carga un solo dato.
+    // Es justo lo que le pasó a Iván el 14-oct.
+    if(c.includes('user-not-found')||c.includes('operation-not-allowed')||c.includes('invalid-email')){
       console.warn('Sin cuenta propia para',quien,'—',c,'(se sigue con sesión anónima)');
       return 'sin-cuenta';
     }
-    if(c.includes('wrong-password')) return 'mala-pass';
+    if(c.includes('wrong-password')||c.includes('invalid-credential')) return 'mala-pass';
     // Cualquier otra cosa —sin red, Firebase caído, demasiados intentos—
     // NO es "no tiene cuenta". Devolverlo como tal dejaba entrar con el
     // hash viejo y con sesión anónima: con las reglas v3, esa persona se
@@ -8547,9 +8579,15 @@ async function checkPINInterno(val,valHash,soltar){
   // le cierra la puerta al dueño: se le deja entrar y se le dice exactamente
   // qué pasa. Quedarse fuera de tu propio negocio sin explicación es peor
   // que entrar con una sesión limitada.
+  // Si Firebase la rechaza pero la del sistema sí es, no se le cierra la
+  // puerta al dueño — pero el aviso NO puede ser un toast que se va a los
+  // 12 segundos. Entra con sesión anónima: la app se ve entera y no carga
+  // un solo dato. Esa advertencia tiene que quedarse en pantalla hasta
+  // que se arregle, y por eso la pinta la barra de abajo (pintaAvisoDatos
+  // ya sabe distinguir "sin permiso" de "falló la red").
   const desfasada = rAdmin==='mala-pass' && valHash===ADMIN_PASS_HASH;
   if(desfasada){
-    toast('⚠ Tu contraseña de admin NO coincide con la de Firebase. Entras, pero puede que no cargue información. Pídele a Claude que la restablezca.',12000,'error');
+    toast('⚠ Esa contraseña ya no es la de la base. Entras, pero los datos no van a cargar.',9000,'error');
   }
   if(rAdmin==='ok' || desfasada || (rAdmin==='sin-cuenta' && valHash===ADMIN_PASS_HASH)){
     pinExito();
@@ -8558,6 +8596,7 @@ async function checkPINInterno(val,valHash,soltar){
     $('pin-modal').style.display='none';
     $('lock-screen').style.display='none';
     updateNavForSession();
+    setTimeout(()=>{ try{ pintaAvisoDatos(); }catch(e){} },800);
     const dest=pinTarget&&pinTarget!=='admin'?pinTarget:'dashboard';
     pinTarget=null;
     go(dest);

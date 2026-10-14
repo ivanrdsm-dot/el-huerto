@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.25'; // Se revierte la regla de celular que rompía 34 encabezados; si no arranca, lo dice
+const CACHE_NAME = 'el-huerto-v15.26'; // Contraseña mal ya no se confunde con 'sin cuenta'; el aviso dice el motivo real
 const ASSETS = [
   '/',
   '/index.html',
