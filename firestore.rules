@@ -74,7 +74,13 @@ service cloud.firestore {
     }
 
     // ── Bitácora: append-only para todos, incluido el dueño ──
+    // Se quedó SIN permiso de lectura para nadie: el oyente fallaba en
+    // cada carga y la pantalla de Bitácora en Config salía siempre
+    // vacía. Append-only significa que no se puede corregir ni borrar
+    // —eso sigue igual—, no que el dueño no pueda leer su propio
+    // registro. Al personal no le toca: ahí quedan las acciones de todos.
     match /auditLog/{logId} {
+      allow read:   if esAdmin();
       allow create: if esStaff();
       allow update, delete: if false;
     }

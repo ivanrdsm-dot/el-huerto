@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.24'; // El ticket y el inventario escriben distinto el mismo insumo: ya se reconocen
+const CACHE_NAME = 'el-huerto-v15.25'; // Se revierte la regla de celular que rompía 34 encabezados; si no arranca, lo dice
 const ASSETS = [
   '/',
   '/index.html',
