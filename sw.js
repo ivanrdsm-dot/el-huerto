@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.23'; // Entrega de pan del 13-oct y el montón sin clasificar repartido por sabor
+const CACHE_NAME = 'el-huerto-v15.24'; // El ticket y el inventario escriben distinto el mismo insumo: ya se reconocen
 const ASSETS = [
   '/',
   '/index.html',

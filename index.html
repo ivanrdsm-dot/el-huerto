@@ -12401,6 +12401,13 @@ window.addGasto=async()=>{
   const banner=document.getElementById('g-edit-banner');
   if(banner) banner.remove();
   toast(existe?'✓ Gasto actualizado: '+fmt(monto):'✓ Gasto: '+fmt(monto));
+  // Capturar el gasto NO mete la mercancía al inventario: son dos cosas
+  // distintas y nadie lo decía. Por eso cada semana el conteo encuentra
+  // "sobras" que no son sobras — es mercancía que entró y el stock
+  // nunca supo. Las de insumos se avisan; renta y servicios no.
+  if(!existe && (g.cat==='proveedor'||g.cat==='costco')){
+    setTimeout(()=>toast('Ojo: el gasto quedó, pero la mercancía NO entró al inventario. Si trae insumos, captúrala en Compras del día.',7000,'warn'),1200);
+  }
 };
 
 window.editGasto=id=>{
@@ -12505,6 +12512,22 @@ function proveedoresHabituales(){
 // que nadie registró como gasto. Es la única señal que atrapó el pan de
 // la Tía Renee: el conteo esperaba 15 piezas y había 45. Esa pista vivía
 // enterrada en Inventario; aquí se dice donde se captura el gasto.
+// El ticket y el inventario casi nunca escriben igual el mismo insumo:
+// la factura dice "Jamón serrano español" y el artículo se llama "Jamón
+// serrano". Comparar los nombres tal cual hacía que la tarjeta reclamara
+// una compra que SÍ estaba capturada —justo el serrano que Iván surte
+// cada semana— y una alarma falsa se deja de leer igual que una real.
+// Se acepta la igualdad exacta, el alias oficial, o que uno contenga al
+// otro (con al menos 6 letras, para que "sal" no case con "salsa").
+function mismoInsumo(normA, nombreB){
+  const b=normInvNombre(nombreB||'');
+  if(!normA||!b) return false;
+  if(normA===b) return true;
+  const alias=ALIAS_INV[normA];
+  if(alias && normInvNombre(alias)===b) return true;
+  const corto=normA.length<=b.length?normA:b, largo=normA.length<=b.length?b:normA;
+  return corto.length>=6 && largo.includes(corto);
+}
 function comprasSinRegistrar(){
   const R=calcCierreDia();
   // Una sobra deja de ser sospechosa en cuanto su compra SÍ está
@@ -12513,12 +12536,12 @@ function comprasSinRegistrar(){
   // tarjeta que avisa de lo que ya resolviste se vuelve ruido y se
   // deja de leer, que es justo lo que no queremos que pase.
   const sem=new Set(getWDays7(hoyOperativo()));
-  const yaFacturado=new Set();
+  const facturado=[];
   for(const g of D.gastos){
     if(!sem.has(g.fecha)) continue;
-    for(const pt of (g.partidas||[])) yaFacturado.add(normInvNombre(pt.c||''));
+    for(const pt of (g.partidas||[])) if(pt.c) facturado.push(normInvNombre(pt.c));
   }
-  return (R.descuadres||[]).filter(x=>x.dif>0&&(x.pesos||0)>=150&&!yaFacturado.has(normInvNombre(x.nombre||'')))
+  return (R.descuadres||[]).filter(x=>x.dif>0&&(x.pesos||0)>=150&&!facturado.some(f=>mismoInsumo(f,x.nombre)))
     .sort((a,b)=>(b.pesos||0)-(a.pesos||0)).slice(0,6);
 }
 function renderGastosFaltantes(){
@@ -12533,7 +12556,8 @@ function renderGastosFaltantes(){
   const sobrasHtml=!sobras.length?'':`<div class="card" style="margin-top:10px;border-left:3px solid var(--blue);">
     <div class="sh"><span class="ct" style="margin-bottom:0;">Llegó mercancía que no está capturada</span>
       <span class="mono" style="font-size:14px;font-weight:700;color:var(--blue);">${fmt(r2(sobras.reduce((s2,x)=>s2+(x.pesos||0),0)))}</span></div>
-    <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">El conteo de hoy encontró más de lo que el sistema esperaba. Casi siempre es una compra que entró y nadie registró como gasto.</p>
+    <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">El conteo de hoy encontró más de lo que el sistema esperaba. Son dos causas: o la compra no se registró como gasto, o se registró el gasto pero la mercancía nunca entró al inventario. Capturar en <b>Compras del día</b> hace las dos cosas a la vez.</p>
+    <div style="margin-bottom:10px;"><button class="btn bs bsm" onclick="go('mercado')">Ir a Compras del día</button></div>
     ${sobras.map(x=>`<div class="sr" style="align-items:center;gap:10px;">
       <div style="flex:1;min-width:0;">
         <div style="font-size:12.5px;font-weight:600;">${esc(x.nombre)}</div>
