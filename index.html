@@ -3200,6 +3200,7 @@ async function completeInit(){
   await migGastos15Oct2026();
   await migUnidadesSentido15Oct();
   await migSandiaYEquipo15Oct();
+  await migBobaYMango15Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5570,6 +5571,73 @@ async function migSandiaYEquipo15Oct(){
   if(hechos.length){
     logAudit('inventario_correccion',{cambios:hechos,motivo:'Iván: sandía por pieza y el equipo fuera del conteo diario'});
     toast(`✓ Sandía por pieza · ${fuera} artículos de equipo fuera del conteo`,5500);
+  }
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// BOBA TEA SIN LATA Y LA RECETA DEL COCTEL DE MANGO — 15-oct
+//
+// BOBA TEA. La receta de jul-26 lo armaba con una lata ya preparada
+// que se vendía tal cual. Iván: "elimina lata de boba tea, para eso
+// estamos poniendo las perlas de boba". Sale de la receta y del
+// inventario —no tiene existencia, ni precio, ni otra receta que la
+// pida—. Queda abierta una pregunta (va en el mensaje): sin la lata,
+// la receta no trae té ni leche.
+//
+// COCTEL DE MANGO, EN VASO DE 16 OZ. Iván pidió investigar cuánto
+// lleva. Un vaso de 16 oz son 2 tazas, y una taza de mango picado
+// pesa 165 g según la tabla de nutrientes del USDA: 330 g por vaso
+// lleno. Los demás cocteles van en plato desechable con 100-200 g;
+// este va en vaso y lleva el doble, y eso es justo lo que cambia el
+// margen. Lo demás sigue el patrón de los cocteles: servitoallas y
+// 100 g de limón.
+// ═══════════════════════════════════════════════════════════
+async function migBobaYMango15Oct(){
+  const migKey='h5boba_mango_15oct26';
+  if(await migDone(migKey)) return;
+  const hechos=[];
+  const nn=x=>normInvNombre(x||'');
+  const inv=n=>D.inventario.find(i=>nn(i.nombre)===nn(n));
+  const prod=n=>D.productos.find(p=>nn(p.nombre)===nn(n));
+
+  // ── 1. Boba Tea sin lata ──
+  const lata=inv('Boba Tea (lata)');
+  const boba=prod('Boba Tea');
+  const recBoba=boba&&D.recetas.find(r=>r.prodId===boba.id);
+  if(recBoba && lata){
+    const ings=(recBoba.ings||[]).filter(i=>i.invId!==lata.id && nn(i.nombre)!==nn(lata.nombre));
+    if(ings.length!==(recBoba.ings||[]).length){
+      const upd={...recBoba,ings}; await fsSet('recetas',upd);
+      const rx=D.recetas.findIndex(x=>x.id===recBoba.id); if(rx>=0) D.recetas[rx]=upd;
+      hechos.push('Boba Tea: la lata sale de la receta');
+    }
+  }
+  if(lata && !D.recetas.some(r=>(r.ings||[]).some(i=>i.invId===lata.id||nn(i.nombre)===nn(lata.nombre)))){
+    await fsDel('inventario',lata.id);
+    D.inventario=D.inventario.filter(i=>i.id!==lata.id);
+    hechos.push('Boba Tea (lata): eliminada del inventario');
+  }
+
+  // ── 2. Coctel de mango en vaso de 16 oz ──
+  const mango=prod('Coctel de mango');
+  const recM=mango&&D.recetas.find(r=>r.prodId===mango.id);
+  if(mango && !(recM&&(recM.ings||[]).length)){
+    const piezas=[['Servitoallas',0.01],['Vaso smoothie 16 oz',1],['Mango verde',330],['Limón agrio',100]];
+    const ings=[], faltan=[];
+    for(const [n,q] of piezas){ const it=inv(n);
+      if(it) ings.push({invId:it.id,nombre:it.nombre,qty:String(q),unit:it.unit}); else faltan.push(n); }
+    if(!faltan.length){
+      const rec={id:recM?.id||Date.now()+mango.id,prodId:mango.id,ings};
+      await fsSet('recetas',rec);
+      const rx=D.recetas.findIndex(x=>x.prodId===mango.id);
+      if(rx>=0) D.recetas[rx]=rec; else D.recetas.push(rec);
+      hechos.push('Coctel de mango: vaso 16 oz, 330 g de mango, 100 g de limón');
+    } else hechos.push('Coctel de mango: no se encontró '+faltan.join(', '));
+  }
+
+  if(hechos.length){
+    logAudit('recetas_actualizadas',{cambios:hechos,motivo:'Boba Tea con perlas, sin lata; coctel de mango en vaso de 16 oz'});
+    toast('✓ '+hechos.length+' cambio(s) en recetas',4500);
   }
   await markMig(migKey);
 }

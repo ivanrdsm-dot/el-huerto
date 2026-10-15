@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.32'; // Sandía por pieza; el equipo sale del conteo diario (137 → 110)
+const CACHE_NAME = 'el-huerto-v15.33'; // Boba Tea sin lata; receta del coctel de mango en vaso de 16 oz
 const ASSETS = [
   '/',
   '/index.html',
