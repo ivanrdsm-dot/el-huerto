@@ -3198,6 +3198,7 @@ async function completeInit(){
   await migAcai12Oct2026();
   await migCostco14Oct2026();
   await migGastos15Oct2026();
+  await migUnidadesSentido15Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5409,6 +5410,88 @@ async function migGastos15Oct2026(){
   toast(`✓ 3 gastos del 15-oct registrados · ${movidos.length} insumos al inventario`,6000);
   await markMig(migKey);
 }
+// ═══════════════════════════════════════════════════════════
+// CÓMO SE MIDE CADA COSA — 15-oct (Iván: "todas las cosas que no
+// tengan sentido en cómo se mide, modifícalas")
+//
+// Primero se comprobó lo grave: el motor de costeo no encuentra NI
+// UNA receta con unidades incompatibles en los 60 productos. Las
+// cuentas estaban sanas. Lo que no tenía sentido era otra cosa:
+//
+//  1. La miel. Costco la vende por peso (1.8 kg) y se convirtió a
+//     1.268 L con su densidad real. Iván la cuenta como 1.8 L: manda
+//     él, porque es quien la ve y la cuenta. $285 / 1.8 = $158.33/L.
+//
+//  2. La misma unidad escrita de cuatro formas. "g" y "gramos",
+//     "pz" y "pieza", "L" y "litro". Para el sistema son idénticas
+//     (normUnit las iguala), pero quien cuenta ve 41 artículos en "g"
+//     y 7 en "gramos" y con razón duda si es lo mismo. Queda una sola
+//     forma corta para cada una, en el inventario, en las recetas y
+//     en el catálogo oficial —que era de donde salían las largas.
+//
+//  3. La Valentina: 900 BOTES a $147 cada uno, ~$132,000 de inventario
+//     imaginario. No la usa ninguna receta y siempre se compró de a un
+//     bote; alguien tecleó 900 pensando en mililitros. Queda en 1 bote
+//     y el próximo conteo lo afina.
+//
+// Cada paso es idempotente: corre una o diez veces, deja lo mismo.
+// ═══════════════════════════════════════════════════════════
+const UNIDAD_CORTA={gramos:'g',gr:'g',grs:'g',gramo:'g',pieza:'pz',piezas:'pz',pza:'pz',pzas:'pz',
+  litro:'L',litros:'L',l:'L',lt:'L',lts:'L',paquete:'paq',paquetes:'paq',kilo:'kg',kilos:'kg',mililitros:'ml'};
+const corta=u=>{ if(!u) return u; const k=String(u).trim().toLowerCase(); return UNIDAD_CORTA[k]||u; };
+async function migUnidadesSentido15Oct(){
+  const migKey='h5unidades_sentido_15oct26';
+  if(await migDone(migKey)) return;
+  const hechos=[];
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  const guardaInv=async upd=>{ await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===upd.id); if(ix>=0) D.inventario[ix]=upd; };
+
+  // ── 1. Miel como 1.8 L ──
+  const g=D.gastos.find(x=>x.ticket==='COSTCO-ARG5925952');
+  const pt=g&&(g.partidas||[]).find(x=>normInvNombre(x.c)===normInvNombre('Miel'));
+  const miel=buscar('Miel');
+  if(pt && pt.q!==1.8 && miel){
+    const extra=r2(1.8-(pt.q||0));                  // lo que faltó sumar: 0.532 L
+    const precio=Math.round((285/1.8)*1000000)/1000000;
+    await guardaInv({...miel,qty:r2((miel.qty||0)+extra),precio});
+    const gUpd={...g,partidas:g.partidas.map(x=>x===pt?{...x,q:1.8}:x)};
+    await fsSet('gastos',gUpd);
+    const gx=D.gastos.findIndex(x=>x.id===g.id); if(gx>=0) D.gastos[gx]=gUpd;
+    hechos.push(`Miel: 1.268 L → 1.8 L · $${miel.precio}/L → $${precio}/L`);
+  }
+
+  // ── 2. Una sola forma de escribir cada unidad ──
+  let nInv=0;
+  for(const inv of [...D.inventario]){
+    const u=corta(inv.unit), uo=corta(inv.unidadOf||inv.unit);
+    if(u===inv.unit && uo===inv.unidadOf) continue;
+    await guardaInv({...inv,unit:u,unidadOf:uo}); nInv++;
+  }
+  let nRec=0;
+  for(const rec of [...D.recetas]){
+    let dirty=false;
+    const ings=(rec.ings||[]).map(ing=>{ const u=corta(ing.unit);
+      if(u!==ing.unit){ dirty=true; return {...ing,unit:u}; } return ing; });
+    if(dirty){ const upd={...rec,ings}; await fsSet('recetas',upd);
+      const rx=D.recetas.findIndex(x=>x.id===rec.id); if(rx>=0) D.recetas[rx]=upd; nRec++; }
+  }
+  if(nInv) hechos.push(`${nInv} insumos con la unidad escrita en su forma corta (g, pz, L, paq)`);
+  if(nRec) hechos.push(`${nRec} recetas con la misma limpieza`);
+
+  // ── 3. Valentina: 900 botes no es un número posible ──
+  const val=buscar('Valentina');
+  if(val && normUnit(val.unit)==='bote' && (val.qty||0)>20){
+    await guardaInv({...val,qty:1});
+    hechos.push(`Valentina: ${val.qty} botes → 1 (se tecleó en mililitros)`);
+  }
+
+  if(hechos.length){
+    logAudit('unidades_corregidas',{cambios:hechos,motivo:'Iván: que todo se mida de forma que tenga sentido'});
+    toast(`✓ Medidas corregidas: ${hechos.length} ajuste(s)`,5000);
+  }
+  await markMig(migKey);
+}
 async function migCostco14Oct2026(){
   const migKey='h5costco_14oct26';
   if(await migDone(migKey)) return;
@@ -7280,8 +7363,8 @@ async function loadInventarioCostcoRenee(){
 const INVENTARIO_OFICIAL = [
   // FRUTAS Y VERDURAS (7101-7115)
   {id:7101,nombre:'Plátano',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
-  {id:7102,nombre:'Piña',catOf:'frutas_verduras',unidadOf:'pieza',cat:'frutas',unit:'pz'},
-  {id:7103,nombre:'Sandía',catOf:'frutas_verduras',unidadOf:'pieza',cat:'frutas',unit:'pz'},
+  {id:7102,nombre:'Piña',catOf:'frutas_verduras',unidadOf:'pz',cat:'frutas',unit:'pz'},
+  {id:7103,nombre:'Sandía',catOf:'frutas_verduras',unidadOf:'pz',cat:'frutas',unit:'pz'},
   {id:7104,nombre:'Fresa',catOf:'frutas_verduras',unidadOf:'domo',cat:'frutas',unit:'domo'},
   {id:7105,nombre:'Mango verde',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
   {id:7106,nombre:'Manzana',catOf:'frutas_verduras',unidadOf:'g',cat:'frutas',unit:'g'},
@@ -7291,66 +7374,66 @@ const INVENTARIO_OFICIAL = [
   {id:7110,nombre:'Zanahoria',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
   {id:7111,nombre:'Jícama',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
   {id:7112,nombre:'Pepino',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
-  {id:7113,nombre:'Aceitunas negras',catOf:'frutas_verduras',unidadOf:'gramos',cat:'verduras',unit:'g'},
+  {id:7113,nombre:'Aceitunas negras',catOf:'frutas_verduras',unidadOf:'g',cat:'verduras',unit:'g'},
   // LÁCTEOS Y PROTEÍNAS (7201-7215)
-  {id:7201,nombre:'Queso Philadelphia',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
+  {id:7201,nombre:'Queso Philadelphia',catOf:'lacteos_proteinas',unidadOf:'pz',cat:'lacteos',unit:'pz'},
   {id:7202,nombre:'Queso mozzarella',catOf:'lacteos_proteinas',unidadOf:'g',cat:'lacteos',unit:'g'},
-  {id:7203,nombre:'Yogurth natural',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
-  {id:7204,nombre:'Crema de almendras',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
-  {id:7205,nombre:'Crema de cacahuate',catOf:'lacteos_proteinas',unidadOf:'pieza',cat:'lacteos',unit:'pz'},
-  {id:7206,nombre:'Jamón serrano',catOf:'lacteos_proteinas',unidadOf:'paquete',cat:'proteinas',unit:'paq'},
+  {id:7203,nombre:'Yogurth natural',catOf:'lacteos_proteinas',unidadOf:'pz',cat:'lacteos',unit:'pz'},
+  {id:7204,nombre:'Crema de almendras',catOf:'lacteos_proteinas',unidadOf:'pz',cat:'lacteos',unit:'pz'},
+  {id:7205,nombre:'Crema de cacahuate',catOf:'lacteos_proteinas',unidadOf:'pz',cat:'lacteos',unit:'pz'},
+  {id:7206,nombre:'Jamón serrano',catOf:'lacteos_proteinas',unidadOf:'paq',cat:'proteinas',unit:'paq'},
   {id:7207,nombre:'Chorizo pamplona',catOf:'lacteos_proteinas',unidadOf:'g',cat:'proteinas',unit:'g'},
   {id:7208,nombre:'Pechuga de pavo',catOf:'lacteos_proteinas',unidadOf:'g',cat:'proteinas',unit:'g'},
-  {id:7209,nombre:'Proteína',catOf:'lacteos_proteinas',unidadOf:'gramos',cat:'proteinas',unit:'g'},
+  {id:7209,nombre:'Proteína',catOf:'lacteos_proteinas',unidadOf:'g',cat:'proteinas',unit:'g'},
   // ABARROTES (7301-7320)
   {id:7301,nombre:'Avena',catOf:'abarrotes',unidadOf:'g',cat:'granos',unit:'g'},
   {id:7302,nombre:'Azúcar',catOf:'abarrotes',unidadOf:'g',cat:'granos',unit:'g'},
-  {id:7303,nombre:'Miel',catOf:'abarrotes',unidadOf:'pieza',cat:'otros',unit:'pz'},
-  {id:7304,nombre:'Chai',catOf:'abarrotes',unidadOf:'gramos',cat:'bebidas',unit:'g'},
-  {id:7305,nombre:'Matcha',catOf:'abarrotes',unidadOf:'gramos',cat:'bebidas',unit:'g'},
-  {id:7306,nombre:'Canela',catOf:'abarrotes',unidadOf:'pieza',cat:'otros',unit:'pz'},
-  {id:7307,nombre:'Aceite de oliva',catOf:'abarrotes',unidadOf:'pieza',cat:'otros',unit:'pz'},
-  {id:7308,nombre:'Cacahuate japonés',catOf:'abarrotes',unidadOf:'gramos',cat:'granos',unit:'g'},
-  {id:7309,nombre:'Chilito Tojín',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
-  {id:7310,nombre:'Chamoy',catOf:'abarrotes',unidadOf:'litros',cat:'salsas',unit:'L'},
-  {id:7311,nombre:'Valentina',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
-  {id:7312,nombre:'Salsa chipotle',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
-  {id:7313,nombre:'Aderezos cremosos',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
-  {id:7314,nombre:'Salsa Maggi',catOf:'abarrotes',unidadOf:'pieza',cat:'salsas',unit:'pz'},
-  {id:7315,nombre:'Pinol',catOf:'abarrotes',unidadOf:'pieza',cat:'limpieza',unit:'pz'},
-  {id:7316,nombre:'Palitas de madera',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
+  {id:7303,nombre:'Miel',catOf:'abarrotes',unidadOf:'pz',cat:'otros',unit:'pz'},
+  {id:7304,nombre:'Chai',catOf:'abarrotes',unidadOf:'g',cat:'bebidas',unit:'g'},
+  {id:7305,nombre:'Matcha',catOf:'abarrotes',unidadOf:'g',cat:'bebidas',unit:'g'},
+  {id:7306,nombre:'Canela',catOf:'abarrotes',unidadOf:'pz',cat:'otros',unit:'pz'},
+  {id:7307,nombre:'Aceite de oliva',catOf:'abarrotes',unidadOf:'pz',cat:'otros',unit:'pz'},
+  {id:7308,nombre:'Cacahuate japonés',catOf:'abarrotes',unidadOf:'g',cat:'granos',unit:'g'},
+  {id:7309,nombre:'Chilito Tojín',catOf:'abarrotes',unidadOf:'pz',cat:'salsas',unit:'pz'},
+  {id:7310,nombre:'Chamoy',catOf:'abarrotes',unidadOf:'L',cat:'salsas',unit:'L'},
+  {id:7311,nombre:'Valentina',catOf:'abarrotes',unidadOf:'pz',cat:'salsas',unit:'pz'},
+  {id:7312,nombre:'Salsa chipotle',catOf:'abarrotes',unidadOf:'pz',cat:'salsas',unit:'pz'},
+  {id:7313,nombre:'Aderezos cremosos',catOf:'abarrotes',unidadOf:'pz',cat:'salsas',unit:'pz'},
+  {id:7314,nombre:'Salsa Maggi',catOf:'abarrotes',unidadOf:'pz',cat:'salsas',unit:'pz'},
+  {id:7315,nombre:'Pinol',catOf:'abarrotes',unidadOf:'pz',cat:'limpieza',unit:'pz'},
+  {id:7316,nombre:'Palitas de madera',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
   {id:7317,nombre:'Bolsas de basura',catOf:'desechables',unidadOf:'rollo',cat:'limpieza',unit:'rollo'},
   // LISTA INTERNA IVÁN (7401-7415) — chicas también capturan, solo admin ve precios
-  {id:7401,nombre:'Blueberry',catOf:'interna_ivan',unidadOf:'gramos',cat:'frutas',unit:'g',esInterno:true},
-  {id:7402,nombre:'Susalias',catOf:'interna_ivan',unidadOf:'pieza',cat:'otros',unit:'pz',esInterno:true},
-  {id:7403,nombre:'Café',catOf:'interna_ivan',unidadOf:'gramos',cat:'bebidas',unit:'g',esInterno:true},
-  {id:7404,nombre:'Pan para panini',catOf:'interna_ivan',unidadOf:'pieza',cat:'granos',unit:'pz',esInterno:true},
+  {id:7401,nombre:'Blueberry',catOf:'interna_ivan',unidadOf:'g',cat:'frutas',unit:'g',esInterno:true},
+  {id:7402,nombre:'Susalias',catOf:'interna_ivan',unidadOf:'pz',cat:'otros',unit:'pz',esInterno:true},
+  {id:7403,nombre:'Café',catOf:'interna_ivan',unidadOf:'g',cat:'bebidas',unit:'g',esInterno:true},
+  {id:7404,nombre:'Pan para panini',catOf:'interna_ivan',unidadOf:'pz',cat:'granos',unit:'pz',esInterno:true},
   {id:7405,nombre:'Guantes',catOf:'interna_ivan',unidadOf:'caja',cat:'limpieza',unit:'caja',esInterno:true},
-  {id:7406,nombre:'Hielos',catOf:'interna_ivan',unidadOf:'pieza',cat:'otros',unit:'pz',esInterno:true},
-  {id:7407,nombre:'Queso americano',catOf:'interna_ivan',unidadOf:'pieza',cat:'lacteos',unit:'pz',esInterno:true},
-  {id:7408,nombre:'Leche deslactosada',catOf:'interna_ivan',unidadOf:'litro',cat:'lacteos',unit:'L',esInterno:true},
-  {id:7409,nombre:'Leche de almendra',catOf:'interna_ivan',unidadOf:'litro',cat:'lacteos',unit:'L',esInterno:true},
-  {id:7410,nombre:'Pan Tía Renee — Chilaquiles',catOf:'interna_ivan',unidadOf:'pieza',cat:'granos',unit:'pz',esInterno:true},
-  {id:7411,nombre:'Pan Tía Renee — Queso',catOf:'interna_ivan',unidadOf:'pieza',cat:'granos',unit:'pz',esInterno:true},
-  {id:7412,nombre:'Pan Tía Renee — Pizza',catOf:'interna_ivan',unidadOf:'pieza',cat:'granos',unit:'pz',esInterno:true},
+  {id:7406,nombre:'Hielos',catOf:'interna_ivan',unidadOf:'pz',cat:'otros',unit:'pz',esInterno:true},
+  {id:7407,nombre:'Queso americano',catOf:'interna_ivan',unidadOf:'pz',cat:'lacteos',unit:'pz',esInterno:true},
+  {id:7408,nombre:'Leche deslactosada',catOf:'interna_ivan',unidadOf:'L',cat:'lacteos',unit:'L',esInterno:true},
+  {id:7409,nombre:'Leche de almendra',catOf:'interna_ivan',unidadOf:'L',cat:'lacteos',unit:'L',esInterno:true},
+  {id:7410,nombre:'Pan Tía Renee — Chilaquiles',catOf:'interna_ivan',unidadOf:'pz',cat:'granos',unit:'pz',esInterno:true},
+  {id:7411,nombre:'Pan Tía Renee — Queso',catOf:'interna_ivan',unidadOf:'pz',cat:'granos',unit:'pz',esInterno:true},
+  {id:7412,nombre:'Pan Tía Renee — Pizza',catOf:'interna_ivan',unidadOf:'pz',cat:'granos',unit:'pz',esInterno:true},
   // DESECHABLES (7501-7520) — incluye los del conteo físico real
-  {id:7501,nombre:'Vaso plástico 16 oz',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7502,nombre:'Tapa 16 oz',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7503,nombre:'Mangas p/café',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7504,nombre:'Platos desechables',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7505,nombre:'Tenedores',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7506,nombre:'Cucharas',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7507,nombre:'Servitoallas',catOf:'desechables',unidadOf:'paquete',cat:'limpieza',unit:'paq'},
-  {id:7508,nombre:'Tapa Smoothie',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7509,nombre:'Tapa 14 oz',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7510,nombre:'Tapa unicel',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7511,nombre:'Vaso nevero',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7512,nombre:'Vaso 14 oz',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7513,nombre:'Vaso degustador',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7514,nombre:'Bowl 1/2 L',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7515,nombre:'Vaso p/café 16 oz',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7516,nombre:'Vaso p/café 12 oz',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
-  {id:7517,nombre:'Vaso expreso',catOf:'desechables',unidadOf:'pieza',cat:'empaque',unit:'pz'},
+  {id:7501,nombre:'Vaso plástico 16 oz',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7502,nombre:'Tapa 16 oz',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7503,nombre:'Mangas p/café',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7504,nombre:'Platos desechables',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7505,nombre:'Tenedores',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7506,nombre:'Cucharas',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7507,nombre:'Servitoallas',catOf:'desechables',unidadOf:'paq',cat:'limpieza',unit:'paq'},
+  {id:7508,nombre:'Tapa Smoothie',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7509,nombre:'Tapa 14 oz',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7510,nombre:'Tapa unicel',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7511,nombre:'Vaso nevero',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7512,nombre:'Vaso 14 oz',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7513,nombre:'Vaso degustador',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7514,nombre:'Bowl 1/2 L',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7515,nombre:'Vaso p/café 16 oz',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7516,nombre:'Vaso p/café 12 oz',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
+  {id:7517,nombre:'Vaso expreso',catOf:'desechables',unidadOf:'pz',cat:'empaque',unit:'pz'},
 ];
 
 // Normaliza nombres para detectar duplicados (sin acentos, espacios, símbolos)
