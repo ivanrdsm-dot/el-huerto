@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.28'; // Costco del 14-oct: gasto capturado Y mercancía sumada al inventario
+const CACHE_NAME = 'el-huerto-v15.29'; // Gastos, Compras y Proveedores: una sola pestaña con tres solapas
 const ASSETS = [
   '/',
   '/index.html',

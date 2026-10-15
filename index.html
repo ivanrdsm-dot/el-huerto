@@ -173,6 +173,8 @@ main{padding:12px;max-width:1600px;margin:0 auto;}
 .ic{width:1.05em;height:1.05em;flex-shrink:0;vertical-align:-.16em;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;}
 .ntab .ic,.nav-group-btn .ic{width:15px;height:15px;opacity:.82;}
 .rp-tab-btn .ic,.kpi-tab .ic{width:15px;height:15px;opacity:.9;vertical-align:-.2em;}
+/* Las tres comparten encabezado: el suyo repetiría el nombre de la solapa */
+#page-mercado>.sh:not(.compras-head)>.st,#page-gastos>.sh:not(.compras-head)>.st,#page-proveedores>.sh:not(.compras-head)>.st{display:none;}
 .btn .ic{opacity:.95;}
 .ntab.active .ic,.ntab:hover .ic{opacity:1;}
 .mni .ic{width:21px;height:21px;}
@@ -1107,8 +1109,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="nav-group">
       <button class="nav-group-btn" onclick="toggleNavGroup(this)"><svg class="ic"><use href="#i-briefcase"/></svg> Finanzas <span class="nav-caret">▾</span></button>
       <div class="nav-drop">
-        <button class="ntab" onclick="go('gastos')"><svg class="ic"><use href="#i-down"/></svg> Gastos</button>
-        <button class="ntab" onclick="go('mercado')"><svg class="ic"><use href="#i-basket"/></svg> Compras</button>
+        <button class="ntab" data-compras="1" onclick="goCompras()"><svg class="ic"><use href="#i-basket"/></svg> Compras y gastos</button>
         <button class="ntab" onclick="go('reportes')"><svg class="ic"><use href="#i-chart"/></svg> Reportes</button>
         <button class="ntab" onclick="go('kpis')"><svg class="ic"><use href="#i-trend"/></svg> KPIs</button>
         <button class="ntab" onclick="go('nomina')"><svg class="ic"><use href="#i-people"/></svg> Nómina</button>
@@ -1121,7 +1122,6 @@ nav{padding-top:env(safe-area-inset-top);}
         <button class="ntab" onclick="go('reloj')"><svg class="ic"><use href="#i-clock"/></svg> Reloj</button>
         <button class="ntab" onclick="go('clientes')"><svg class="ic"><use href="#i-people"/></svg> Clientes</button>
         <button class="ntab" onclick="go('vendedores')"><svg class="ic"><use href="#i-trophy"/></svg> Vendedores</button>
-        <button class="ntab" onclick="go('proveedores')"><svg class="ic"><use href="#i-truck"/></svg> Proveedores</button>
         <button class="ntab" onclick="go('suscriptores')"><svg class="ic"><use href="#i-leaf"/></svg> Suscriptores</button>
       </div>
     </div>
@@ -1153,7 +1153,7 @@ nav{padding-top:env(safe-area-inset-top);}
   <button class="mnbtn active" onclick="go('pos')"><span class="mni"><svg class="ic"><use href="#i-cart"/></svg></span>Ventas</button>
   <button class="mnbtn" onclick="go('ordenes')"><span class="mni"><svg class="ic"><use href="#i-bell"/></svg></span>Órdenes</button>
   <button class="mnbtn" onclick="go('caja')"><span class="mni"><svg class="ic"><use href="#i-cash"/></svg></span>Caja</button>
-  <button class="mnbtn" onclick="go('mercado')"><span class="mni"><svg class="ic"><use href="#i-basket"/></svg></span>Compras</button>
+  <button class="mnbtn" data-compras="1" onclick="goCompras()"><span class="mni"><svg class="ic"><use href="#i-basket"/></svg></span>Compras</button>
   <button class="mnbtn" onclick="go('inventario')"><span class="mni"><svg class="ic"><use href="#i-box"/></svg></span>Inventario</button>
   <button class="mnbtn" onclick="go('dashboard')"><span class="mni"><svg class="ic"><use href="#i-home"/></svg></span>Inicio</button>
   <button class="mnbtn" onclick="go('reloj')"><span class="mni"><svg class="ic"><use href="#i-clock"/></svg></span>Reloj</button>
@@ -8687,6 +8687,13 @@ function cerrarNavGroups(){document.querySelectorAll('.nav-group.open').forEach(
 function updateNavForSession(){
   // Desktop nav tabs
   document.querySelectorAll('.ntab').forEach(el=>{
+    // El botón de Compras abre tres páginas, no una: se muestra si la
+    // persona puede entrar a ALGUNA. Sin esto el patrón go('x') no lo
+    // reconocía y quedaba visible para todos.
+    if(el.dataset.compras){
+      el.style.display = (SESSION && COMPRAS_SUB.some(([k])=>canAccess(k))) ? '' : 'none';
+      return;
+    }
     const pg=el.onclick?.toString().match(/go\('(\w+)'\)/)?.[1];
     if(!pg) return;
     el.style.display = (SESSION && canAccess(pg)) ? '' : 'none';
@@ -8698,6 +8705,13 @@ function updateNavForSession(){
   });
   // Mobile nav
   document.querySelectorAll('.mnbtn').forEach(el=>{
+    // El botón de Compras abre tres páginas, no una: se muestra si la
+    // persona puede entrar a ALGUNA. Sin esto el patrón go('x') no lo
+    // reconocía y quedaba visible para todos.
+    if(el.dataset.compras){
+      el.style.display = (SESSION && COMPRAS_SUB.some(([k])=>canAccess(k))) ? '' : 'none';
+      return;
+    }
     const pg=el.onclick?.toString().match(/go\('(\w+)'\)/)?.[1];
     if(!pg) return;
     el.style.display = (SESSION && canAccess(pg)) ? '' : 'none';
@@ -8713,6 +8727,57 @@ function updateNavForSession(){
   } else {
     if(badge) badge.style.display='none';
   }
+}
+
+// ═══════════════════════════════════════════════════════════
+// COMPRAS Y GASTOS: UNA SOLA PUERTA (Iván, 14-oct)
+// Eran tres pestañas para lo mismo, y la división no era
+// cosmética: era una trampa. "Gastos" registraba el dinero y NO
+// tocaba el inventario; "Compras" hacía las dos cosas. Dos puertas
+// con resultados distintos y ningún letrero que lo dijera. De ahí
+// salían las "sobras" del conteo que no eran sobras — mercancía
+// que entró y el stock nunca supo.
+//
+// No se mueve el contenido de las tres pantallas: cada una sigue
+// donde estaba, con sus ids y sus funciones intactos. Lo que se
+// comparte es una barra de solapas arriba y UNA entrada en el
+// menú. Así se unifica lo que el usuario ve sin tocar lo que ya
+// funciona, que es media semana de arreglos.
+// ═══════════════════════════════════════════════════════════
+const COMPRAS_SUB=[['mercado','Capturar'],['gastos','Historial'],['proveedores','Proveedores']];
+let COMPRAS_TAB=(()=>{ try{ const v=localStorage.getItem('h5compras');
+  return COMPRAS_SUB.some(([k])=>k===v)?v:'mercado'; }catch(e){ return 'mercado'; } })();
+window.goCompras=sub=>{
+  if(sub) COMPRAS_TAB=sub;
+  if(!canAccess(COMPRAS_TAB)){
+    const libre=COMPRAS_SUB.find(([k])=>canAccess(k));
+    if(libre) COMPRAS_TAB=libre[0];
+  }
+  try{ localStorage.setItem('h5compras',COMPRAS_TAB); }catch(e){}
+  go(COMPRAS_TAB);
+};
+function montaSolapasCompras(){
+  // Se rehace en cada visita, no se cachea: el permiso depende de quién
+  // tenga la sesión, y una barra guardada enseñaría solapas que al tocarlas
+  // piden la contraseña de admin. Ofrecer lo que no se puede abrir es una
+  // forma fea de decir que no.
+  const visibles=COMPRAS_SUB.filter(([k])=>canAccess(k));
+  const barra=`<div class="sh compras-head" style="margin-bottom:10px;"><span class="st">Compras y gastos</span></div>`+
+    `<div class="rp-tabs compras-tabs" style="margin-bottom:12px;">`+
+    visibles.map(([k,l])=>`<button class="rp-tab-btn" data-sub="${k}" onclick="goCompras('${k}')">${l}</button>`).join('')+
+    `</div>`;
+  COMPRAS_SUB.forEach(([k])=>{
+    const pg=document.getElementById('page-'+k); if(!pg) return;
+    // Hay que borrar las DOS piezas, no solo la barra: si no, el título
+    // se acumula en cada visita y la pantalla se llena de "Compras y
+    // gastos" repetido.
+    pg.querySelectorAll('.compras-tabs,.compras-head').forEach(e=>e.remove());
+    if(visibles.length>1) pg.insertAdjacentHTML('afterbegin',barra);
+  });
+}
+function pintaSolapasCompras(p){
+  document.querySelectorAll('.compras-tabs .rp-tab-btn')
+    .forEach(b=>b.classList.toggle('activa',b.dataset.sub===p));
 }
 
 function go(p){
@@ -8733,6 +8798,16 @@ function go(p){
   }
   document.querySelectorAll('.ntab').forEach(e=>{if(e.onclick?.toString().includes("'"+p+"'"))e.classList.add('active');});
   document.querySelectorAll('.mnbtn').forEach(e=>{if(e.onclick?.toString().includes("'"+p+"'"))e.classList.add('active');});
+  // Las tres solapas comparten una sola entrada en el menú: se marca
+  // igual estés en Capturar, en Historial o en Proveedores.
+  if(COMPRAS_SUB.some(([k])=>k===p)){
+    COMPRAS_TAB=p;
+    try{ localStorage.setItem('h5compras',p); }catch(e){}
+    document.querySelectorAll('.ntab,.mnbtn')
+      .forEach(e=>{ if(e.onclick?.toString().includes('goCompras')) e.classList.add('active'); });
+    montaSolapasCompras();
+    pintaSolapasCompras(p);
+  }
   // A1: renderizar SOLO la página destino (antes: renderAll = 17 módulos)
   currentPage=p;
   const fn=PAGE_RENDERERS[p];
