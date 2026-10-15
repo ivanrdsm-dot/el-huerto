@@ -3196,6 +3196,7 @@ async function completeInit(){
   await migrateUnidadesV3();
   await migUnidadEtiqueta13Oct2026();
   await migAcai12Oct2026();
+  await migCostco14Oct2026();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5286,6 +5287,62 @@ async function migPanReneeConteo13Oct(){
       motivo:'"Por clasificar" no entra en ninguna receta: ese pan nunca se descuenta al vender. Iván confirmó 10 de cada sabor el 13-oct'});
     toast(`✓ Pan clasificado: ${hechos.length} ajuste(s)`,5000);
   }
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// COSTCO DEL 14-OCT — $1,264.80 (factura ARG 5924792)
+// Iván mandó el CFDI el mismo día. Los importes son los de la
+// columna "Base" de la factura, que es la NETA: el descuento de
+// $28.75 ya viene repartido renglón por renglón y los seis suman
+// exactamente el total.
+//
+// Esto SÍ toca el inventario, al revés que el açaí: aquí hay
+// factura desglosada, así que se sabe qué entró y en qué cantidad.
+// Un gasto sin partidas solo puede ser gasto; uno con partidas
+// también es mercancía, y no meterla es justo lo que hacía que el
+// conteo del día encontrara "sobras" que no eran sobras.
+// ═══════════════════════════════════════════════════════════
+const COSTCO_14OCT=[
+  // inventario,            cant, unidad, importe neto
+  ['Leche de almendra',        6, 'pz',  149.00],  // 1 paquete de 6 × 946 ml
+  ['Lechuga',               1816, 'g',   107.80],  // 2 × ensalada italiana 908 g
+  ['Tiras de pollo',        1360, 'g',   359.00],  // 1.36 kg Tyson
+  ['Leche deslactosada',      12, 'L',   265.00],  // 12 × 1 L
+  ['Queso parmesano',        908, 'g',   215.00],
+  ['Crema de almendras',       1, 'pz',  169.00],  // frasco de 765 g
+];
+async function migCostco14Oct2026(){
+  const migKey='h5costco_14oct26';
+  if(await migDone(migKey)) return;
+  const TICKET='COSTCO-ARG5924792';
+  if(D.gastos.find(x=>x.ticket===TICKET)){ await markMig(migKey); return; }
+
+  const partidas=COSTCO_14OCT.map(([n,q,u,i])=>({c:n,q,u,i}));
+  const monto=r2(partidas.reduce((a,x)=>a+x.i,0));
+  await fsSet('gastos',{
+    id:Date.now(), fecha:'2026-10-14', ticket:TICKET,
+    prov:'Costco', cat:'costco', tipoEstrategico:'operacion',
+    metodo:'tarjeta', monto,
+    notas:'CFDI ARG 5924792 · 14-oct 10:32 · tarjeta de débito. Importes netos (descuento $28.75 ya repartido).'
+  });
+
+  // ── Y la mercancía entra al inventario ──
+  const movidos=[], omitidos=[];
+  for(const [nombre,qty,unit,importe] of COSTCO_14OCT){
+    const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(nombre));
+    if(!inv){ omitidos.push(nombre); continue; }
+    const q=qtyToInvUnit(qty,unit,inv.unit);
+    if(q==null){ omitidos.push(`${nombre} (no se puede pasar de ${unit} a ${inv.unit})`); continue; }
+    // El precio se actualiza al de ESTA compra: es lo que cuesta hoy.
+    const precio=Math.round((importe/q)*1000000)/1000000;
+    const upd={...inv,qty:r2((inv.qty||0)+q),precio};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    movidos.push(`${inv.nombre}: +${q} ${inv.unit} · $${precio}/${inv.unit}${inv.precio&&Math.abs(inv.precio-precio)>0.0001?` (antes $${inv.precio})`:''}`);
+  }
+  logAudit('compras_registradas',{proveedor:'Costco',ticket:TICKET,monto,inventario:movidos,sinVincular:omitidos,
+    motivo:'Factura del 14-oct que Iván mandó el mismo día'});
+  toast(`✓ Costco ${fmt(monto)} registrado y sumado al inventario`,5000);
   await markMig(migKey);
 }
 async function migAcai12Oct2026(){

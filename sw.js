@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.27'; // Fuera la puerta de atrás del admin: si la contraseña no es, no entra
+const CACHE_NAME = 'el-huerto-v15.28'; // Costco del 14-oct: gasto capturado Y mercancía sumada al inventario
 const ASSETS = [
   '/',
   '/index.html',
