@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.29'; // Gastos, Compras y Proveedores: una sola pestaña con tres solapas
+const CACHE_NAME = 'el-huerto-v15.30'; // Gastos del 15-oct; tras entrar, los datos regresan solos
 const ASSETS = [
   '/',
   '/index.html',
