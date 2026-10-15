@@ -3199,6 +3199,7 @@ async function completeInit(){
   await migCostco14Oct2026();
   await migGastos15Oct2026();
   await migUnidadesSentido15Oct();
+  await migSandiaYEquipo15Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5489,6 +5490,86 @@ async function migUnidadesSentido15Oct(){
   if(hechos.length){
     logAudit('unidades_corregidas',{cambios:hechos,motivo:'Iván: que todo se mida de forma que tenga sentido'});
     toast(`✓ Medidas corregidas: ${hechos.length} ajuste(s)`,5000);
+  }
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// SANDÍA POR PIEZA Y EL EQUIPO FUERA DEL CONTEO — 15-oct
+//
+// SANDÍA. Se contaba en gramos y el inventario decía "1 g": contaron
+// UNA sandía y la pantalla pedía gramos. Iván la quiere por pieza.
+// La trampa: el Coctel Sandía pide 200 g y Pal'Sediento también la
+// lleva. Si el inventario pasa a piezas y la receta se queda en
+// gramos, qtyToInvUnit devuelve null y esos productos dejan de
+// costear y de descontar EN SILENCIO. Así que se mueven juntos:
+// inventario, recetas y mínimo, con la misma equivalencia.
+//   1 sandía ≈ 5 kg (la misma que ya usaba migSandiaAgo para pasar de
+//   piezas a kilos). $15/kg × 5 = $75 la pieza. 200 g = 0.04 pieza.
+//   El costo del coctel no se mueve: $3.00 antes y después.
+//
+// EQUIPO. Se marca `noContar` en lo que no se gasta. El playo estaba
+// clasificado como equipo y SÍ se acaba: pasa a Desechables y se
+// sigue contando.
+// ═══════════════════════════════════════════════════════════
+const KG_POR_SANDIA=5;
+const NO_SE_GASTA=['Bote de basura','Cubeta','Escoba','Recogedor','Trapeador','Kit de primeros auxilios'];
+async function migSandiaYEquipo15Oct(){
+  const migKey='h5sandia_equipo_15oct26';
+  if(await migDone(migKey)) return;
+  const hechos=[];
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  const guardaInv=async upd=>{ await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===upd.id); if(ix>=0) D.inventario[ix]=upd; };
+
+  // ── Sandía ──
+  const san=buscar('Sandía');
+  if(san && normUnit(san.unit)!=='pz'){
+    const gPorPz=KG_POR_SANDIA*1000;
+    const precioG=normUnit(san.unit)==='kg'?(san.precio||0)/1000:(san.precio||0);
+    const precio=Math.round(precioG*gPorPz*100)/100;           // $75
+    // El "1" del inventario era una sandía tecleada en un campo de gramos
+    const qty=(normUnit(san.unit)==='g' && (san.qty||0)<50) ? (san.qty||0)
+             : r2(qtyToInvUnit(san.qty||0,san.unit,'g')/gPorPz);
+    const min=san.min>0 ? Math.max(1,Math.round(qtyToInvUnit(san.min,san.unit,'g')/gPorPz)) : 0;
+    await guardaInv({...san,unit:'pz',unidadOf:'pz',qty,precio,min});
+    hechos.push(`Sandía: ${san.qty} ${san.unit} → ${qty} pz · $${precio} la pieza`);
+
+    for(const rec of [...D.recetas]){
+      let dirty=false;
+      const ings=(rec.ings||[]).map(ing=>{
+        const esSandia=ing.invId===san.id||normInvNombre(ing.nombre||'')===normInvNombre('Sandía');
+        if(!esSandia) return ing;
+        const g=qtyToInvUnit(parseFloat(ing.qty),ing.unit,'g');
+        if(g==null) return ing;
+        dirty=true;
+        return {...ing,qty:String(Math.round(g/gPorPz*10000)/10000),unit:'pz'};
+      });
+      if(dirty){ const upd={...rec,ings}; await fsSet('recetas',upd);
+        const rx=D.recetas.findIndex(x=>x.id===rec.id); if(rx>=0) D.recetas[rx]=upd;
+        hechos.push(`Receta ${rec.nombre||rec.prodId||rec.id}: sandía en piezas`); }
+    }
+  }
+
+  // ── Playo: sí se gasta ──
+  const playo=buscar('Playo (film plástico)');
+  if(playo && playo.catOf==='equipo'){
+    await guardaInv({...playo,catOf:'desechables',noContar:false});
+    hechos.push('Playo: de Equipo a Desechables (sí se acaba)');
+  }
+
+  // ── Lo que no se gasta, fuera del conteo diario ──
+  let fuera=0;
+  for(const inv of [...D.inventario]){
+    const debe=(inv.catOf==='equipo') || NO_SE_GASTA.some(n=>normInvNombre(n)===normInvNombre(inv.nombre));
+    if(debe && inv.noContar!==true && normInvNombre(inv.nombre)!==normInvNombre('Playo (film plástico)')){
+      await guardaInv({...inv,noContar:true}); fuera++;
+    }
+  }
+  if(fuera) hechos.push(`${fuera} artículos de equipo fuera del conteo diario`);
+
+  if(hechos.length){
+    logAudit('inventario_correccion',{cambios:hechos,motivo:'Iván: sandía por pieza y el equipo fuera del conteo diario'});
+    toast(`✓ Sandía por pieza · ${fuera} artículos de equipo fuera del conteo`,5500);
   }
   await markMig(migKey);
 }
@@ -13997,6 +14078,20 @@ function renderSubs(){
 let invModoActivo='captura';
 let invCategoriaActiva='frutas_verduras';
 
+// ═══════════════════════════════════════════════════════════
+// QUÉ SE CUENTA CADA DÍA (Iván, 15-oct: "saca el equipo del conteo")
+// Claudia contaba a diario el refrigerador, la caja fuerte, la
+// computadora y la escoba: 27 de 137 artículos que no se gastan. Eso
+// alarga el conteo y lo vuelve menos cuidadoso justo en lo que sí se
+// acaba. Siguen en el inventario —para saber qué equipo hay—, pero no
+// en el conteo diario, ni en "stock bajo", ni en la alerta del menú.
+//
+// Por defecto queda fuera todo lo de 'equipo'; `noContar` permite
+// decidirlo artículo por artículo en cualquier categoría (las escobas
+// viven en Lista Interna junto al jabón, que sí se acaba).
+// ═══════════════════════════════════════════════════════════
+const seCuentaDiario=i=> i.noContar===undefined ? i.catOf!=='equipo' : !i.noContar;
+const invConteo=()=>D.inventario.filter(seCuentaDiario);
 const CAT_OFICIALES=[
   {key:'frutas_verduras',nombre:'🍎 Frutas y Verduras',color:'#43a047'},
   {key:'lacteos_proteinas',nombre:'🧀 Lácteos y Proteínas',color:'#5ab4e8'},
@@ -14216,8 +14311,8 @@ function renderInvFiltroRes(){
   const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
   const etiquetas={pendiente:'📝 Sin capturar hoy',bajo:'🔴 Stock bajo o agotado',medio:'🟡 Stock medio',ok:'🟢 Stock OK'};
   let items;
-  if(invFiltroEstado==='pendiente') items=D.inventario.filter(i=>!capturadosHoy.has(i.id));
-  else items=D.inventario.filter(i=>{
+  if(invFiltroEstado==='pendiente') items=invConteo().filter(i=>!capturadosHoy.has(i.id));
+  else items=invConteo().filter(i=>{
     const e=invEstadoStock(i).estado;
     return invFiltroEstado==='bajo'?(e==='bajo'||e==='agotado'):e===invFiltroEstado;
   });
@@ -14241,11 +14336,11 @@ function renderInvFiltroRes(){
 }
 
 function renderInv(){
-  const bajos=D.inventario.filter(x=>{
+  const bajos=invConteo().filter(x=>{
     const e=invEstadoStock(x);
     return e.estado==='bajo'||e.estado==='agotado';
   });
-  const medios=D.inventario.filter(x=>invEstadoStock(x).estado==='medio');
+  const medios=invConteo().filter(x=>invEstadoStock(x).estado==='medio');
   // Badge en nav
   const nb=$('nav-alerta');
   if(nb){
@@ -14256,8 +14351,9 @@ function renderInv(){
 
   // KPIs rápidos
   if($('inv-kpis')){
-    const totalProd=D.inventario.length;
-    const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===today()).map(c=>c.productoId)).size;
+    const contables=new Set(invConteo().map(i=>i.id));
+    const totalProd=contables.size;
+    const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===today()&&contables.has(c.productoId)).map(c=>c.productoId)).size;
     const pctCapturado=totalProd>0?Math.round(capturadosHoy/totalProd*100):0;
     // Tarjetas CLICABLES: tocar una filtra y lista exactamente qué productos
     const act=k=>invFiltroEstado===k?'outline:3px solid var(--accent2);outline-offset:2px;transform:translateY(-2px);':'';
@@ -14279,7 +14375,7 @@ function renderInv(){
       </div>
       <div class="card inv-kpi-card" onclick="setInvEstadoFiltro('ok')" style="text-align:center;cursor:pointer;${act('ok')}">
         <div class="ct">Stock OK</div>
-        <div class="kv">${D.inventario.length-bajos.length-medios.length}</div>
+        <div class="kv">${invConteo().length-bajos.length-medios.length}</div>
         <div style="font-size:10px;color:var(--text3);margin-top:3px;">toca para ver cuáles</div>
       </div>`;
   }
@@ -14306,10 +14402,10 @@ function renderInvCaptura(){
   // Tabs de categoría
   const productosPorCat=CAT_OFICIALES.map(c=>({
     ...c,
-    productos:D.inventario.filter(p=>p.catOf===c.key).sort((a,b)=>a.nombre.localeCompare(b.nombre))
-  }));
+    productos:invConteo().filter(p=>p.catOf===c.key).sort((a,b)=>a.nombre.localeCompare(b.nombre))
+  })).filter(c=>c.productos.length);   // la pestaña de Equipo ya no tiene nada que contar
   // Si no hay categorías oficiales en datos, mostrar todos como "otros"
-  const sinCatOf=D.inventario.filter(p=>!p.catOf);
+  const sinCatOf=invConteo().filter(p=>!p.catOf);
   if(sinCatOf.length>0){
     productosPorCat.push({key:'otros',nombre:'📦 Otros',color:'#999',productos:sinCatOf});
   }
@@ -14398,8 +14494,9 @@ function renderInvCaptura(){
 
 window.invFinalizarConteo=()=>{
   const td=today();
-  const total=D.inventario.length;
-  const capturados=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId)).size;
+  const contables=new Set(invConteo().map(i=>i.id));
+  const total=contables.size;
+  const capturados=new Set(D.invDiario.filter(c=>c.fecha===td&&contables.has(c.productoId)).map(c=>c.productoId)).size;
   const pendientes=total-capturados;
   if(pendientes>0){
     if(!confirm(`Aún faltan ${pendientes} productos por capturar.\n\n¿Cerrar conteo de todos modos?`)) return;
@@ -14539,7 +14636,7 @@ function renderInvDashboard(){
 }
 
 window.invExportarCompras=()=>{
-  const bajos=D.inventario.filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
+  const bajos=invConteo().filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
   const lista='🛒 LISTA DE COMPRAS — '+today()+'\n\n'+bajos.map(p=>{
     const stock=invStockHoy(p.id)??p.qty??0;
     const min=p.min||0;
@@ -18583,7 +18680,7 @@ function updateGlobalBadges(){
   try{
     const nb=$('nav-alerta');
     if(nb && typeof invEstadoStock==='function'){
-      const bajos=D.inventario.filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
+      const bajos=invConteo().filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
       if(bajos.length>0){nb.style.display='';nb.textContent=bajos.length+' ⚠';}
       else nb.style.display='none';
     }

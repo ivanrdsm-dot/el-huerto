@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.31'; // Miel en 1.8 L; una sola forma de escribir cada unidad; Valentina en 1 bote
+const CACHE_NAME = 'el-huerto-v15.32'; // Sandía por pieza; el equipo sale del conteo diario (137 → 110)
 const ASSETS = [
   '/',
   '/index.html',
