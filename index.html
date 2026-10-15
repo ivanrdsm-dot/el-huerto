@@ -3201,6 +3201,7 @@ async function completeInit(){
   await migUnidadesSentido15Oct();
   await migSandiaYEquipo15Oct();
   await migBobaYMango15Oct();
+  await migZanahoria15Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5638,6 +5639,38 @@ async function migBobaYMango15Oct(){
   if(hechos.length){
     logAudit('recetas_actualizadas',{cambios:hechos,motivo:'Boba Tea con perlas, sin lata; coctel de mango en vaso de 16 oz'});
     toast('✓ '+hechos.length+' cambio(s) en recetas',4500);
+  }
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// COCTEL DE ZANAHORIA EN VASO DE 16 OZ — 15-oct
+// Mismo vaso y mismo patrón que el de mango. 16 oz = 2 tazas, y una
+// taza de zanahoria picada pesa 128 g (tabla de nutrientes del USDA):
+// 256 g por vaso lleno. Pesa menos que el mango (165 g/taza) porque la
+// zanahoria picada deja más aire entre trozos. Con esto el último
+// producto sin receta queda costeado.
+// ═══════════════════════════════════════════════════════════
+async function migZanahoria15Oct(){
+  const migKey='h5zanahoria_15oct26';
+  if(await migDone(migKey)) return;
+  const nn=x=>normInvNombre(x||'');
+  const inv=n=>D.inventario.find(i=>nn(i.nombre)===nn(n));
+  const prod=D.productos.find(p=>nn(p.nombre)===nn('Coctel de Zanahoria'));
+  const rec=prod&&D.recetas.find(r=>r.prodId===prod.id);
+  if(prod && !(rec&&(rec.ings||[]).length)){
+    const piezas=[['Servitoallas',0.01],['Vaso smoothie 16 oz',1],['Zanahoria',256],['Limón agrio',100]];
+    const ings=[], faltan=[];
+    for(const [n,q] of piezas){ const it=inv(n);
+      if(it) ings.push({invId:it.id,nombre:it.nombre,qty:String(q),unit:it.unit}); else faltan.push(n); }
+    if(!faltan.length){
+      const nueva={id:rec?.id||Date.now()+prod.id,prodId:prod.id,ings};
+      await fsSet('recetas',nueva);
+      const rx=D.recetas.findIndex(x=>x.prodId===prod.id);
+      if(rx>=0) D.recetas[rx]=nueva; else D.recetas.push(nueva);
+      logAudit('recetas_actualizadas',{cambios:['Coctel de Zanahoria: vaso 16 oz, 256 g de zanahoria, 100 g de limón'],
+        motivo:'Iván: también en vaso de 16 oz. 2 tazas × 128 g (USDA)'});
+      toast('✓ Receta del Coctel de Zanahoria lista',4000);
+    } else console.warn('Coctel de Zanahoria: falta',faltan);
   }
   await markMig(migKey);
 }
