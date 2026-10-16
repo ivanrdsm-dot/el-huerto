@@ -11275,7 +11275,10 @@ async function descontarInventario(ventaItemsRaw){
   for(const item of ventaItems){
     const rec=D.recetas.find(r=>r.prodId===item.id);
     if(!rec||!rec.ings||rec.ings.length===0) continue;
-    for(const ing of rec.ings){
+    // La receta fija MÁS lo que eligió la cajera: el mango del coctel,
+    // el pollo de la ensalada, la fresa del açaí también se gastan.
+    const ingsVenta=[...rec.ings,...ingsDeToppings(item.id,item.prep).ings];
+    for(const ing of ingsVenta){
       // Buscar por ID primero, luego por nombre como fallback
       let inv=D.inventario.find(i=>i.id==ing.invId);
       if(!inv && ing.nombre){
@@ -11444,6 +11447,7 @@ async function cobrar(metodo,recibido=0,pagos=null,extra=null){
       }else{
         venta.foodCost=Math.round(fc*100)/100;
         venta.foodCostCompleto=fcOk;
+        venta.fcToppings=true;   // ya incluye lo que eligió la cajera
       }
     }catch(e){/* costeo no bloquea el cobro */}
     await fsSetCritical('ventas',venta);
@@ -16030,6 +16034,82 @@ function comboComponentes(item){
 
 // Food cost de un producto según su receta y precios de inventario
 // (prep: variantes elegidas — necesarias para costear combos)
+// ═══════════════════════════════════════════════════════════
+// LO QUE ELIGE LA CAJERA TAMBIÉN CUESTA — 15-oct
+// Los toppings iban a la comanda y a la pantalla de cocina, pero ni
+// se descontaban ni se costeaban. El Açaí Bowl de 3 toppings costaba
+// lo mismo que el de 1 ($34.24); la Ensalada de 3 toppings —el
+// producto que más dinero mueve— salía en $13.44 porque el sistema
+// creía que era lechuga y el bowl: el pollo, el aguacate y el queso
+// eran gratis. El food cost real era más alto de lo que se veía.
+//
+// Cada opción de cada lista apunta a su insumo con una PORCIÓN
+// ESTÁNDAR. Son estimaciones de cocina, no medidas — están juntas en
+// esta tabla para que se ajusten en un solo lugar en cuanto se pese
+// un plato de verdad. Lo que no tiene insumo o porción conocida se
+// queda sin mapear y la venta sale "incompleta": un hueco declarado
+// es mejor que un cero que parece sano.
+//   coctel: 60 g por fruta (3 frutas ≈ 180 g, lo que lleva un coctel
+//           de una fruta en plato). Sandía 5 kg/pz; piña 1 kg/pz (el
+//           Coctel Piña lleva 0.15 pz ≈ 150 g, como los demás).
+//   bowl:   fruta 30-50 g · granola/avena 20 g · crema 15 g · miel 10 ml
+//   ensalada: proteína 60 g · verdura y queso fresco 40 g ·
+//           semillas, crutones y queso rallado 15 g
+// ═══════════════════════════════════════════════════════════
+const PREP_PORCION={
+  coctel:{'Fresa':['Fresa',60,'g'],'Plátano':['Plátano',60,'g'],'Mango':['Mango verde',60,'g'],
+    'Manzana':['Manzana',60,'g'],'Sandía':['Sandía',0.012,'pz'],'Piña':['Piña',0.06,'pz'],
+    'Pepino':['Pepino',60,'g'],'Jícama':['Jícama',60,'g'],'Zanahoria':['Zanahoria',60,'g']},
+  bowl:{'Fresa':['Fresa',40,'g'],'Blueberry':['Blueberry',30,'g'],'Plátano':['Plátano',50,'g'],
+    'Mango':['Mango verde',40,'g'],'Almond butter':['Crema de almendras',0.0196,'pz'],
+    'Granola':['Granola',20,'g'],'Avena':['Avena',20,'g'],'Miel de abeja':['Miel',0.01,'L']},
+  ensalada:{'Pollo':['Tiras de pollo',60,'g'],'Aguacate':['Aguacate',40,'g'],'Pepino':['Pepino',40,'g'],
+    'Jitomate cherry':['Tomate cherry',40,'g'],'Zanahoria rallada':['Zanahoria',30,'g'],
+    'Queso parmesano':['Queso parmesano',15,'g'],'Queso panela':['Queso panela',40,'g'],
+    'Crutones':['Crutones',15,'g'],'Almendras':['Almendra natural',15,'g'],'Nuez':['Nuez',15,'g'],
+    'Cacahuate':['Cacahuate natural',15,'g'],'Arándanos':['Arándano deshidratado',15,'g'],
+    'Aceitunas negras':['Aceitunas negras',20,'g'],'Mango':['Mango verde',40,'g'],'Fresa':['Fresa',40,'g']},
+  // Sin mapear a propósito, porque falta un dato de Iván:
+  //   Peanut butter (cuánto pesa el frasco) · Spread de matcha · Elote ·
+  //   Semillas de girasol (no están en el inventario)
+};
+// Líneas de insumo que agregan los toppings elegidos de UN renglón.
+function ingsDeToppings(prodId,prep){
+  const pp=PROD_PREP[prodId];
+  const tabla=pp&&pp.elige&&PREP_PORCION[pp.de];
+  if(!tabla||!prep||!prep.length) return {ings:[],faltan:[]};
+  const ings=[], faltan=[];
+  for(const raw of prep){
+    const op=String(raw).includes(':')?String(raw).split(':').slice(1).join(':').trim():String(raw).trim();
+    const m=tabla[op];
+    if(!m){ faltan.push(op+' · topping sin porción'); continue; }
+    const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(m[0]));
+    if(!inv){ faltan.push(m[0]+' · no está en inventario'); continue; }
+    ings.push({invId:inv.id,nombre:inv.nombre,qty:String(m[1]),unit:m[2]});
+  }
+  return {ings,faltan};
+}
+// Costo de los toppings. Con `prep` es el de esa venta; sin `prep`
+// (tablas de márgenes, costeo guiado) es un ESTIMADO: el promedio de
+// las opciones de su lista por el número que se eligen.
+function costoToppings(prodId,prep){
+  const pp=PROD_PREP[prodId];
+  const tabla=pp&&pp.elige&&PREP_PORCION[pp.de];
+  if(!tabla) return null;
+  const costoDe=ing=>{ const inv=D.inventario.find(i=>i.id===ing.invId);
+    const cu=inv&&costoPorUnidadReceta(inv,ing.unit); return cu==null?null:cu*parseFloat(ing.qty); };
+  if(prep&&prep.length){
+    const {ings,faltan}=ingsDeToppings(prodId,prep);
+    let costo=0; const f=[...faltan];
+    ings.forEach(g=>{ const c=costoDe(g); if(c==null) f.push(g.nombre+' · sin costo'); else costo+=c; });
+    return {costo,faltantes:f};
+  }
+  const costos=Object.keys(tabla).map(op=>{ const r=ingsDeToppings(prodId,[op]).ings[0]; return r?costoDe(r):null; })
+    .filter(c=>c!=null);
+  if(!costos.length) return null;
+  return {costo:costos.reduce((a,b)=>a+b,0)/costos.length*pp.elige,faltantes:[]};
+}
+
 function foodCostProducto(prodId,prep){
   // Combo: suma el costo de sus componentes
   if(COMBO_FIJOS[prodId]){
@@ -16051,7 +16131,11 @@ function foodCostProducto(prodId,prep){
     });
     return {costo:alguno?Math.round(costo*100)/100:null,completo:faltantes.length===0,faltantes};
   }
-  return foodCostSimple(prodId);
+  const base=foodCostSimple(prodId);
+  const top=base.costo!=null?costoToppings(prodId,prep):null;
+  if(!top) return base;
+  const faltantes=[...base.faltantes,...top.faltantes];
+  return {costo:Math.round((base.costo+top.costo)*100)/100,completo:faltantes.length===0,faltantes};
 }
 function foodCostSimple(prodId){
   const rec=D.recetas.find(r=>r.prodId===prodId);
@@ -16384,7 +16468,12 @@ function ventasSinCostear(){
   // trae la marca (es anterior al campo) NO se toca: rehacerla con los
   // precios de hoy sí rompería el histórico, que es justo lo que el
   // snapshot existe para evitar.
-  return ventasRecientes().filter(v=>v.foodCost==null||v.foodCostCompleto===false);
+  // Y las que llevaban toppings antes del 15-oct: se cobraron con el
+  // costo de la receta base y los toppings en cero. "Completas" de
+  // nombre, mal costeadas de hecho. La marca `fcToppings` evita que se
+  // rehagan dos veces.
+  const conToppings=v=>!v.fcToppings&&(v.items||[]).some(i=>PROD_PREP[i.id]?.elige&&(i.prep||[]).length);
+  return ventasRecientes().filter(v=>v.foodCost==null||v.foodCostCompleto===false||conToppings(v));
 }
 window.recostearVentas=async()=>{
   const faltan=ventasSinCostear();
@@ -16410,7 +16499,7 @@ window.recostearVentas=async()=>{
     // la revisaría.
     const actual=D.ventas.find(x=>x.id===v.id);
     if(!actual||actual.anulada){siguen++;continue;}
-    const upd={...actual,foodCost:r2(fc),foodCostCompleto:true};
+    const upd={...actual,foodCost:r2(fc),foodCostCompleto:true,fcToppings:true};
     lote.push(upd);
     const ix=D.ventas.findIndex(x=>x.id===v.id); if(ix>=0) D.ventas[ix]=upd;
     ok++;

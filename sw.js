@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.34'; // Coctel de Zanahoria en vaso de 16 oz: 60 de 60 productos costeados
+const CACHE_NAME = 'el-huerto-v15.35'; // Los toppings que elige la cajera se costean y se descuentan
 const ASSETS = [
   '/',
   '/index.html',
