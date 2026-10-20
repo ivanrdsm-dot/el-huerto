@@ -3207,6 +3207,7 @@ async function completeInit(){
   await migRenee20087YPina19Oct();
   await migPanGeneralYFruta19Oct();
   await migFrutaARamiro19Oct();
+  await migPanPaniniLaComer19Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5885,6 +5886,29 @@ async function migFrutaARamiro19Oct(){
   await syncSurtido18Oct();
   logAudit('gasto_corregido',{ticket:'MERCADO-18OCT26',prov:'Reyes Ramiro',
     motivo:'Iván: la fruta viene de varios puestos, englobarla con Ramiro'});
+  await markMig(migKey);
+}
+// 19-oct (4): el pan para panini de la semana. Iván: 150 piezas de La
+// Comer a $5.80, "lo que compré para esta semana". El conteo de hoy ya
+// las tiene (150), así que solo entra el gasto; existencias sin tocar.
+async function migPanPaniniLaComer19Oct(){
+  const migKey='h5panini_lacomer_19oct26';
+  if(await migDone(migKey)) return;
+  const TICKET='LACOMER-PANINI-19OCT26';
+  if(!D.gastos.find(x=>x.ticket===TICKET)){
+    await fsSet('gastos',{id:Date.now(),fecha:'2026-10-19',ticket:TICKET,prov:'La Comer',cat:'proveedor',
+      tipoEstrategico:'operacion',metodo:'efectivo',monto:870.00,
+      partidas:[{c:'Pan para panini',q:150,u:'pz',i:870.00,art:'Pan para panini'}],
+      notas:'150 piezas a $5.80, el pan de panini de la semana del 19-oct (Iván). Sin ticket. El conteo del día ya las traía: el inventario no se tocó.'});
+    toast('✓ Pan para panini: $870 de La Comer registrado',4500);
+  }
+  const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Pan para panini'));
+  if(inv&&inv.precio!==5.8){
+    const upd={...inv,precio:5.8}; await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+  }
+  logAudit('compras_registradas',{proveedor:'La Comer',ticket:TICKET,monto:870,piezas:150,
+    motivo:'El conteo encontró 150 panes de panini sin gasto; Iván confirmó la compra'});
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){

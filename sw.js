@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.39'; // La fruta del 18-oct va con Reyes Ramiro
+const CACHE_NAME = 'el-huerto-v15.40'; // Pan para panini de La Comer, $870
 const ASSETS = [
   '/',
   '/index.html',
