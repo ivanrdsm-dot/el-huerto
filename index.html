@@ -14934,6 +14934,30 @@ window.surtidoACompras=()=>{
   mcSave(); go('mercado'); renderMercado();
   toast(`🧺 ${n} artículo(s) en tu lista de compras — corrige lo que cambie en el mercado`,4000);
 };
+// Punto 5: pesar un plato real y corregir la porción en un toque.
+// Cambia la línea de la receta de ESE producto para ESE insumo. Lo que
+// viene de un topping (la lista de la cajera) no vive en la receta y
+// se dice. Las ventas ya cobradas conservan su costo (snapshot).
+window.ajustarPorcion=async(prodNombre,invId)=>{
+  const prod=D.productos.find(p=>p.nombre===prodNombre);
+  const inv=D.inventario.find(i=>String(i.id)===String(invId));
+  const rec=prod&&D.recetas.find(r=>r.prodId===prod.id);
+  const ix=rec?(rec.ings||[]).findIndex(g=>String(g.invId)===String(invId)||(g.nombre&&inv&&normInvNombre(g.nombre)===normInvNombre(inv.nombre))):-1;
+  if(!prod||!inv||ix<0){toast('Esa porción viene de un topping, no de la receta: avísale a Claude para ajustarla',4500,'warn');return;}
+  const ing=rec.ings[ix];
+  const v=prompt(`${prodNombre}\n${inv.nombre}: la receta dice ${ing.qty} ${ing.unit}.\n\nPesa una porción real y escribe cuánto lleva (${ing.unit}):`,ing.qty);
+  if(v==null) return;
+  const q=parseFloat(String(v).replace(',','.'));
+  if(!(q>0)){toast('⚠ Cantidad inválida',2200,'warn');return;}
+  const antes=foodCostProducto(prod.id).costo;
+  const upd={...rec,ings:rec.ings.map((g,i)=>i===ix?{...g,qty:String(q)}:g)};
+  await fsSet('recetas',upd);
+  const rx=D.recetas.findIndex(r=>r.id===rec.id); if(rx>=0) D.recetas[rx]=upd;
+  const despues=foodCostProducto(prod.id).costo;
+  logAudit('receta_porcion',{producto:prodNombre,insumo:inv.nombre,de:ing.qty,a:q,unidad:ing.unit,costoAntes:antes,costoDespues:despues,motivo:'Porción pesada en el plato real'});
+  toast(`✓ ${prodNombre}: ${inv.nombre} ${ing.qty} → ${q} ${ing.unit} · costo ${fmt(antes||0)} → ${fmt(despues||0)}`,6000);
+  renderInv();
+};
 function renderSurtidoCard(){
   const S=surtidoSugerido();
   if(!S.filas.length) return '';
@@ -14945,7 +14969,7 @@ function renderSurtidoCard(){
       </div></div>
     <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;">Lo que se usó por semana (ventas × receta, ${S.desde} a ${S.hasta}) + 10% de colchón − lo que hay hoy. ≈ <b>${fmt(S.total)}</b> a los últimos precios.</p>
     <div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Artículo</th><th style="text-align:right;">Se usa / semana<br><span style="font-weight:400;font-size:10px;">según recetas</span></th><th style="text-align:right;">Compras / semana<br><span style="font-weight:400;font-size:10px;">según tickets</span></th><th style="text-align:right;">Hay</th><th style="text-align:right;">Comprar</th><th style="text-align:right;">≈ $</th></tr></thead><tbody>
-    ${S.filas.map(f=>{const uu=f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit);return `<tr><td>${esc(f.inv.nombre)}${f.descuadre?' <span title="La receta y lo que compras no cuadran: pesa una porción real" style="color:var(--goldd);">⚠</span>':''}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.sem/(f.factor||1)),uu)}</td><td class="mono" style="text-align:right;${f.descuadre?'color:var(--goldd);font-weight:700;':''}">${f.comp!=null?fmtCant(r2(f.comp/(f.factor||1)),uu):'—'}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.hay/(f.factor||1)),f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit))}</td><td class="mono fw7" style="text-align:right;">${fmtCant(f.comprar,f.u)}</td><td class="mono" style="text-align:right;">${f.costo!=null?fmt(f.costo):'—'}</td></tr>${f.descuadre&&f.quien.length?`<tr><td colspan="6" style="font-size:10.5px;color:var(--text3);padding-top:0;border-top:none;">↳ lo piden sobre todo: ${f.quien.map(q=>`${esc(q.prod)} (${Math.round(q.nSem)}/sem × ${Math.round(q.porcion*100)/100} ${f.inv.unit})`).join(' · ')}</td></tr>`:''}`;}).join('')}
+    ${S.filas.map(f=>{const uu=f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit);return `<tr><td>${esc(f.inv.nombre)}${f.descuadre?' <span title="La receta y lo que compras no cuadran: pesa una porción real" style="color:var(--goldd);">⚠</span>':''}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.sem/(f.factor||1)),uu)}</td><td class="mono" style="text-align:right;${f.descuadre?'color:var(--goldd);font-weight:700;':''}">${f.comp!=null?fmtCant(r2(f.comp/(f.factor||1)),uu):'—'}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.hay/(f.factor||1)),f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit))}</td><td class="mono fw7" style="text-align:right;">${fmtCant(f.comprar,f.u)}</td><td class="mono" style="text-align:right;">${f.costo!=null?fmt(f.costo):'—'}</td></tr>${f.descuadre&&f.quien.length?`<tr><td colspan="6" style="font-size:10.5px;color:var(--text3);padding-top:0;border-top:none;">↳ lo piden sobre todo: ${f.quien.map(q=>`${esc(q.prod)} (${Math.round(q.nSem)}/sem × ${Math.round(q.porcion*100)/100} ${f.inv.unit}) <button class="btn bs bxs" style="padding:1px 7px;font-size:10px;" onclick='ajustarPorcion(${JSON.stringify(q.prod).replace(/'/g,"&#39;")},${JSON.stringify(String(f.inv.id))})'>Ajustar porción</button>`).join(' · ')}</td></tr>`:''}`;}).join('')}
     </tbody></table></div>
     ${S.filas.some(f=>f.descuadre)?`<p style="font-size:11px;color:var(--goldd);margin:8px 0 0;">⚠ La receta y lo que compras no cuadran por más de 50%. O la porción de la receta está alta (pesa un plato real y ajústala en Recetas) o se está quedando corto. Mientras tanto, compra lo de siempre.</p>`:''}
   </div>`;
