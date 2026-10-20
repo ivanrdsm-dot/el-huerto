@@ -3205,6 +3205,7 @@ async function completeInit(){
   await migSurtido18Oct2026();
   await migSurtido18OctArt();
   await migRenee20087YPina19Oct();
+  await migPanGeneralYFruta19Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5693,9 +5694,8 @@ async function migZanahoria15Oct(){
 // precio por unidad de cada insumo al de esta compra.
 //
 // Precios que NO se tocan, a propósito:
-//  · Fresa, lechuga y aguacate del mercado: Iván dio el total de la
-//    fruta, no el desglose ($369.89 entre los tres; la piña la dijo
-//    aparte, $35 la pieza). Repartirlo a ojo metería un costo inventado.
+//  · Lechuga del mercado: 3 bolsas por $129.89 (lo que resta de la
+//    fruta), pero sin el peso de la bolsa no hay precio por gramo.
 //
 // Costco: el descuento global ($36.24) se repartió en proporción; los
 // netos salen redondos ($215, $149, $179…) y suman exacto $1,578.60.
@@ -5751,7 +5751,7 @@ const SURTIDO_18OCT=[
       ['Tapa p/bowl kraft',              'Tapa p/bowl kraft',  100,'pz',  164.00],
       ['Bolsa semikraft No. 4 blanca',   'Bolsa semikraft #4', 100,'pz',   54.00]]},
   {ticket:'MERCADO-18OCT26', prov:'Fruta y verdura (Central de Abasto)', cat:'proveedor', metodo:'efectivo',
-   notas:'Sin ticket: lo que falta de los $7,000 del surtido. Precios por kilo que dio Iván. Piña a $35 la pieza (Iván, 19-oct). Fresa, lechuga (3 bolsas) y aguacate ($40 la pieza) vienen juntos en $369.89 sin desglose: su precio por unidad no se tocó.',
+   notas:'Sin ticket: lo que falta de los $7,000 del surtido. Precios por kilo que dio Iván. Precios de Iván (19-oct): piña $35 la pieza, fresa $120 el domo de 907 g, aguacate $40 el kilo (3 kg). La lechuga (3 bolsas) es lo que resta, $129.89: sin el peso de la bolsa no hay precio por gramo y el de la lechuga no se tocó.',
    p:[['Plátano 7 kg × $18',             'Plátano',           7000,'g',  126.00],
       ['Mango 7 kg × $55',               'Mango verde',       7000,'g',  385.00],
       ['Zanahoria 4 kg × $14',           'Zanahoria',         4000,'g',   56.00],
@@ -5760,7 +5760,9 @@ const SURTIDO_18OCT=[
       ['Jitomate 2 kg × $22',            'Jitomate',          2000,'g',   44.00],
       ['Limón 3 kg × $15',               'Limón agrio',       3000,'g',   45.00],
       ['Piña 3 pz × $35',                'Piña',                 3,'pz',  105.00],
-      ['Fresa, lechuga 3 bolsas, aguacate 2 kg ($40 la pieza)', null, 1,'lote',369.89]]},
+      ['Fresa 1 domo 907 g',             'Fresa',              907,'g',  120.00],
+      ['Aguacate 3 kg × $40',            'Aguacate',          3000,'g',  120.00],
+      ['Lechuga 3 bolsas',               'Lechuga',              3,'bolsa',129.89]]},
 ];
 // Artículos que no existían. El azúcar del catálogo oficial (id 7302)
 // se volvió "Splenda" el 7-oct: éste es azúcar de verdad, con id propio.
@@ -5830,6 +5832,50 @@ async function syncSurtido18Oct(){
     await fsSet('gastos',upd);
     const ix=D.gastos.findIndex(x=>x.id===gx.id); if(ix>=0) D.gastos[ix]=upd;
   }
+}
+// ═══════════════════════════════════════════════════════════
+// 19-OCT (2) — FUERA EL PAN DE RENEE "GENERAL", Y LA FRUTA COMPLETA
+//
+// Iván: "elimina los panes de Renee como general y solo deja por cada
+// sabor". El renglón "Pan Tía Renee (por clasificar)" nació el 9-oct
+// cuando el pan se separó por sabor; se dejó para repartir lo que
+// tenía. Nunca se vació: ninguna receta lo usa, así que el pan que
+// cae ahí no se descuenta al vender, y el conteo lo seguía llenando
+// (23 piezas hoy). Se borra el artículo y su captura de hoy; si una
+// receta lo usara, NO se borra y se avisa.
+//
+// Fruta: Iván dio aguacate ($40 el kilo, 3 kg) y fresa ($120 el domo
+// de 907 g). La lechuga es lo que resta.
+// ═══════════════════════════════════════════════════════════
+async function migPanGeneralYFruta19Oct(){
+  const migKey='h5pangeneral_fruta_19oct26';
+  if(await migDone(migKey)) return;
+  const sabores=new Set(PANES_RENEE.map(v=>v.inv));
+  const usados=new Set(D.recetas.flatMap(r=>(r.ings||[]).map(i=>i.invId)).filter(x=>x!=null));
+  const borrados=[], protegidos=[];
+  for(const it of D.inventario.filter(i=>/^pantiarenee/.test(normInvNombre(i.nombre))&&!sabores.has(i.id))){
+    if(usados.has(it.id)){ protegidos.push(`${it.nombre}: lo usa una receta`); continue; }
+    for(const c of D.invDiario.filter(c=>c.productoId===it.id&&c.fecha==='2026-10-19')){
+      await fsDel('invDiario',c.id);
+      const ix=D.invDiario.findIndex(x=>x.id===c.id); if(ix>=0) D.invDiario.splice(ix,1);
+    }
+    await fsDel('inventario',it.id);
+    const ix=D.inventario.findIndex(x=>x.id===it.id); if(ix>=0) D.inventario.splice(ix,1);
+    borrados.push(`${it.nombre} (${it.qty||0} pz)`);
+  }
+  await syncSurtido18Oct();
+  const precios=[];
+  for(const [n,precio] of [['Aguacate',0.04],['Fresa',Math.round(120/907*1000000)/1000000]]){
+    const it=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+    if(!it||it.precio===precio) continue;
+    const upd={...it,precio}; await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===it.id); if(ix>=0) D.inventario[ix]=upd;
+    precios.push(`${n}: $${it.precio} → $${precio}/${it.unit}`);
+  }
+  logAudit('inventario_limpieza',{borrados,protegidos:protegidos.length?protegidos:undefined,precios,
+    motivo:'Iván: el pan de Renee solo por sabor. Fruta del 18-oct con los precios que dio'});
+  toast(`✓ Pan de Renee solo por sabor${borrados.length?` (${borrados.length} genérico fuera)`:''} · fruta completa`,5000);
+  await markMig(migKey);
 }
 async function migSurtido18OctArt(){
   const migKey='h5surtido_18oct26_art';

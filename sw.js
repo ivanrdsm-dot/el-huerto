@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.37'; // Renee 20087 pagado esta semana; piña a $35
+const CACHE_NAME = 'el-huerto-v15.38'; // Pan de Renee solo por sabor; fruta del 18-oct completa
 const ASSETS = [
   '/',
   '/index.html',
