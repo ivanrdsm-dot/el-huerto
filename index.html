@@ -3222,6 +3222,7 @@ async function completeInit(){
   await migPanPaniniLaComer19Oct();
   await migCierreConCompras19Oct();
   await migCocteles20Oct();
+  await migProteinaExtra20Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6005,6 +6006,21 @@ async function migCocteles20Oct(){
   if(cambios.length){
     logAudit('menu_cocteles',{cambios,motivo:'Iván: solo Coctel de Fruta (eliges de qué) y Coctel Mix (2 o 3), para que la merma salga por fruta'});
     toast('✓ Cocteles: Coctel de Fruta y Coctel Mix',4500);
+  }
+  await markMig(migKey);
+}
+// 20-oct: Proteína Extra de $15 a $25 (Iván). Cuesta $19.34 (30 g de
+// whey): a $15 perdía $4.34 en cada una; a $25 deja 23%.
+async function migProteinaExtra20Oct(){
+  const migKey='h5proteina_extra_25_20oct26';
+  if(await migDone(migKey)) return;
+  const p=D.productos.find(x=>x.id===1052);
+  if(p&&(p.precio!==25||p.desc!=='Por $25 agrega proteína')){
+    const upd={...p,precio:25,desc:'Por $25 agrega proteína'};
+    await fsSet('productos',upd);
+    const ix=D.productos.findIndex(x=>x.id===p.id); if(ix>=0) D.productos[ix]=upd;
+    logAudit('precio_cambiado',{producto:p.nombre,de:p.precio,a:25,motivo:'Iván: cuesta $19.34 y se vendía en $15'});
+    toast('✓ Proteína Extra ahora a $25',4000);
   }
   await markMig(migKey);
 }
@@ -16961,7 +16977,7 @@ function motivosSinCostear(semanas){
     }
     // Puede ser un precio de insumo mal escalado… o un producto que de
     // verdad cuesta más de lo que se cobra. Se nombra para distinguirlo.
-    if(!vistos.size && fc>v.total && v.total>0)
+    if(!vistos.size && fc>v.total && v.total>0 && !perdidaConocida(v))
       vistos.add(`el costo ($${r2(fc)}) sale mayor que la venta ($${v.total}): ${[...new Set((v.items||[]).map(i=>i.nombre))].join(', ')}`);
     vistos.forEach(f=>{ cuenta[f]=(cuenta[f]||0)+1; });
   }
@@ -17053,6 +17069,12 @@ function costoRenglonVenta(it){
   const r2_=foodCostProducto(it.id,[...(it.prep||[]),...extra]);
   return r2_.completo?{...r2_,supuesto}:r;
 }
+// Productos que DE VERDAD se vendieron por debajo de su costo: el candado
+// "costo mayor que la venta" (que atrapa precios mal escalados) no
+// aplica. Proteína Extra se cobró a $15 con 30 g de whey de $19.34
+// hasta el 20-oct; esas ventas perdieron dinero y así se registran.
+const PERDIDA_CONOCIDA=new Set([1052]);
+const perdidaConocida=v=>(v.items||[]).some(i=>PERDIDA_CONOCIDA.has(i.id));
 function ventasSinCostear(semanas){
   // Solo las que SABEMOS que quedaron mal: sin costo, o marcadas
   // incompletas al cobrarse. Una venta vieja que trae costo pero no
@@ -17088,7 +17110,7 @@ window.recostearVentas=async(semanas)=>{
     });
     // Mismo candado que al cobrar: si el costo supera la venta, hay un
     // precio mal escalado. Mejor sin dato que con dato podrido.
-    if(!completo||(fc>v.total&&v.total>0)){siguen++;continue;}
+    if(!completo||(fc>v.total&&v.total>0&&!perdidaConocida(v))){siguen++;continue;}
     // Se relee del arreglo vivo: entre que empezó el lote y llega este
     // renglón, otra tablet pudo anular la venta. Escribir la copia vieja
     // la revisaría.

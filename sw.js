@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.46'; // Cocteles: Coctel de Fruta (eliges de qué) y Coctel Mix (2 o 3)
+const CACHE_NAME = 'el-huerto-v15.47'; // Proteína Extra a $25
 const ASSETS = [
   '/',
   '/index.html',
