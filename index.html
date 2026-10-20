@@ -3221,6 +3221,7 @@ async function completeInit(){
   await migFrutaARamiro19Oct();
   await migPanPaniniLaComer19Oct();
   await migCierreConCompras19Oct();
+  await migCocteles20Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5978,6 +5979,33 @@ async function migCierreConCompras19Oct(){
   logAudit('inventario_correccion',{fecha:td,cambios:hechos,
     motivo:'Cierre del día: Valentina con esperado imposible y la mercancía del domingo fuera del esperado'});
   if(hechos.length) toast(`✓ Cierre del día corregido: ${hechos.length} renglón(es)`,5000);
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// 20-oct — DOS COCTELES (Iván: "los cocteles están de más")
+// Quedan "Coctel de Fruta" (eliges de qué) y "Coctel Mix" (2 o 3). Los
+// de una fruta salen del menú pero NO se borran: sus recetas son las
+// que usa el Coctel de Fruta al elegir esa fruta, y las ventas viejas
+// siguen costeando con ellas. El Biónico también sale de la caja.
+// ═══════════════════════════════════════════════════════════
+async function migCocteles20Oct(){
+  const migKey='h5cocteles_dos_20oct26';
+  if(await migDone(migKey)) return;
+  const nn=x=>normInvNombre(x||'');
+  const fuera=['Coctel Jícama','Coctel Piña','Coctel Sandía','Coctel Pepino','Coctel de mango','Coctel de Zanahoria','Coctel Biónico'];
+  const cambios=[];
+  const guarda=async(p,c)=>{ const upd={...p,...c}; if(JSON.stringify(upd)===JSON.stringify(p)) return;
+    await fsSet('productos',upd); const ix=D.productos.findIndex(x=>x.id===p.id); if(ix>=0) D.productos[ix]=upd;
+    cambios.push(`${p.nombre}: ${c.activo===false?'fuera del menú':'en el menú'}`); };
+  for(const n of fuera){ const p=D.productos.find(x=>nn(x.nombre)===nn(n)); if(p&&p.activo!==false) await guarda(p,{activo:false}); }
+  const fruta=D.productos.find(x=>x.id===1013);
+  if(fruta) await guarda(fruta,{activo:true,desc:'Elige de qué: una fruta o verdura'});
+  const mix=D.productos.find(x=>x.id===1061);
+  if(mix) await guarda(mix,{activo:true,desc:'2 o 3 frutas o verduras a escoger'});
+  if(cambios.length){
+    logAudit('menu_cocteles',{cambios,motivo:'Iván: solo Coctel de Fruta (eliges de qué) y Coctel Mix (2 o 3), para que la merma salga por fruta'});
+    toast('✓ Cocteles: Coctel de Fruta y Coctel Mix',4500);
+  }
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){
@@ -9887,10 +9915,21 @@ const PROD_PREP={
   1005:{elige:2,de:'bowl',base:'Avena overnight + leche + granola'},
   1006:{elige:3,de:'bowl',base:'Avena overnight + leche + granola'},
   1073:{elige:3,de:'ensalada',base:'Base de lechuga'},
-  // Cocteles: cada uno pide sus frutas (los inactivos quedan listos por si se reactivan)
-  1013:{elige:2,de:'coctel'},                                        // Coctel de Fruta: 2 frutas
-  1014:{elige:3,de:'coctel',base:'+ Yogurt y coco rallado'},         // Coctel Biónico: 3 frutas
-  1061:{elige:3,de:'coctel'},                                        // Coctel Mix: 3 frutas
+  // ══ COCTELES: DOS OPCIONES (Iván, 20-oct) ══
+  // "Coctel de fruta": la cajera elige DE QUÉ es (una fruta o verdura).
+  // "Coctel Mix": 2 o 3. Lo elegido es lo que se descuenta del
+  // inventario, para que las mermas salgan bien.
+  // `porciones`: lo que lleva un coctel (3 × 60 g) se reparte entre lo
+  // elegido — un Mix de 2 lleva 90 g de cada una, uno de 3 lleva 60 g.
+  // `unaFruta`: el coctel de una sola fruta usa la receta del coctel que
+  // ya existía de esa fruta (mango y zanahoria en vaso de 16 oz, los
+  // demás en plato con limón). Sin receta propia (fresa, plátano,
+  // manzana): la base del coctel más las 3 porciones de esa fruta.
+  1013:{elige:1,de:'coctel',porciones:3,etiqueta:'¿De qué es el coctel?',
+        unaFruta:{'Mango':'Coctel de mango','Zanahoria':'Coctel de Zanahoria','Jícama':'Coctel Jícama',
+                  'Piña':'Coctel Piña','Sandía':'Coctel Sandía','Pepino':'Coctel Pepino'}},
+  1014:{elige:3,de:'coctel',porciones:3,base:'+ Yogurt y coco rallado'},  // Coctel Biónico (inactivo)
+  1061:{elige:3,min:2,de:'coctel',porciones:3,etiqueta:'Frutas o verduras del Mix (2 o 3)'},
   1057:{fijo:'Jícama con chile y limón'},
   1058:{fijo:'Piña con chile y limón'},
   1059:{fijo:'Sandía con chile y limón'},
@@ -9965,7 +10004,7 @@ let prepPendiente=null; // {pid, pasos:[], idx, sel:Set, resultado:[]}
 function prepPasosDe(pid){
   const pp=PROD_PREP[pid];
   if(pp?.pasos) return pp.pasos;
-  if(pp?.elige) return [{t:`Elige ${pp.elige} topping${pp.elige>1?'s':''}`,de:pp.de,n:pp.elige}];
+  if(pp?.elige) return [{t:pp.etiqueta||`Elige ${pp.elige} topping${pp.elige>1?'s':''}`,de:pp.de,n:pp.elige,...(pp.min?{min:pp.min}:{})}];
   return null;
 }
 window.abrirPrepModal=pid=>{
@@ -10012,17 +10051,18 @@ function actualizarPrepUI(){
   const total=nActual+faltan;
   $('prep-contador').textContent=paso.libre
     ?`${total>1?`Paso ${nActual} de ${total} · `:''}${paso.t}`
-    :`${total>1?`Paso ${nActual} de ${total} · `:''}${paso.t} — llevas ${sel.size}/${paso.n}`;
+    :`${total>1?`Paso ${nActual} de ${total} · `:''}${paso.t} — llevas ${sel.size}/${paso.n}${paso.min&&paso.min<paso.n?` (mínimo ${paso.min})`:''}`;
   const ok=$('prep-ok');
   ok.textContent=idx<pasos.length-1?'Siguiente ▸':'Agregar';
-  const listo=paso.libre||sel.size===paso.n;
+  // `min`: el Mix acepta 2 o 3; lo demás pide exactamente n.
+  const listo=paso.libre||(sel.size>=(paso.min||paso.n)&&sel.size<=paso.n);
   ok.disabled=!listo; ok.style.opacity=listo?'1':'.4';
 }
 window.cancelarPrep=()=>{prepPendiente=null;$('prep-modal').style.display='none';};
 window.confirmarPrep=()=>{
   const pp=prepPendiente; if(!pp) return;
   const paso=pp.pasos[pp.idx];
-  if(!paso.libre&&pp.sel.size!==paso.n) return;
+  if(!paso.libre&&!(pp.sel.size>=(paso.min||paso.n)&&pp.sel.size<=paso.n)) return;
   const vals=[...pp.sel];
   if(paso.libre){
     // La cocina necesita los SIN explícitos: "—" se lee como "lleva todo"
@@ -11663,11 +11703,13 @@ async function descontarInventario(ventaItemsRaw){
   let alertas=[];
   let descontados=0;
   for(const item of ventaItems){
-    const rec=D.recetas.find(r=>r.prodId===item.id);
+    // Coctel de una fruta: manda la receta del coctel de esa fruta.
+    const rid=prodRecetaPorEleccion(item.id,item.prep);
+    const rec=D.recetas.find(r=>r.prodId===rid);
     if(!rec||!rec.ings||rec.ings.length===0) continue;
     // La receta fija MÁS lo que eligió la cajera: el mango del coctel,
     // el pollo de la ensalada, la fresa del açaí también se gastan.
-    const ingsVenta=[...rec.ings,...ingsDeToppings(item.id,item.prep).ings];
+    const ingsVenta=rid!==item.id?[...rec.ings]:[...rec.ings,...ingsDeToppings(item.id,item.prep).ings];
     for(const ing of ingsVenta){
       // Buscar por ID primero, luego por nombre como fallback
       let inv=D.inventario.find(i=>i.id==ing.invId);
@@ -16550,13 +16592,15 @@ function ingsDeToppings(prodId,prep){
     const t=String(raw).includes(':')?String(raw).split(':').slice(1).join(':'):String(raw);
     return t.split(',').map(x=>x.trim()).filter(Boolean);
   });
-  for(const op of opciones){
-    if(TOPPINGS_RETIRADOS.has(op)) continue;
+  // Lo que lleva el producto se reparte entre lo elegido (cocteles).
+  const validas=opciones.filter(op=>!TOPPINGS_RETIRADOS.has(op));
+  const factor=pp.porciones&&validas.length?pp.porciones/validas.length:1;
+  for(const op of validas){
     const m=tabla[op];
     if(!m){ faltan.push(op+' · topping sin porción'); continue; }
     const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(m[0]));
     if(!inv){ faltan.push(m[0]+' · no está en inventario'); continue; }
-    ings.push({invId:inv.id,nombre:inv.nombre,qty:String(m[1]),unit:m[2]});
+    ings.push({invId:inv.id,nombre:inv.nombre,qty:String(Math.round(m[1]*factor*10000)/10000),unit:m[2]});
   }
   return {ings,faltan};
 }
@@ -16578,10 +16622,22 @@ function costoToppings(prodId,prep){
   const costos=Object.keys(tabla).map(op=>{ const r=ingsDeToppings(prodId,[op]).ings[0]; return r?costoDe(r):null; })
     .filter(c=>c!=null);
   if(!costos.length) return null;
-  return {costo:costos.reduce((a,b)=>a+b,0)/costos.length*pp.elige,faltantes:[]};
+  return {costo:costos.reduce((a,b)=>a+b,0)/costos.length*(pp.porciones||pp.elige),faltantes:[]};
 }
 
+// El coctel de UNA fruta se hace con la receta del coctel de esa fruta.
+// Devuelve el producto cuya receta manda para esta venta.
+function prodRecetaPorEleccion(prodId,prep){
+  const mapa=PROD_PREP[prodId]?.unaFruta;
+  if(!mapa||!prep||!prep.length) return prodId;
+  const op=String(prep[0]).split(':').pop().split(',')[0].trim();
+  const nom=mapa[op]; if(!nom) return prodId;
+  const p=D.productos.find(x=>normInvNombre(x.nombre)===normInvNombre(nom));
+  const rec=p&&D.recetas.find(r=>r.prodId===p.id);
+  return rec&&(rec.ings||[]).length?p.id:prodId;
+}
 function foodCostProducto(prodId,prep){
+  { const alt=prodRecetaPorEleccion(prodId,prep); if(alt!==prodId) return foodCostSimple(alt); }
   // Combo: suma el costo de sus componentes
   if(COMBO_FIJOS[prodId]){
     const ids=comboComponentes({id:prodId,prep});
