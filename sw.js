@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.43'; // Cierre del día: fuera los $132K de la Valentina, compras en el esperado
+const CACHE_NAME = 'el-huerto-v15.44'; // Renta fija $1,500/mes en toda utilidad; fuera elote y spread de matcha
 const ASSETS = [
   '/',
   '/index.html',
