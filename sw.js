@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.36'; // Surtido del 18-oct: 8 gastos, $7,000, precios al día
+const CACHE_NAME = 'el-huerto-v15.37'; // Renee 20087 pagado esta semana; piña a $35
 const ASSETS = [
   '/',
   '/index.html',

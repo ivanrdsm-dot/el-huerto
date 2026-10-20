@@ -3204,6 +3204,7 @@ async function completeInit(){
   await migZanahoria15Oct();
   await migSurtido18Oct2026();
   await migSurtido18OctArt();
+  await migRenee20087YPina19Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -5692,9 +5693,9 @@ async function migZanahoria15Oct(){
 // precio por unidad de cada insumo al de esta compra.
 //
 // Precios que NO se tocan, a propósito:
-//  · Piña, fresa, lechuga y aguacate del mercado: Iván dio el total
-//    de la fruta, no el desglose de estos cuatro ($474.89 entre los
-//    cuatro). Repartirlo a ojo metería un costo inventado.
+//  · Fresa, lechuga y aguacate del mercado: Iván dio el total de la
+//    fruta, no el desglose ($369.89 entre los tres; la piña la dijo
+//    aparte, $35 la pieza). Repartirlo a ojo metería un costo inventado.
 //
 // Costco: el descuento global ($36.24) se repartió en proporción; los
 // netos salen redondos ($215, $149, $179…) y suman exacto $1,578.60.
@@ -5750,7 +5751,7 @@ const SURTIDO_18OCT=[
       ['Tapa p/bowl kraft',              'Tapa p/bowl kraft',  100,'pz',  164.00],
       ['Bolsa semikraft No. 4 blanca',   'Bolsa semikraft #4', 100,'pz',   54.00]]},
   {ticket:'MERCADO-18OCT26', prov:'Fruta y verdura (Central de Abasto)', cat:'proveedor', metodo:'efectivo',
-   notas:'Sin ticket: lo que falta de los $7,000 del surtido. Precios por kilo que dio Iván. Piña, fresa, lechuga y aguacate vienen juntos en $474.89 sin desglose: su precio por unidad no se tocó.',
+   notas:'Sin ticket: lo que falta de los $7,000 del surtido. Precios por kilo que dio Iván. Piña a $35 la pieza (Iván, 19-oct). Fresa, lechuga (3 bolsas) y aguacate ($40 la pieza) vienen juntos en $369.89 sin desglose: su precio por unidad no se tocó.',
    p:[['Plátano 7 kg × $18',             'Plátano',           7000,'g',  126.00],
       ['Mango 7 kg × $55',               'Mango verde',       7000,'g',  385.00],
       ['Zanahoria 4 kg × $14',           'Zanahoria',         4000,'g',   56.00],
@@ -5758,7 +5759,8 @@ const SURTIDO_18OCT=[
       ['Pepino 9 kg × $20',              'Pepino',            9000,'g',  180.00],
       ['Jitomate 2 kg × $22',            'Jitomate',          2000,'g',   44.00],
       ['Limón 3 kg × $15',               'Limón agrio',       3000,'g',   45.00],
-      ['Piña 3 pz, fresa, lechuga 3 pz, aguacate 2 kg', null,  1,'lote',474.89]]},
+      ['Piña 3 pz × $35',                'Piña',                 3,'pz',  105.00],
+      ['Fresa, lechuga 3 bolsas, aguacate 2 kg ($40 la pieza)', null, 1,'lote',369.89]]},
 ];
 // Artículos que no existían. El azúcar del catálogo oficial (id 7302)
 // se volvió "Splenda" el 7-oct: éste es azúcar de verdad, con id propio.
@@ -5771,6 +5773,64 @@ const NUEVOS_18OCT=[
 // smoothie 16 oz": la tarjeta de mercancía sin capturar seguía
 // reclamando compras que sí estaban. `art` es el nombre del inventario.
 // Llave nueva: la migración del surtido ya corrió.
+// ═══════════════════════════════════════════════════════════
+// 19-OCT — EL PAN DE RENEE QUE SE PAGÓ HOY, Y LA PIÑA
+//
+// El 13-oct registré "RENEE-13OCT26" con lo que Iván dijo ese día —10
+// de cada uno— y lo multipliqué por los CINCO sabores: 50 piezas,
+// $2,337.50. El ticket real (20087, 13-oct) dice otra cosa: 40 piezas,
+// cuatro sabores (pizza, chilaquiles verdes, chilaquiles rojos y queso
+// solo; rajas poblanas no venía), lista $55 − 15% = $1,870.
+//
+// Ese mismo registro se convierte en el ticket real —mismo id, sin
+// duplicar— y se marca PAGADO: Iván lo pagó hoy. Por la regla de Renee
+// (manda la semana en que se paga), cuenta en la semana del 19, con
+// la fecha del pedido guardada en fechaTicket.
+//
+// Y la fruta: Iván dio el precio de la piña ($35 la pieza). Se separa
+// de la bolsa sin desglosar y se le pone precio.
+// ═══════════════════════════════════════════════════════════
+const RENEE_20087=['Pizza','Chilaquiles Verdes','Chilaquiles Rojos','Queso'];
+async function migRenee20087YPina19Oct(){
+  const migKey='h5renee20087_pina_19oct26';
+  if(await migDone(migKey)) return;
+  const g=D.gastos.find(x=>x.ticket==='RENEE-20087')||D.gastos.find(x=>x.ticket==='RENEE-13OCT26');
+  const partidas=RENEE_20087.map(sab=>({c:`Pan con queso — ${sab}`,q:10,u:'pz',i:467.50,art:`Pan Tía Renee — ${sab}`}));
+  const fijo={ticket:'RENEE-20087',prov:'Tía Renee',cat:'proveedor',tipoEstrategico:'operacion',
+    fecha:'2026-10-19',fechaTicket:'2026-10-13',monto:1870.00,pendientePago:false,fechaPago:'2026-10-19',
+    metodo:'transferencia',partidas,
+    notas:'Ticket 20087 · pedido del 13-oct · tienda en línea, vendedora Grace Roffe. 40 panes con queso: 10 pizza, 10 chilaquiles verdes, 10 chilaquiles rojos, 10 queso. Lista $55 − 15% = $46.75 la pieza. Pagado el 19-oct: cuenta en la semana en que se paga.'};
+  const antes=g?{ticket:g.ticket,fecha:g.fecha,monto:g.monto,pendiente:!!g.pendientePago}:null;
+  const upd=g?{...g,...fijo}:{id:Date.now(),...fijo};
+  if(!g||JSON.stringify({...g,...fijo})!==JSON.stringify(g)){
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===upd.id); if(ix>=0) D.gastos[ix]=upd; else D.gastos.push(upd);
+  }
+  // La fruta: partidas y notas al día, y la piña con su precio.
+  await syncSurtido18Oct();
+  const pina=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Piña'));
+  if(pina&&pina.precio!==35){
+    const u2={...pina,precio:35}; await fsSet('inventario',u2);
+    const ix=D.inventario.findIndex(i=>i.id===pina.id); if(ix>=0) D.inventario[ix]=u2;
+  }
+  logAudit('gasto_corregido',{ticket:'RENEE-20087',antes,despues:{fecha:'2026-10-19',monto:1870,pagado:true},
+    piña:pina?{antes:pina.precio,despues:35}:null,
+    motivo:'Ticket real de Renee: 40 panes y no 50. Pagado el 19-oct, cuenta en la semana del pago'});
+  toast('✓ Tía Renee $1,870 pagado esta semana · piña a $35',5000);
+  await markMig(migKey);
+}
+// Deja cada gasto del surtido del 18-oct como dice SURTIDO_18OCT:
+// partidas (con su artículo) y notas. Fijar, nunca sumar.
+async function syncSurtido18Oct(){
+  for(const g of SURTIDO_18OCT){
+    const gx=D.gastos.find(x=>x.ticket===g.ticket); if(!gx) continue;
+    const partidas=g.p.map(([c,art,q,u,i])=>({c,q,u,i,...(art?{art}:{})}));
+    if(JSON.stringify(gx.partidas)===JSON.stringify(partidas)&&gx.notas===g.notas) continue;
+    const upd={...gx,partidas,notas:g.notas};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===gx.id); if(ix>=0) D.gastos[ix]=upd;
+  }
+}
 async function migSurtido18OctArt(){
   const migKey='h5surtido_18oct26_art';
   if(await migDone(migKey)) return;
