@@ -16898,9 +16898,10 @@ function motivosSinCostear(semanas){
   for(const v of ventasSinCostear(semanas)){
     const vistos=new Set(); let fc=0;
     for(const it of (v.items||[])){
-      const r=foodCostProducto(it.id,it.prep);
+      const r=costoRenglonVenta(it);
       if(r.costo!=null) fc+=r.costo*(it.qty||0);
-      (r.faltantes||[]).forEach(f=>vistos.add(f));
+      // "sin receta" a secas no dice de qué producto: se nombra.
+      (r.completo?[]:(r.faltantes||[])).forEach(f=>vistos.add(/^(sin receta|combo sin variante)/.test(f)?`${f}: ${it.nombre||it.id}`:f));
     }
     // Puede ser un precio de insumo mal escalado… o un producto que de
     // verdad cuesta más de lo que se cobra. Se nombra para distinguirlo.
@@ -16959,6 +16960,43 @@ function renderCosteoGuia(){
 // su "snapshot" es un hueco. Si no se rehace, el Panel seguiría diciendo
 // 72% de cobertura semanas después de haber arreglado las recetas.
 // Por eso esto SOLO toca las incompletas y nunca las que ya cuadraban.
+// ══ COMBOS VIEJOS SIN ELECCIÓN (Iván, 20-oct: "con el que más se lleven") ══
+// Antes de que la caja obligara a elegir, varios combos se cobraron sin
+// guardar el aderezo o la leche, y se quedaban sin costo para siempre.
+// Se costean con la opción que MÁS se pide en ese combo (o, si ese combo
+// nunca la registró, en todos). La venta NO se reescribe: se guarda el
+// costo y, en `fcSupuesto`, qué se supuso — a la vista, no escondido.
+let _masComunCache=null;
+function eleccionMasComun(comboId,parte){
+  if(!_masComunCache){
+    _masComunCache={porCombo:{},global:{}};
+    for(const v of D.ventas) for(const it of (v.items||[])){
+      if(!COMBO_FIJOS[it.id]) continue;
+      for(const l of (it.prep||[])){
+        const ix=String(l).indexOf(':'); if(ix<0) continue;
+        const k=String(l).slice(0,ix).trim().toLowerCase(), val=String(l).slice(ix+1).trim();
+        if(!val) continue;
+        const pc=(_masComunCache.porCombo[it.id+'|'+k]??={}); pc[val]=(pc[val]||0)+(it.qty||1);
+        const g=(_masComunCache.global[k]??={}); g[val]=(g[val]||0)+(it.qty||1);
+      }
+    }
+  }
+  const top=o=>o&&Object.entries(o).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  return top(_masComunCache.porCombo[comboId+'|'+parte])||top(_masComunCache.global[parte])||null;
+}
+// Costo de un renglón de venta; si es un combo al que solo le falta la
+// elección, se completa con la más pedida.
+function costoRenglonVenta(it){
+  const r=foodCostProducto(it.id,it.prep);
+  if(r.completo||!COMBO_FIJOS[it.id]) return r;
+  const solo=(r.faltantes||[]).length&&(r.faltantes||[]).every(f=>String(f).startsWith('falta elegir: '));
+  if(!solo) return r;
+  const partes=r.faltantes.flatMap(f=>String(f).slice('falta elegir: '.length).split(',').map(x=>x.trim()));
+  const supuesto={}, extra=[];
+  for(const pt of partes){ const v=eleccionMasComun(it.id,pt); if(!v) return r; supuesto[pt]=v; extra.push(`${pt}: ${v}`); }
+  const r2_=foodCostProducto(it.id,[...(it.prep||[]),...extra]);
+  return r2_.completo?{...r2_,supuesto}:r;
+}
 function ventasSinCostear(semanas){
   // Solo las que SABEMOS que quedaron mal: sin costo, o marcadas
   // incompletas al cobrarse. Una venta vieja que trae costo pero no
@@ -16985,11 +17023,12 @@ window.recostearVentas=async(semanas)=>{
   const vaciar=async()=>{ if(!lote.length) return; await Promise.all(lote.map(x=>fsSet('ventas',x))); lote=[]; };
   for(let n=0;n<faltan.length;n++){
     const v=faltan[n];
-    let fc=0, completo=true;
+    let fc=0, completo=true; const supuestos=[];
     (v.items||[]).forEach(i=>{
-      const r=foodCostProducto(i.id,i.prep);
+      const r=costoRenglonVenta(i);
       if(r.costo!=null) fc+=r.costo*(i.qty||0);
       if(!r.completo) completo=false;
+      if(r.supuesto) supuestos.push({item:i.nombre||i.id,...r.supuesto});
     });
     // Mismo candado que al cobrar: si el costo supera la venta, hay un
     // precio mal escalado. Mejor sin dato que con dato podrido.
@@ -16999,7 +17038,7 @@ window.recostearVentas=async(semanas)=>{
     // la revisaría.
     const actual=D.ventas.find(x=>x.id===v.id);
     if(!actual||actual.anulada){siguen++;continue;}
-    const upd={...actual,foodCost:r2(fc),foodCostCompleto:true,fcToppings:true};
+    const upd={...actual,foodCost:r2(fc),foodCostCompleto:true,fcToppings:true,...(supuestos.length?{fcSupuesto:supuestos}:{})};
     lote.push(upd);
     const ix=D.ventas.findIndex(x=>x.id===v.id); if(ix>=0) D.ventas[ix]=upd;
     ok++;

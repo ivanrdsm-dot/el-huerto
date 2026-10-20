@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.44'; // Renta fija $1,500/mes en toda utilidad; fuera elote y spread de matcha
+const CACHE_NAME = 'el-huerto-v15.45'; // Combos viejos sin elección se costean con la más pedida: 100% costeado
 const ASSETS = [
   '/',
   '/index.html',
