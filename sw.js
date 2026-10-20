@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.38'; // Pan de Renee solo por sabor; fruta del 18-oct completa
+const CACHE_NAME = 'el-huerto-v15.39'; // La fruta del 18-oct va con Reyes Ramiro
 const ASSETS = [
   '/',
   '/index.html',

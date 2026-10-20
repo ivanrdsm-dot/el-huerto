@@ -3206,6 +3206,7 @@ async function completeInit(){
   await migSurtido18OctArt();
   await migRenee20087YPina19Oct();
   await migPanGeneralYFruta19Oct();
+  await migFrutaARamiro19Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -4272,7 +4273,7 @@ async function migCafe08Oct2026(){
 // ══════════════════════════════════════════════════════════════
 const PROVEEDORES=[
   {n:'Costco',                      cat:'costco',    alias:['costco','costcointerlomas','costcodemexico','costcowholesale']},
-  {n:'Reyes Ramiro',                cat:'proveedor', alias:['reyesramiro','reyes','piñareyesramiro']},
+  {n:'Reyes Ramiro',                cat:'proveedor', alias:['reyesramiro','reyes','piñareyesramiro','frutayverdura','frutayverduracentraldeabasto','mercado','fruta']},
   {n:'La Molinera de Abastos',      cat:'proveedor', alias:['lamolinera','lamolineradeabastos','molinera']},
   {n:'Materias Primas La Nueva',    cat:'proveedor', alias:['materiasprimaslanueva','lanueva','materiasprimas']},
   {n:'Plastidoro',                  cat:'proveedor', alias:['plastidoro','comercializadoraplastidoro']},
@@ -4286,7 +4287,6 @@ const PROVEEDORES=[
   {n:'La Comer',                    cat:'proveedor', alias:['lacomer','lacomerbosquereal']},
   {n:'Chilapita',                   cat:'proveedor', alias:['chilapita','chilapitaazcapotzalco']},
   {n:'Saavedra Market',             cat:'proveedor', alias:['saavedramarket','saavedra']},
-  {n:'Fruta y verdura (Central de Abasto)', cat:'proveedor', alias:['frutayverdura','frutayverduracentraldeabasto','mercado','fruta']},
   {n:'Universidad Panamericana',    cat:'renta',     alias:['panamericana','universidadpanamericana','up','ciudadup']},
   {n:'IMSS',                        cat:'varios',    alias:['imss']},
   {n:'Nómina interna',              cat:'nomina',    alias:['nominainterna','nomina']},
@@ -5750,8 +5750,8 @@ const SURTIDO_18OCT=[
    p:[['Bowl papel kraft 32 oz',         'Bowl papel kraft 32 oz',100,'pz',255.00],
       ['Tapa p/bowl kraft',              'Tapa p/bowl kraft',  100,'pz',  164.00],
       ['Bolsa semikraft No. 4 blanca',   'Bolsa semikraft #4', 100,'pz',   54.00]]},
-  {ticket:'MERCADO-18OCT26', prov:'Fruta y verdura (Central de Abasto)', cat:'proveedor', metodo:'efectivo',
-   notas:'Sin ticket: lo que falta de los $7,000 del surtido. Precios por kilo que dio Iván. Precios de Iván (19-oct): piña $35 la pieza, fresa $120 el domo de 907 g, aguacate $40 el kilo (3 kg). La lechuga (3 bolsas) es lo que resta, $129.89: sin el peso de la bolsa no hay precio por gramo y el de la lechuga no se tocó.',
+  {ticket:'MERCADO-18OCT26', prov:'Reyes Ramiro', cat:'proveedor', metodo:'efectivo',
+   notas:'Sin ticket: lo que falta de los $7,000 del surtido. Se compró en varios puestos; Iván pidió englobarla con Reyes Ramiro. Precios por kilo que dio Iván. Precios de Iván (19-oct): piña $35 la pieza, fresa $120 el domo de 907 g, aguacate $40 el kilo (3 kg). La lechuga (3 bolsas) es lo que resta, $129.89: sin el peso de la bolsa no hay precio por gramo y el de la lechuga no se tocó.',
    p:[['Plátano 7 kg × $18',             'Plátano',           7000,'g',  126.00],
       ['Mango 7 kg × $55',               'Mango verde',       7000,'g',  385.00],
       ['Zanahoria 4 kg × $14',           'Zanahoria',         4000,'g',   56.00],
@@ -5827,8 +5827,8 @@ async function syncSurtido18Oct(){
   for(const g of SURTIDO_18OCT){
     const gx=D.gastos.find(x=>x.ticket===g.ticket); if(!gx) continue;
     const partidas=g.p.map(([c,art,q,u,i])=>({c,q,u,i,...(art?{art}:{})}));
-    if(JSON.stringify(gx.partidas)===JSON.stringify(partidas)&&gx.notas===g.notas) continue;
-    const upd={...gx,partidas,notas:g.notas};
+    if(JSON.stringify(gx.partidas)===JSON.stringify(partidas)&&gx.notas===g.notas&&gx.prov===g.prov) continue;
+    const upd={...gx,partidas,notas:g.notas,prov:g.prov};
     await fsSet('gastos',upd);
     const ix=D.gastos.findIndex(x=>x.id===gx.id); if(ix>=0) D.gastos[ix]=upd;
   }
@@ -5875,6 +5875,16 @@ async function migPanGeneralYFruta19Oct(){
   logAudit('inventario_limpieza',{borrados,protegidos:protegidos.length?protegidos:undefined,precios,
     motivo:'Iván: el pan de Renee solo por sabor. Fruta del 18-oct con los precios que dio'});
   toast(`✓ Pan de Renee solo por sabor${borrados.length?` (${borrados.length} genérico fuera)`:''} · fruta completa`,5000);
+  await markMig(migKey);
+}
+// 19-oct (3): la fruta se compró en varios puestos; Iván: "englóbala
+// con Ramiro". El gasto pasa a Reyes Ramiro, su proveedor de siempre.
+async function migFrutaARamiro19Oct(){
+  const migKey='h5fruta_ramiro_19oct26';
+  if(await migDone(migKey)) return;
+  await syncSurtido18Oct();
+  logAudit('gasto_corregido',{ticket:'MERCADO-18OCT26',prov:'Reyes Ramiro',
+    motivo:'Iván: la fruta viene de varios puestos, englobarla con Ramiro'});
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){
