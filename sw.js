@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.40'; // Pan para panini de La Comer, $870
+const CACHE_NAME = 'el-huerto-v15.41'; // Comisión de la terminal (3.5%) en toda utilidad y en el corte
 const ASSETS = [
   '/',
   '/index.html',

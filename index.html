@@ -1648,6 +1648,7 @@ nav{padding-top:env(safe-area-inset-top);}
             <div class="sr"><span>Tarjeta real (sin propina)</span><span class="mono ay fw7" id="corte-tc-real-lbl">$0.00</span></div>
             <div class="cr-total naranja"><span>TOTAL REAL</span><span class="mono" id="corte-total-real">$0.00</span></div>
             <div style="font-size:10.5px;color:var(--text2);margin-top:6px;">vs POS: <span class="mono fw7" id="corte-dif-pos">—</span></div>
+            <div style="font-size:10.5px;color:var(--text2);margin-top:4px;" id="corte-mp-neto"></div>
           </div>
         </div>
 
@@ -2948,6 +2949,17 @@ const ventaEf=v=>Math.round(ventaPagos(v).filter(x=>x.metodo==='efectivo').reduc
 const ventaTc=v=>Math.round(ventaPagos(v).filter(x=>x.metodo!=='efectivo').reduce((s,x)=>s+(x.monto||0),0)*100)/100;
 const sumaEf=arr=>Math.round((arr||[]).reduce((s,v)=>s+ventaEf(v),0)*100)/100;
 const sumaTc=arr=>Math.round((arr||[]).reduce((s,v)=>s+ventaTc(v),0)*100)/100;
+// ══ COMISIÓN DE LA TERMINAL (Iván, 19-oct) ══
+// Mercado Pago se queda con el 3.5% de lo que se cobra en la Point. Ese
+// dinero nunca llega a la cuenta: no es ingreso, es costo de cobrar. Se
+// calcula sobre lo cobrado con TARJETA (no efectivo ni transferencia) y
+// se resta en cada utilidad del sistema. Un solo lugar para el %: si MP
+// lo cambia, se cambia aquí (o en CFG.comisionTerminal).
+const COMISION_TERMINAL=0.035;
+const pctComision=()=>{const c=Number(CFG?.comisionTerminal); return c>=0&&c<1?c:COMISION_TERMINAL;};
+const ventaTarjeta=v=>Math.round(ventaPagos(v).filter(x=>x.metodo==='tarjeta').reduce((s,x)=>s+(x.monto||0),0)*100)/100;
+const sumaComision=arr=>Math.round((arr||[]).reduce((s,v)=>s+ventaTarjeta(v),0)*pctComision()*100)/100;
+const pctComisionTxt=()=>(pctComision()*100).toFixed(1).replace(/\.0$/,'')+'%';
 const esMixta=v=>!!(v&&v.pagos&&v.pagos.length>1);
 const etiquetaPago=v=>esMixta(v)?`Mixto (${ventaPagos(v).map(x=>(x.metodo==='efectivo'?'Efectivo ':'Tarjeta ')+fmt(x.monto)).join(' + ')})`:(v.metodo==='efectivo'?'Efectivo':'Tarjeta');
 const iconoPago=v=>esMixta(v)?'Mixto':(v.metodo==='efectivo'?'Efectivo':'Tarjeta');
@@ -11917,6 +11929,10 @@ function printCorteTicket(corte){
     <div class="tk-row"><span>Efectivo real</span><span>${fmt(corte.ventasEfReal||0)}</span></div>
     <div class="tk-row"><span>Tarjeta real</span><span>${fmt(corte.ventasTcReal||0)}</span></div>
     <div class="tk-big">TOTAL REAL: ${fmt(corte.ventasTotalReal)}</div>`:''}
+    ${corte.comisionTc>0?`<hr class="tk-sep">
+    <div style="font-size:11px;font-weight:700;margin-bottom:3px;">MERCADO PAGO</div>
+    <div class="tk-row"><span>Comisión terminal</span><span>-${fmt(corte.comisionTc)}</span></div>
+    <div class="tk-row-bold"><span>Te deposita</span><span>${fmt(corte.depositoMp)}</span></div>`:''}
     ${(corte.cerroE1||corte.cerroE2)?`<hr class="tk-sep">
     <div style="font-size:10px;">Cerró: ${(corte.cerroNombres&&corte.cerroNombres.length?corte.cerroNombres:[corte.cerroE1?D.empleados.find(e=>e.id===2001)?.nombre:null,corte.cerroE2?D.empleados.find(e=>e.id===2002)?.nombre:null].filter(Boolean)).join(' y ')}</div>`:''}
     ${corte.nota?`<div style="font-size:10px;margin-top:4px;">Nota: ${corte.nota}</div>`:''}
@@ -12239,7 +12255,8 @@ function renderDbPeriodo(){
     gastoDev=enCurso?r2(gd.sinNomina*avance+estimado):gasto;
     opexDev =enCurso?r2(gd.opex*avance+estimado):r2(gd.opex+estimado);
   }
-  const util=r2(ing-gastoDev-nom);
+  const comision=sumaComision(ventas);
+  const util=r2(ing-comision-gastoDev-nom);
   const margen=ing>0?Math.round(util/ing*100):0;
   const dePeriodo=R.p==='mes'?'del mes':R.p==='semana'?'de la semana':'';
   const corrido=enCurso?` · día ${diasCorridos} de ${diasOper}`:'';
@@ -12248,7 +12265,8 @@ function renderDbPeriodo(){
     <div class="kv" style="color:${color};">${val}</div>
     <div style="font-size:11px;color:var(--text3);margin-top:3px;">${sub}</div>${extra||''}</div>`;
   if($('db-dinero'))$('db-dinero').innerHTML=
-    kc('Ventas',fmt(ing),`${ventas.length} ticket${ventas.length===1?'':'s'}${corrido}`,'var(--accent)')+
+    kc('Ventas',fmt(ing),`${ventas.length} ticket${ventas.length===1?'':'s'}${corrido}`,'var(--accent)',
+      comision>0?`<div style="font-size:10.5px;margin-top:4px;color:var(--text3);">comisión terminal ${pctComisionTxt()} −${fmt(comision)} · te quedan ${fmt(r2(ing-comision))}</div>`:'')+
     kc('Gastos',fmt(gasto),
       (gd.sinNomina>0?`${fmt(gd.sinNomina)} capturado${estimado>0?` · ${fmt(estimado)} est.`:''}`:`${fmt(estimado)} estimado`)
       +(enCurso?` · ${fmt(gastoDev)} corren a hoy`:(R.p==='hoy'?` · ${fmt(gastoDev)} le tocan al día`:'')),'var(--red)')+
@@ -12969,6 +12987,11 @@ function actualizarVentasReales(){
 
   if($('corte-ef-real'))$('corte-ef-real').textContent=fmt(ventasEfReal);
   if($('corte-tc-real-lbl'))$('corte-tc-real-lbl').textContent=fmt(ventasTcReal);
+  if($('corte-mp-neto')){
+    const brutoTerm=tcReal>0?tcReal:Math.round(ventasHoy.reduce((s,v)=>s+ventaTarjeta(v),0)*100)/100;
+    const com=r2(brutoTerm*pctComision());
+    $('corte-mp-neto').innerHTML=brutoTerm>0?`Comisión Mercado Pago ${pctComisionTxt()}: <span class="mono ar">−${fmt(com)}</span> · te deposita <span class="mono fw7">${fmt(r2(brutoTerm-com))}</span>`:'';
+  }
   if($('corte-total-real'))$('corte-total-real').textContent=fmt(totalReal);
   if($('corte-dif-pos')){
     if(contado<=0 && tcReal<=0){
@@ -13062,6 +13085,7 @@ window.realizarCorte=async()=>{
   const ventasTcReal = tcReal>0 ? Math.max(0,tcReal-propinas) : vTc;
   const tcDiff = tcReal>0 ? ventasTcReal-vTc : 0;
   const ventasTotalReal = ventasEfReal + ventasTcReal;
+  const ventaTarjetaHoy = Math.round(ventasHoy.reduce((s,v)=>s+ventaTarjeta(v),0)*100)/100;
 
   const corte={
     id:Date.now(),
@@ -13076,6 +13100,11 @@ window.realizarCorte=async()=>{
     esperado, contado, diferencia,
     // Tarjeta (tcReal = total terminal; propinas se desglosan aparte)
     tcReal, tcDiff, propinas,
+    // Lo que Mercado Pago se queda y lo que de verdad deposita. La
+    // comisión se cobra sobre TODO lo que pasa por la terminal —propinas
+    // incluidas—; si no se tecleó el total, sobre lo cobrado con tarjeta.
+    comisionTc:r2((tcReal>0?tcReal:ventaTarjetaHoy)*pctComision()),
+    depositoMp:r2((tcReal>0?tcReal:ventaTarjetaHoy)*(1-pctComision())),
     // ¿El total de la terminal lo trajo Mercado Pago o se tecleó?
     tcFuente:($('corte-tc-real')?.dataset.mpAuto&&$('corte-tc-real').value===$('corte-tc-real').dataset.mpAuto)?'mercadopago':'manual',
     mpConc:(_mpUltimo&&_mpUltimo.fecha===td)?{cobros:_mpUltimo.cobros,verificadas:_mpUltimo.verificadas,
@@ -13170,7 +13199,7 @@ window.enviarResumenCorteWA=corte=>{
     if(abiertas) s+=`\n  ⚠ ${abiertas} orden(es) quedaron SIN entregar`;
     return s;
   })();
-  const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${(corte.propinas||0)>0?`\n  💁 Propinas tarjeta: ${fmt(corte.propinas)} (aparte de ventas)`:''}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}${cocina}\n\n🏆 Top del día:\n${top||'  —'}`;
+  const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${(corte.propinas||0)>0?`\n  💁 Propinas tarjeta: ${fmt(corte.propinas)} (aparte de ventas)`:''}${(corte.comisionTc||0)>0?`\n  💳 Comisión MP: −${fmt(corte.comisionTc)} · deposita ${fmt(corte.depositoMp)}`:''}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}${cocina}\n\n🏆 Top del día:\n${top||'  —'}`;
   window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
   toast('📲 Resumen del corte listo en WhatsApp — solo toca enviar',3500);
 };
@@ -15975,13 +16004,14 @@ function renderKpiFinancieros(fechas){
   const ventasMesAnterior=D.ventas.filter(v=>mOf(v.fecha)===mesAnterior&&!v.anulada).reduce((s,v)=>s+v.total,0);
   const crecimientoMoM=ventasMesAnterior>0?((ventasMesActual-ventasMesAnterior)/ventasMesAnterior*100):null;
   // Cash burn (si gastos > ventas)
-  const utilidad=totalVentas-gastos;
+  const comisionK=sumaComision(ventas);
+  const utilidad=totalVentas-comisionK-gastos;
 
   let html=`<div class="kpi-grid">
     ${kpiCard({titulo:'Margen Bruto',valor:margenBruto,valorFmt:margenBruto.toFixed(1)+'%',target:T.margenBrutoMin,targetFmt:T.margenBrutoMin+'%',mejor:'mayor',info:`${fmt(totalVentas)} ventas - ${fmt(costoProductos)} costos`})}
     ${kpiCard({titulo:'Total Ventas',valor:totalVentas,valorFmt:fmt(totalVentas),target:null,info:`${ventas.length} tickets`})}
     ${kpiCard({titulo:'Total Gastos',valor:gastos,valorFmt:fmt(gastos),target:null})}
-    ${kpiCard({titulo:'Utilidad Bruta',valor:utilidad,valorFmt:fmt(utilidad),target:null,info:utilidad>=0?'✓ Positivo':'⚠ En pérdida'})}
+    ${kpiCard({titulo:'Utilidad Bruta',valor:utilidad,valorFmt:fmt(utilidad),target:null,info:(utilidad>=0?'✓ Positivo':'⚠ En pérdida')+(comisionK>0?` · ya sin ${fmt(comisionK)} de comisión terminal`:'')})}
     ${kpiCard({titulo:'Punto de Equilibrio',valor:puntoEquilibrio,valorFmt:puntoEquilibrio==null?'—':fmt(puntoEquilibrio),target:null,info:'Ventas necesarias para cubrir gastos'})}
     ${kpiCard({titulo:'Crecimiento MoM',valor:crecimientoMoM,valorFmt:crecimientoMoM==null?'—':((crecimientoMoM>=0?'+':'')+crecimientoMoM.toFixed(1)+'%'),target:15,targetFmt:'≥15%',mejor:'mayor',info:`${cm}: ${fmt(ventasMesActual)} vs ${mesAnterior}: ${fmt(ventasMesAnterior)}`})}
   </div>`;
@@ -17404,7 +17434,8 @@ function renderDashboard(){
   const semPagada=!!D.nomPagos.find(p=>p.semana===monSem);
   const nomSemDev=nomDevengadaSemana(monSem);
   const nomEst=nominaDevengada(diasDelMes(cm));
-  const util=r2(ingT-gasT-nomEst);
+  const comMes=sumaComision(D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada));
+  const util=r2(ingT-comMes-gasT-nomEst);
   const margen=ingT>0?Math.round(util/ingT*100):0;
   const dias=new Set([...D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha),...D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha)]).size;
   const retHoy=getEnCaja(td);
@@ -17424,8 +17455,8 @@ function renderDashboard(){
     </div>
     <div class="card db-kpi">
       <div class="ct">Gastos + Nómina Mes</div>
-      <div class="kv red">${fmt(gasT+nomEst)}</div>
-      <div class="ks">Op: ${fmt(gasT)}${gasNoCapMes>0?` (${fmt(gasNoCapMes)} est.)`:''} · Nóm: ${fmt(nomEst)}${nomEst>nomPagadaMes?' (devengada)':''}</div>
+      <div class="kv red">${fmt(gasT+nomEst+comMes)}</div>
+      <div class="ks">Op: ${fmt(gasT)}${gasNoCapMes>0?` (${fmt(gasNoCapMes)} est.)`:''} · Nóm: ${fmt(nomEst)}${nomEst>nomPagadaMes?' (devengada)':''}${comMes>0?` · Terminal: ${fmt(comMes)}`:''}</div>
     </div>
     <div class="card db-kpi">
       <div class="ct">Utilidad Neta</div>
@@ -17459,6 +17490,7 @@ function renderDashboard(){
     ${ingSubs>0?`<div class="sr"><span style="font-size:12px;">Suscripciones</span><span class="mono ab">+${fmt(ingSubs)}</span></div>`:''}
     <div class="sr fw7"><span style="font-size:12px;">= Total ingresos</span><span class="mono ag">${fmt(ingT)}</span></div>
     <div class="div"></div>
+    ${comMes>0?`<div class="sr"><span style="font-size:12px;">Comisión terminal Mercado Pago (${pctComisionTxt()} de tarjeta)</span><span class="mono ar">−${fmt(comMes)}</span></div>`:''}
     <div class="sr"><span style="font-size:12px;">Gastos operativos</span><span class="mono ar">−${fmt(gasT)}</span></div>
     ${gasNoCapMes>0?`<div class="sr"><span style="font-size:11px;color:var(--text3);padding-left:14px;">↳ incluye ${fmt(gasNoCapMes)} estimados (promedio ${fmt(gastoSemBase())}/sem)</span><span></span></div>`:''}
     <div class="sr"><span style="font-size:12px;">Nómina pagada</span><span class="mono ay">−${fmt(nomPagadaMes)}</span></div>
@@ -17695,7 +17727,8 @@ window.pdfVentasPorProducto=()=>{
   doc.setTextColor(200,200,200); doc.text(`Período: ${label}`,W-14,14,{align:'right'});
   doc.text(`Generado: ${today()}`,W-14,22,{align:'right'});
   let y=38;
-  const kpis=[{l:'Ventas',v:fmt(ingT),c:[126,200,80]},{l:'Transacciones',v:''+ventas.length,c:[90,180,232]},{l:'Gastos',v:fmt(gasT),c:[232,122,106]},{l:'Utilidad',v:fmt(ingT-gasT),c:ingT-gasT>=0?[90,232,200]:[232,122,106]}];
+  const comT=sumaComision(ventas), utilT=r2(ingT-comT-gasT);
+  const kpis=[{l:'Ventas',v:fmt(ingT),c:[126,200,80]},{l:'Transacciones',v:''+ventas.length,c:[90,180,232]},{l:'Gastos + comisión',v:fmt(gasT+comT),c:[232,122,106]},{l:'Utilidad',v:fmt(utilT),c:utilT>=0?[90,232,200]:[232,122,106]}];
   const bw=(W-28)/4;
   kpis.forEach((k,i)=>{const x=14+i*bw;doc.setFillColor(30,45,28);doc.roundedRect(x,y,bw-3,16,2,2,'F');doc.setFontSize(7);doc.setTextColor(160,160,160);doc.setFont('helvetica','normal');doc.text(k.l,x+(bw-3)/2,y+6,{align:'center'});doc.setFontSize(11);doc.setTextColor(...k.c);doc.setFont('helvetica','bold');doc.text(k.v,x+(bw-3)/2,y+13,{align:'center'});});
   y+=24;
@@ -17725,7 +17758,8 @@ window.pdfDashboard=()=>{
   const gasT=r2(gd.sinNomina+gasNoCap);
   const diasP=p==='hoy'?[today()]:p==='semana'?getWDays(fechas._sem||today()):diasDelMes(fechas._mes||cm);
   const nomEst=nominaDevengada(diasP);
-  const util=r2(ingT-gasT-nomEst);
+  const comT=sumaComision(ventas);
+  const util=r2(ingT-comT-gasT-nomEst);
   const margen=ingT>0?Math.round(util/ingT*100):0;
   const dow=calcVentasPorDia(8);
   const {jsPDF}=window.jspdf;
@@ -17746,7 +17780,7 @@ window.pdfDashboard=()=>{
   y+=50;
   // Estado de resultados
   doc.setTextColor(126,200,80); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text('Estado de Resultados',14,y); y+=4;
-  doc.autoTable({startY:y,head:[['Concepto','Monto']],body:[['🛒 Ventas POS',fmt(ingT)],['📉 Gastos operativos','−'+fmt(gasT)],...(gasNoCap>0?[['    ↳ estimado sin capturar','−'+fmt(gasNoCap)]]:[]),...(nomEst>0?[['👩 Nómina devengada','−'+fmt(nomEst)]]:[]),['UTILIDAD NETA',fmt(util)],['Margen',margen+'%']],theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},bodyStyles:{fontSize:9,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},columnStyles:{0:{cellWidth:120},1:{cellWidth:45,halign:'right'}},margin:{left:14,right:14},didParseCell:(d)=>{if(d.row.index>=d.table.body.length-2){d.cell.styles.fillColor=[11,30,9];d.cell.styles.textColor=[232,201,106];d.cell.styles.fontStyle='bold';}}});
+  doc.autoTable({startY:y,head:[['Concepto','Monto']],body:[['🛒 Ventas POS',fmt(ingT)],...(comT>0?[[`💳 Comisión terminal (${pctComisionTxt()} de tarjeta)`,'−'+fmt(comT)]]:[]),['📉 Gastos operativos','−'+fmt(gasT)],...(gasNoCap>0?[['    ↳ estimado sin capturar','−'+fmt(gasNoCap)]]:[]),...(nomEst>0?[['👩 Nómina devengada','−'+fmt(nomEst)]]:[]),['UTILIDAD NETA',fmt(util)],['Margen',margen+'%']],theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},bodyStyles:{fontSize:9,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},columnStyles:{0:{cellWidth:120},1:{cellWidth:45,halign:'right'}},margin:{left:14,right:14},didParseCell:(d)=>{if(d.row.index>=d.table.body.length-2){d.cell.styles.fillColor=[11,30,9];d.cell.styles.textColor=[232,201,106];d.cell.styles.fontStyle='bold';}}});
   y=doc.lastAutoTable.finalY+10;
   // Ventas por día de la semana — dónde meter promoción
   if(dow.flojo){
@@ -17874,7 +17908,8 @@ window.plPDF=()=>{
   const baseP=gastoBasePeriodo(p,fechas);
   const opexNoCap=Math.max(0,r2(Math.max(0,baseP-Math.max(insumosCash,cogs))-gd.opex));
   const opex=r2(gd.opex+opexNoCap);
-  const oper=r2(bruta-nom-opex);
+  const com=sumaComision(ventas);
+  const oper=r2(bruta-com-nom-opex);
   const pc=v=>ing>0?(v/ing*100).toFixed(1)+'%':'—';
   const dias=new Set(ventas.map(v=>v.fecha)).size||1;
   const ticket=ventas.length?ing/ventas.length:0;
@@ -17897,6 +17932,7 @@ window.plPDF=()=>{
       ['Ventas',fmt(ing),'100%'],
       ['(−) Costo de insumos — COGS'+(cobert<100?` (cobertura ${cobert}%)`:''),'−'+fmt(cogs),pc(cogs)],
       [{content:'= UTILIDAD BRUTA',styles:{fontStyle:'bold'}},{content:fmt(bruta),styles:{fontStyle:'bold'}},{content:pc(bruta),styles:{fontStyle:'bold'}}],
+      ...(com>0?[[`(−) Comisión terminal Mercado Pago (${pctComisionTxt()} de tarjeta)`,'−'+fmt(com),pc(com)]]:[]),
       ['(−) Nómina'+(nomPend>0?' (incluye pendiente estimada)':''),'−'+fmt(nom),pc(nom)],
       ...(renta>0?[['(−) Renta','−'+fmt(renta),pc(renta)]]:[]),
       ...(serv>0?[['(−) Servicios','−'+fmt(serv),pc(serv)]]:[]),
@@ -18560,10 +18596,11 @@ function renderReportes(){
   const _opexPiso=Math.max(0,r2(baseP-Math.max(_insumosCash,_cogs)));
   const _opexNoCap=Math.max(0,r2(_opexPiso-_opexReal));
   const _opex=r2(_opexReal+_opexNoCap);
-  const _oper=r2(_bruta-_nom-_opex);
+  const _com=sumaComision(ventas);
+  const _oper=r2(_bruta-_com-_nom-_opex);
   const _mBruta=_ing>0?Math.round(_bruta/_ing*100):0;
   const _mOper=_ing>0?Math.round(_oper/_ing*100):0;
-  const _flujo=r2(_ing-gasOper-_nomPend);
+  const _flujo=r2(_ing-_com-gasOper-_nomPend);
   const _pct=v=>_ing>0?(v/_ing*100).toFixed(1)+'%':'—';
   if($('rp-est'))$('rp-est').innerHTML=`
     <div class="sr"><span style="font-size:12px;">Ventas POS</span><span class="mono ag">${fmt(ingVentas)}</span></div>
@@ -18574,6 +18611,7 @@ function renderReportes(){
     ${_cobert<100?`<div class="sr"><span style="font-size:10px;color:var(--text3);padding-left:14px;">cobertura de costeo: ${_cobert}% de las ventas</span><span></span></div>`:''}
     <div class="sr fw7"><span style="font-size:12px;">= Utilidad bruta</span><span class="mono ${_bruta>=0?'ag':'ar'}" style="font-size:14px;">${fmt(_bruta)} <span style="font-size:10px;color:var(--text2);">${_mBruta}%</span></span></div>
     <div class="div"></div>
+    ${_com>0?`<div class="sr"><span style="font-size:12px;">Comisión terminal Mercado Pago (${pctComisionTxt()} de tarjeta)</span><span class="mono ar">−${fmt(_com)} <span style="color:var(--text3);font-size:10px;">${_pct(_com)}</span></span></div>`:''}
     <div class="sr"><span style="font-size:12px;">Nómina${_nomPend>0?' (incl. pendiente est.)':''}</span><span class="mono ay">−${fmt(_nom)} <span style="color:var(--text3);font-size:10px;">${_pct(_nom)}</span></span></div>
     ${_renta>0?`<div class="sr"><span style="font-size:12px;">Renta</span><span class="mono ar">−${fmt(_renta)}</span></div>`:''}
     ${_serv>0?`<div class="sr"><span style="font-size:12px;">Servicios</span><span class="mono ar">−${fmt(_serv)}</span></div>`:''}
@@ -18594,6 +18632,7 @@ function renderReportes(){
       ['Ingresos',_ing,'var(--accent)'],
       ['− COGS',-_cogs,'var(--red)'],
       ['Utilidad bruta',_bruta,'#2e7d32'],
+      ..._com>0?[['− Comisión terminal',-_com,'var(--red)']]:[],
       ['− Nómina',-_nom,'var(--red)'],
       ..._opex>0?[['− Gastos de operación',-_opex,'var(--red)']]:[],
       ['UTILIDAD OPERATIVA',_oper,_oper>=0?'var(--orange)':'var(--red)'],
@@ -19761,6 +19800,7 @@ function rpDatos(tipo, fechas){
     const totalV=ventas.reduce((s,v)=>s+v.total,0);
     const ef=sumaEf(ventas);
     const tc=sumaTc(ventas);
+    const comision=sumaComision(ventas);
     const cortes=(D.cortes||[]).filter(c=>inFechas(c.fecha));
     const mermas=(D.kpiCaptura||[]).filter(k=>k.tipo==='merma'&&inFechas(k.fecha)).reduce((s,k)=>s+k.valor,0);
     return {
@@ -19771,12 +19811,13 @@ function rpDatos(tipo, fechas){
         ['📊 Ticket Promedio',ventas.length>0?fmt(totalV/ventas.length):'$0'],
         ['💵 Efectivo',fmt(ef)],
         ['💳 Tarjeta',fmt(tc)],
+        ['💳 Comisión terminal',fmt(comision)],
         ['📉 Gastos',fmt(gastos)],
-        ['📈 Utilidad bruta',fmt(totalV-gastos)],
+        ['📈 Utilidad bruta',fmt(totalV-comision-gastos)],
         ['🍂 Mermas',fmt(mermas)],
         ['🧾 Cortes hechos',cortes.length],
       ],
-      raw:{ventas,gastos,cortes,mermas,totalV,ef,tc}
+      raw:{ventas,gastos,cortes,mermas,totalV,ef,tc,comision}
     };
   }
   return {titulo:'?',cols:[],rows:[],raw:[]};
@@ -19887,8 +19928,9 @@ function rpEnviarWA(tipo, fechas){
   msg+=`📋 ${ventas.length} tickets · prom ${ventas.length>0?fmt(data.raw.totalV/ventas.length):'$0'}\n`;
   msg+=`💵 Efectivo: ${fmt(data.raw.ef)}\n`;
   msg+=`💳 Tarjeta: ${fmt(data.raw.tc)}\n\n`;
+  if(data.raw.comision>0) msg+=`💳 Comisión terminal: −${fmt(data.raw.comision)}\n`;
   msg+=`📉 *Gastos*: ${fmt(data.raw.gastos)}\n`;
-  msg+=`📈 *Utilidad bruta*: ${fmt(data.raw.totalV-data.raw.gastos)}\n\n`;
+  msg+=`📈 *Utilidad bruta*: ${fmt(data.raw.totalV-(data.raw.comision||0)-data.raw.gastos)}\n\n`;
   if(top5.length>0){
     msg+=`⭐ *Top 5 productos*\n`;
     top5.forEach(([n,q],i)=>{msg+=`${i+1}. ${n} · ${q}u\n`;});
