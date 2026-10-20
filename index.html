@@ -12413,16 +12413,8 @@ function renderOrdenes(){
 
 // Strip de órdenes vivas en el POS: la cajera trackea sin cambiar de página
 // ── El dinero y la salud del período elegido ──
-function renderDbPeriodo(){
-  const R=dbRango(), td=today();
-  document.querySelectorAll('#db-periodo .rp-tab-btn').forEach(b=>b.classList.toggle('activa',b.dataset.dbp===DB_P));
-  if($('db-rango'))$('db-rango').textContent=R.label;
-  if($('db-fecha'))$('db-fecha').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
-  // El widget en vivo y el pulso solo tienen sentido mirando HOY
-  const soloHoy=R.p==='hoy';
-  if($('db-live-widget'))$('db-live-widget').style.display=soloHoy?'':'none';
-  if($('db-pulso'))$('db-pulso').style.display=soloHoy?'flex':'none';
-
+function utilidadPeriodo(R){
+  const td=today();
   const ventas=D.ventas.filter(v=>!v.anulada&&R.vent.includes(v.fecha));
   const ing=r2(ventas.reduce((s,v)=>s+v.total,0));
   const gd=sinRenta(desgloseGastos(D.gastos.filter(g=>R.gast.includes(g.fecha))));
@@ -12468,27 +12460,64 @@ function renderDbPeriodo(){
     gastoDev=enCurso?r2(gd.sinNomina*avance+estimado):gasto;
     opexDev =enCurso?r2(gd.opex*avance+estimado):r2(gd.opex+estimado);
   }
+  // ══ UN SOLO NÚMERO DE UTILIDAD (20-oct) ══
+  // El Panel restaba las COMPRAS de insumo (prorrateadas) y los KPIs y
+  // el estado de resultados restaban el COSTO DE LO VENDIDO: octubre
+  // salía 51% aquí y 43% allá. Ahora todos usan lo mismo — el costo
+  // que cada venta guardó por receta — y las compras se enseñan como
+  // lo que son: salida de caja, no costo.
   const comision=sumaComision(ventas);
   const rentaDev=rentaDevengada(R.p==='hoy'?[td]:R.vent);
-  const util=r2(ing-comision-gastoDev-rentaDev-nom);
+  const completasV=ventas.filter(v=>v.foodCost!=null&&v.foodCostCompleto!==false);
+  const ventaCubV=completasV.reduce((a,v)=>a+v.total,0);
+  const pctCostoV=ventaCubV>0?completasV.reduce((a,v)=>a+(v.foodCost||0),0)/ventaCubV:0;
+  const cogsV=r2(ing*pctCostoV);
+  const coberturaV=ing>0?Math.round(ventaCubV/ing*100):0;
+  let opexReal, insumosDev, baseDev;
+  if(R.p==='hoy'){
+    const ref=hoyOperativo(), diasSem=getWDays(ref).length||5;
+    const gSem=sinRenta(desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha))));
+    opexReal=r2(gSem.opex/diasSem); insumosDev=r2(gSem.insumos/diasSem);
+    baseDev=r2(gastoBasePeriodo('semana',{_sem:td})/diasSem);
+  } else {
+    opexReal=enCurso?r2(gd.opex*avance):gd.opex;
+    insumosDev=enCurso?r2(gd.insumos*avance):gd.insumos;
+    baseDev=base;
+  }
+  // Piso del gasto promedio sin cobrar dos veces el insumo (ya va en el costo)
+  const opexNoCap=Math.max(0,r2(baseDev-Math.max(insumosDev,cogsV)-opexReal-rentaDev));
+  const operacion=r2(opexReal+opexNoCap+rentaDev);
+  const util=r2(ing-cogsV-comision-operacion-nom);
   const margen=ing>0?Math.round(util/ing*100):0;
-  const dePeriodo=R.p==='mes'?'del mes':R.p==='semana'?'de la semana':'';
+  return {ventas,ing,gd,base,estimado,gasto,nom,diasOper,diasCorridos,enCurso,avance,gastoDev,opexDev,comision,rentaDev,completasV,ventaCubV,pctCostoV,cogsV,coberturaV,opexReal,insumosDev,baseDev,opexNoCap,operacion,util,margen};
+}
+function renderDbPeriodo(){
+  const R=dbRango(), td=today();
+  document.querySelectorAll('#db-periodo .rp-tab-btn').forEach(b=>b.classList.toggle('activa',b.dataset.dbp===DB_P));
+  if($('db-rango'))$('db-rango').textContent=R.label;
+  if($('db-fecha'))$('db-fecha').textContent=new Date().toLocaleDateString('es-MX',{weekday:'long',day:'numeric',month:'long'});
+  // El widget en vivo y el pulso solo tienen sentido mirando HOY
+  const soloHoy=R.p==='hoy';
+  if($('db-live-widget'))$('db-live-widget').style.display=soloHoy?'':'none';
+  if($('db-pulso'))$('db-pulso').style.display=soloHoy?'flex':'none';
+
+  const U=utilidadPeriodo(R);
+  const {ventas,ing,gd,base,estimado,gasto,nom,diasOper,diasCorridos,enCurso,avance,gastoDev,opexDev,comision,rentaDev,completasV,ventaCubV,pctCostoV,cogsV,coberturaV,opexReal,insumosDev,baseDev,opexNoCap,operacion,util,margen}=U;
+  const dePeriodo=R.p==='mes'?'del mes':R.p==='semana'?'de la semana':'de hoy';
   const corrido=enCurso?` · día ${diasCorridos} de ${diasOper}`:'';
   const kc=(label,val,sub,color,extra)=>`<div class="card" style="text-align:center;">
     <div class="ct">${label}</div>
     <div class="kv" style="color:${color};">${val}</div>
     <div style="font-size:11px;color:var(--text3);margin-top:3px;">${sub}</div>${extra||''}</div>`;
+  const nota=t=>`<div style="font-size:10.5px;margin-top:4px;color:var(--text3);">${t}</div>`;
   if($('db-dinero'))$('db-dinero').innerHTML=
     kc('Ventas',fmt(ing),`${ventas.length} ticket${ventas.length===1?'':'s'}${corrido}`,'var(--accent)',
-      comision>0?`<div style="font-size:10.5px;margin-top:4px;color:var(--text3);">comisión terminal ${pctComisionTxt()} −${fmt(comision)} · te quedan ${fmt(r2(ing-comision))}</div>`:'')+
-    kc('Gastos',fmt(gasto),
-      (gd.sinNomina>0?`${fmt(gd.sinNomina)} capturado${estimado>0?` · ${fmt(estimado)} est.`:''}`:`${fmt(estimado)} estimado`)
-      +(enCurso?` · ${fmt(gastoDev)} corren a hoy`:(R.p==='hoy'?` · ${fmt(gastoDev)} le tocan al día`:''))
-      +(rentaDev>0?` · renta ${fmt(rentaDev)}`:''),'var(--red)')+
-    kc('Nómina',fmt(nom),nom>gd.nomina?'devengada':'pagada','var(--gold)')+
+      comision>0?nota(`comisión terminal ${pctComisionTxt()} −${fmt(comision)} · te quedan ${fmt(r2(ing-comision))}`):'')+
+    kc('Costo de lo vendido',fmt(cogsV),`insumos por receta · ${Math.round(pctCostoV*100)}% de la venta${coberturaV<95?` · costeado ${coberturaV}%`:''}`,'var(--red)',
+      nota(`compras ${dePeriodo}: ${fmt(gasto)}${estimado>0?` (${fmt(estimado)} est.)`:''} — salida de caja, no costo`))+
+    kc('Nómina y operación',fmt(r2(nom+operacion)),`nómina ${fmt(nom)} · renta ${fmt(rentaDev)}${opexReal+opexNoCap>0?` · otros ${fmt(r2(opexReal+opexNoCap))}`:''}`,'var(--gold)')+
     kc('Utilidad',fmt(util),`Margen ${margen}%`,util>=0?'var(--teal)':'var(--red)',
-      enCurso?`<div style="font-size:10.5px;margin-top:4px;color:var(--text3);">lo vendido contra lo que corre ${dePeriodo} a hoy</div>`
-      :(R.p==='hoy'?`<div style="font-size:10.5px;margin-top:4px;color:var(--text3);">contra la parte del gasto semanal que le toca al día</div>`:''));
+      nota(enCurso?`lo vendido menos lo que corre ${dePeriodo} a hoy · igual que KPIs y Reportes`:'igual que KPIs y Reportes'));
 
   // ── Salud: los números que dicen si el modelo aguanta ──
   // La cobertura se mide en DINERO y solo cuenta el ticket COMPLETO.
@@ -14782,6 +14811,145 @@ function invConsumoPromedio(productoId, dias=14){
   if(consumos.length===0) return null;
   return consumos.reduce((s,v)=>s+v,0)/consumos.length;
 }
+// ══════════════════════════════════════════════════════════════
+// EL SURTIDO DE LA SEMANA, HECHO POR EL SISTEMA (20-oct)
+// Iván surte cada domingo con una lista a mano. El sistema ya sabe
+// cuánto se gasta de cada insumo: lo vendido × su receta (con lo que
+// eligió la cajera: la fruta del coctel, los toppings). Con el menú
+// 100% costeado, ese consumo es confiable. Promedio de las últimas 3
+// semanas COMPLETAS, más 10% de colchón, menos lo que hay hoy.
+// ══════════════════════════════════════════════════════════════
+const SURTIDO_SEMANAS=3, SURTIDO_COLCHON=1.10;
+function consumoTeoricoSemanal(semanas=SURTIDO_SEMANAS){
+  const lunes=getMonday(hoyOperativo());
+  const fin=new Date(lunes+'T12:00:00'); fin.setDate(fin.getDate()-1);
+  const ini=new Date(lunes+'T12:00:00'); ini.setDate(ini.getDate()-7*semanas);
+  const desde=localDate(ini), hasta=localDate(fin);
+  const tot={}, det={};
+  for(const v of D.ventas){
+    if(v.anulada||!v.fecha||v.fecha<desde||v.fecha>hasta) continue;
+    for(const item of expandirItems(v.items||[])){
+      const pNom=D.productos.find(p=>p.id===item.id)?.nombre||item.nombre||String(item.id);
+      const rid=prodRecetaPorEleccion(item.id,item.prep);
+      const rec=D.recetas.find(r=>r.prodId===rid); if(!rec||!(rec.ings||[]).length) continue;
+      const ings=rid!==item.id?[...rec.ings]:[...rec.ings,...ingsDeToppings(item.id,item.prep).ings];
+      for(const ing of ings){
+        const inv=D.inventario.find(i=>i.id==ing.invId)||(ing.nombre&&D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre)));
+        const q=parseFloat(ing.qty); if(!inv||!(q>0)) continue;
+        const qi=qtyToInvUnit(q*(item.qty||1),ing.unit,inv.unit); if(qi==null) continue;
+        tot[inv.id]=(tot[inv.id]||0)+qi;
+        const d=((det[inv.id]??={})[pNom]??={q:0,n:0}); d.q+=qi; d.n+=(item.qty||1);
+      }
+    }
+  }
+  const out={}; for(const [id,q] of Object.entries(tot)) out[id]=q/semanas;
+  // Quién se lleva cada insumo: producto, piezas vendidas y porción
+  const quien={};
+  for(const [id,m] of Object.entries(det)){
+    quien[id]=Object.entries(m).map(([prod,x])=>({prod,porSem:x.q/semanas,nSem:x.n/semanas,porcion:x.n?x.q/x.n:0}))
+      .sort((a,b)=>b.porSem-a.porSem);
+  }
+  return {porSemana:out,desde,hasta,quien};
+}
+// Cantidad de compra redondeada como se compra: kilos y litros de medio
+// en medio, piezas enteras.
+function enUnidadDeCompra(inv,q){
+  const u=normUnit(inv.unit);
+  if(u==='g') return {q:Math.ceil(q/500)*0.5,u:'kg',factor:1000};
+  if(u==='ml') return {q:Math.ceil(q/500)*0.5,u:'L',factor:1000};
+  if(u==='kg'||u==='l') return {q:Math.ceil(q*2)/2,u:inv.unit,factor:1};
+  return {q:Math.ceil(q),u:inv.unit,factor:1};
+}
+// Lo que de verdad se compró por semana, de las partidas de los tickets
+// (por la fecha en que LLEGÓ). Sirve de contraste: si la receta dice
+// que se gastan 3.6 kg de serrano y se compran 2, la porción de la
+// receta está alta o se está quedando corto.
+function compradoPorSemana(desde,hasta,semanas){
+  const tot={};
+  for(const g of D.gastos){
+    const f=llegadaDe(g); if(!f||f<desde||f>hasta) continue;
+    for(const pt of (g.partidas||[])){
+      const nom=pt.art||pt.c; if(!nom) continue;
+      const k=normInvNombre(nom);
+      const inv=D.inventario.find(i=>normInvNombre(i.nombre)===k)||(!pt.art&&D.inventario.find(i=>mismoInsumo(k,i.nombre)));
+      if(!inv) continue;
+      const q=qtyToInvUnit(pt.q,pt.u,inv.unit); if(q==null) continue;
+      tot[inv.id]=(tot[inv.id]||0)+q;
+    }
+  }
+  const out={}; for(const [id,q] of Object.entries(tot)) out[id]=q/semanas;
+  return out;
+}
+function surtidoSugerido(){
+  const {porSemana,desde,hasta,quien}=consumoTeoricoSemanal();
+  // Los últimos 3 surtidos: del domingo que cierra la primera semana de
+  // la ventana a hoy (incluye el surtido de este fin de semana).
+  const dC=new Date(desde+'T12:00:00'); dC.setDate(dC.getDate()+6);
+  const compra=compradoPorSemana(localDate(dC),today(),SURTIDO_SEMANAS);
+  const filas=[];
+  for(const [id,sem] of Object.entries(porSemana)){
+    const inv=D.inventario.find(i=>String(i.id)===String(id)); if(!inv||!(sem>0)) continue;
+    if(inv.catOf==='equipo'||inv.noContar||inv.esInterno) continue;
+    const hay=Math.max(0,invStockHoy(inv.id)??inv.qty??0);
+    const falta=sem*SURTIDO_COLCHON-hay;
+    if(falta<=0) continue;
+    const c=enUnidadDeCompra(inv,falta);
+    if(!(c.q>0)) continue;
+    const comp=compra[inv.id]??null;
+    // No cuadra: la receta pide 50% más (o menos) de lo que se compra.
+    const descuadre=comp!=null&&comp>0&&(sem/comp>1.5||sem/comp<0.67);
+    filas.push({inv,sem:r2(sem),hay:r2(hay),comprar:c.q,u:c.u,factor:c.factor,comp:comp!=null?r2(comp):null,descuadre,quien:(quien[inv.id]||[]).slice(0,2),
+      costo:inv.precio>0?r2(c.q*c.factor*inv.precio):null});
+  }
+  const orden=Object.fromEntries((CAT_OFICIALES||[]).map((c,i)=>[c.key,i]));
+  filas.sort((a,b)=>(orden[a.inv.catOf]??99)-(orden[b.inv.catOf]??99)||(b.costo||0)-(a.costo||0));
+  return {filas,desde,hasta,total:r2(filas.reduce((a,x)=>a+(x.costo||0),0))};
+}
+const fmtCant=(q,u)=>`${Number.isInteger(q)?q:q.toFixed(1)} ${u}`;
+window.surtidoCopiar=async()=>{
+  const S=surtidoSugerido();
+  const porCat={};
+  S.filas.forEach(f=>{(porCat[f.inv.catOf||'otros']??=[]).push(f);});
+  const nombreCat=k=>(CAT_OFICIALES.find(c=>c.key===k)?.nombre||k).replace(/^[^\s]+\s/,'');
+  const txt=`🌿 *Surtido El Huerto* — semana del ${getMonday(hoyOperativo())}\n`+
+    Object.entries(porCat).map(([k,arr])=>`\n*${nombreCat(k)}*\n`+arr.map(f=>`• ${f.inv.nombre}: ${fmtCant(f.comprar,f.u)}`).join('\n')).join('\n')+
+    `\n\n≈ ${fmt(S.total)} (a los últimos precios)`;
+  try{await navigator.clipboard.writeText(txt);toast('📋 Lista copiada — pégala en WhatsApp',3000);}
+  catch(e){prompt('Copia la lista:',txt);}
+};
+// Pasa la lista a Compras (Modo Mercado) con cantidades y último precio:
+// en el mercado solo se corrige lo que cambió.
+window.surtidoACompras=()=>{
+  const S=surtidoSugerido();
+  if(!S.filas.length){toast('No hay nada que surtir',2200);return;}
+  const ya=new Set(MC.items.map(x=>String(x.invId)));
+  let n=0;
+  for(const f of S.filas){
+    if(ya.has(String(f.inv.id))) continue;
+    const precio=f.inv.precio>0?r2(f.inv.precio*f.factor):'';
+    const imp=precio===''?'':(f.comprar*precio).toFixed(2);
+    MC.items.push({invId:f.inv.id,nombre:f.inv.nombre,unit:f.u,qty:String(f.comprar),precio:precio===''?'':String(precio),importe:imp});
+    n++;
+  }
+  mcSave(); go('mercado'); renderMercado();
+  toast(`🧺 ${n} artículo(s) en tu lista de compras — corrige lo que cambie en el mercado`,4000);
+};
+function renderSurtidoCard(){
+  const S=surtidoSugerido();
+  if(!S.filas.length) return '';
+  return `<div class="card" style="margin-bottom:12px;border:2px solid var(--accent);">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Surtido sugerido para la semana</span>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;">
+        <button class="btn bp bsm" onclick="surtidoACompras()">🧺 Pasar a Compras</button>
+        <button class="btn bs bsm" onclick="surtidoCopiar()">📋 Copiar para WhatsApp</button>
+      </div></div>
+    <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;">Lo que se usó por semana (ventas × receta, ${S.desde} a ${S.hasta}) + 10% de colchón − lo que hay hoy. ≈ <b>${fmt(S.total)}</b> a los últimos precios.</p>
+    <div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Artículo</th><th style="text-align:right;">Se usa / semana<br><span style="font-weight:400;font-size:10px;">según recetas</span></th><th style="text-align:right;">Compras / semana<br><span style="font-weight:400;font-size:10px;">según tickets</span></th><th style="text-align:right;">Hay</th><th style="text-align:right;">Comprar</th><th style="text-align:right;">≈ $</th></tr></thead><tbody>
+    ${S.filas.map(f=>{const uu=f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit);return `<tr><td>${esc(f.inv.nombre)}${f.descuadre?' <span title="La receta y lo que compras no cuadran: pesa una porción real" style="color:var(--goldd);">⚠</span>':''}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.sem/(f.factor||1)),uu)}</td><td class="mono" style="text-align:right;${f.descuadre?'color:var(--goldd);font-weight:700;':''}">${f.comp!=null?fmtCant(r2(f.comp/(f.factor||1)),uu):'—'}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.hay/(f.factor||1)),f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit))}</td><td class="mono fw7" style="text-align:right;">${fmtCant(f.comprar,f.u)}</td><td class="mono" style="text-align:right;">${f.costo!=null?fmt(f.costo):'—'}</td></tr>${f.descuadre&&f.quien.length?`<tr><td colspan="6" style="font-size:10.5px;color:var(--text3);padding-top:0;border-top:none;">↳ lo piden sobre todo: ${f.quien.map(q=>`${esc(q.prod)} (${Math.round(q.nSem)}/sem × ${Math.round(q.porcion*100)/100} ${f.inv.unit})`).join(' · ')}</td></tr>`:''}`;}).join('')}
+    </tbody></table></div>
+    ${S.filas.some(f=>f.descuadre)?`<p style="font-size:11px;color:var(--goldd);margin:8px 0 0;">⚠ La receta y lo que compras no cuadran por más de 50%. O la porción de la receta está alta (pesa un plato real y ajústala en Recetas) o se está quedando corto. Mientras tanto, compra lo de siempre.</p>`:''}
+  </div>`;
+}
 function invMinimoSugerido(productoId){
   const prom=invConsumoPromedio(productoId,14);
   if(prom==null) return null;
@@ -15219,6 +15387,8 @@ function renderInvDashboard(){
       </div>
     </div>`;
   }
+
+  html+=renderSurtidoCard();
 
   // A7: PREDICCIÓN DE FALTANTES — días restantes según consumo real
   const predicciones=items.map(p=>{
@@ -17773,7 +17943,13 @@ function renderDashboard(){
   const nomEst=nominaDevengada(diasDelMes(cm));
   const comMes=sumaComision(D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada));
   const rentaMes=rentaDevengada(diasDelMes(cm));
-  const util=r2(ingT-comMes-gasT-rentaMes-nomEst);
+  // Un solo número de utilidad: el costo de lo VENDIDO (receta), no las
+  // compras del mes, que se enseñan aparte como salida de caja.
+  // La MISMA cuenta que el Panel en "Mes" (utilidadPeriodo), más las
+  // suscripciones, que no pasan por el POS.
+  const dM=diasDelMes(cm), UM=utilidadPeriodo({p:'mes',vent:dM,gast:dM});
+  const cogsMes=UM.cogsV, opexMesNoCap=UM.opexNoCap, opexMes=r2(UM.opexReal+UM.opexNoCap);
+  const util=r2(UM.util+ingSubs);
   const margen=ingT>0?Math.round(util/ingT*100):0;
   const dias=new Set([...D.caja.filter(c=>mOf(c.fecha)===cm).map(c=>c.fecha),...D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).map(v=>v.fecha)]).size;
   const retHoy=getEnCaja(td);
@@ -17793,8 +17969,8 @@ function renderDashboard(){
     </div>
     <div class="card db-kpi">
       <div class="ct">Gastos + Nómina Mes</div>
-      <div class="kv red">${fmt(gasT+nomEst+comMes+rentaMes)}</div>
-      <div class="ks">Op: ${fmt(gasT)}${gasNoCapMes>0?` (${fmt(gasNoCapMes)} est.)`:''} · Nóm: ${fmt(nomEst)}${nomEst>nomPagadaMes?' (devengada)':''}${comMes>0?` · Terminal: ${fmt(comMes)}`:''}${rentaMes>0?` · Renta: ${fmt(rentaMes)}`:''}</div>
+      <div class="kv red">${fmt(r2(cogsMes+opexMes+nomEst+comMes+rentaMes))}</div>
+      <div class="ks">Insumos vendidos: ${fmt(cogsMes)} · Nóm: ${fmt(nomEst)}${nomEst>nomPagadaMes?' (devengada)':''} · Renta: ${fmt(rentaMes)}${comMes>0?` · Terminal: ${fmt(comMes)}`:''}${opexMes>0?` · Otros: ${fmt(opexMes)}`:''}</div>
     </div>
     <div class="card db-kpi">
       <div class="ct">Utilidad Neta</div>
@@ -17829,9 +18005,10 @@ function renderDashboard(){
     <div class="sr fw7"><span style="font-size:12px;">= Total ingresos</span><span class="mono ag">${fmt(ingT)}</span></div>
     <div class="div"></div>
     ${comMes>0?`<div class="sr"><span style="font-size:12px;">Comisión terminal Mercado Pago (${pctComisionTxt()} de tarjeta)</span><span class="mono ar">−${fmt(comMes)}</span></div>`:''}
-    <div class="sr"><span style="font-size:12px;">Gastos operativos</span><span class="mono ar">−${fmt(gasT)}</span></div>
+    <div class="sr"><span style="font-size:12px;">Costo de lo vendido (insumos por receta)</span><span class="mono ar">−${fmt(cogsMes)}</span></div>
+    ${opexMes>0?`<div class="sr"><span style="font-size:12px;">Otros gastos de operación${opexMesNoCap>0?' (incl. estimado)':''}</span><span class="mono ar">−${fmt(opexMes)}</span></div>`:''}
     ${rentaMes>0?`<div class="sr"><span style="font-size:12px;">Renta (${fmt(rentaMensual())}/mes, lo que corre a hoy)</span><span class="mono ar">−${fmt(rentaMes)}</span></div>`:''}
-    ${gasNoCapMes>0?`<div class="sr"><span style="font-size:11px;color:var(--text3);padding-left:14px;">↳ incluye ${fmt(gasNoCapMes)} estimados (promedio ${fmt(gastoSemBase())}/sem)</span><span></span></div>`:''}
+    <div class="sr"><span style="font-size:11px;color:var(--text3);padding-left:14px;">↳ compras del mes (salida de caja, no costo): ${fmt(gasT)}</span><span></span></div>
     <div class="sr"><span style="font-size:12px;">Nómina pagada</span><span class="mono ay">−${fmt(nomPagadaMes)}</span></div>
     ${nomPendienteMes>0?`<div class="sr"><span style="font-size:12px;">Nómina devengada sin pagar</span><span class="mono ao">−${fmt(nomPendienteMes)}</span></div>`:''}
     <div class="div"></div>
@@ -18172,6 +18349,8 @@ window.hojaComprasPDF=()=>{
   doc.setDrawColor(126,200,80);doc.setLineWidth(.6);doc.line(14,24,W-14,24);
   let y=29;
   const orden={agotado:0,bajo:1,medio:2,ok:3};
+  // La columna "Comprar" ya no va en blanco: lleva el surtido sugerido.
+  const sug=Object.fromEntries(surtidoSugerido().filas.map(f=>[String(f.inv.id),fmtCant(f.comprar,f.u)]));
   CAT_OFICIALES.filter(c=>c.key!=='equipo').forEach(cat=>{
     const items=D.inventario.filter(i=>i.catOf===cat.key)
       .map(i=>({i,e:invEstadoStock(i)}))
@@ -18190,7 +18369,7 @@ window.hojaComprasPDF=()=>{
           `${stock} ${i.unit||''}`,
           i.min>0?String(i.min):'—',
           i.precio>0?('$'+(i.precio<1?i.precio.toFixed(3):i.precio.toFixed(2))):'—',
-          '','',''];
+          sug[String(i.id)]||'','',''];
       }),
       theme:'grid',
       headStyles:{fillColor:[26,46,24],textColor:[126,200,80],fontStyle:'bold',fontSize:7.5,halign:'center'},
@@ -18940,6 +19119,9 @@ function renderReportes(){
   const _opex=r2(_opexReal+_opexNoCap+_renta);
   const _com=sumaComision(ventas);
   const _oper=r2(_bruta-_com-_nom-_opex);
+  // Un solo número: la tarjeta de arriba dice lo mismo que el estado de resultados
+  if($('rp-util')){$('rp-util').textContent=fmt(_oper);$('rp-util').className='kv '+(_oper>=0?'at':'ar');}
+  if($('rp-util-sub'))$('rp-util-sub').textContent=`operativa · insumos ${fmt(_cogs)} · nóm. ${fmt(_nom)} · renta ${fmt(_renta)} · terminal ${fmt(_com)}`;
   const _mBruta=_ing>0?Math.round(_bruta/_ing*100):0;
   const _mOper=_ing>0?Math.round(_oper/_ing*100):0;
   const _flujo=r2(_ing-_com-gasOper-_nomPend);

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.48'; // Crecimiento mismo tramo; la mercancía entra una sola vez
+const CACHE_NAME = 'el-huerto-v15.49'; // Surtido sugerido de la semana; un solo número de utilidad
 const ASSETS = [
   '/',
   '/index.html',
