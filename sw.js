@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.47'; // Proteína Extra a $25
+const CACHE_NAME = 'el-huerto-v15.48'; // Crecimiento mismo tramo; la mercancía entra una sola vez
 const ASSETS = [
   '/',
   '/index.html',

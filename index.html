@@ -1491,6 +1491,8 @@ nav{padding-top:env(safe-area-inset-top);}
       <div class="fg" style="margin:0;"><label>Proveedor</label><input id="mc-prov" placeholder="Ej: El Zorro" list="pvdl" oninput="mcSetProv(this.value)"></div>
       <div class="fg" style="margin:0;"><label>Pago</label><select id="mc-metodo" onchange="mcSetMetodo(this.value)"><option value="efectivo">Efectivo</option><option value="tarjeta">Tarjeta</option></select></div>
     </div>
+    <div class="fg" style="margin:8px 0 0;"><label>¿Cuándo llegó la mercancía?</label><input type="date" id="mc-llegada" onchange="mcSetLlegada(this.value)"></div>
+    <div style="font-size:11px;color:var(--text3);margin-top:4px;">Si fue sábado o domingo, el gasto cuenta en la semana que surte (el lunes). Si ya se contó el inventario después de que llegó, no se vuelve a sumar.</div>
   </div>
   <div class="card" style="padding:12px;margin-bottom:10px;">
     <div class="ct">Se está acabando — toca para agregar</div>
@@ -10360,6 +10362,65 @@ window.reprintComanda=id=>{const v=D.ventas.find(x=>x.id===id);if(v)printComanda
 // cantidades y costo por unidad. El borrador vive en localStorage:
 // si el teléfono se bloquea en el mercado, la lista no se pierde.
 // ═══════════════════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════
+// LA MERCANCÍA ENTRA AL INVENTARIO UNA SOLA VEZ (20-oct)
+// El gasto y la existencia iban por caminos separados y cada lunes se
+// cuadraban a mano. El 19-oct el conteo ya traía los vasos y el mango
+// del domingo: sumar el ticket los habría duplicado. Y no traía los
+// bowls ni la mozzarella, que se quedaron guardados.
+//
+// Regla, en un solo lugar:
+//  · Si llegó DESPUÉS del último conteo de ese artículo → se suma a la
+//    existencia (el conteo de mañana lo confirma).
+//  · Si el último conteo es de un día POSTERIOR a la llegada → ese
+//    conteo ya la vio: no se vuelve a sumar; se suma a lo que ese
+//    conteo "esperaba", para que el cierre del día no la pinte como
+//    sobra. Si se contó menos de lo que llegó, el cierre lo señala.
+// Cada partida guarda `art` (el artículo) y `entro` ('stock'|'conteo').
+// ══════════════════════════════════════════════════════════════
+const llegadaDe=g=>g.fechaTicket||g.fecha;
+// Fin de semana → la semana que surte (regla de Gastos): fecha lunes,
+// fechaTicket el día real.
+function fechasDeCompra(llegada){
+  const d=new Date(llegada+'T12:00:00'), dow=d.getDay();
+  if(dow===6||dow===0){ d.setDate(d.getDate()+(dow===6?2:1)); return {fecha:localDate(d),fechaTicket:llegada}; }
+  return {fecha:llegada};
+}
+async function entrarMercancia(inv,q,llegada){
+  const caps=D.invDiario.filter(c=>c.productoId===inv.id)
+    .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
+  const ult=caps[0];
+  if(ult&&(ult.fecha||'')>llegada){
+    if(ult.esperado!=null){
+      const base=ult.esperadoAntesCompras??ult.esperado;
+      const antes=ult.comprasEsperado??(ult.esperadoAntesCompras!=null?r2(ult.esperado-ult.esperadoAntesCompras):0);
+      const llego=r2(antes+q), esperado=r2(base+llego);
+      const upd={...ult,esperadoAntesCompras:base,comprasEsperado:llego,esperado,diferencia:r2((ult.qty||0)-esperado)};
+      await fsSet('invDiario',upd);
+      const ix=D.invDiario.findIndex(x=>x.id===ult.id); if(ix>=0) D.invDiario[ix]=upd;
+    }
+    return 'conteo';
+  }
+  inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;
+  await fsSet('inventario',inv);
+  return 'stock';
+}
+// Lo que llegó de un artículo desde una fecha (para avisar al contar).
+function llegadasDe(invId,desde){
+  const inv=D.inventario.find(i=>i.id===invId); if(!inv) return [];
+  const td=today(), out=[];
+  for(const g of D.gastos){
+    const f=llegadaDe(g); if(!f||f<desde||f>td) continue;
+    for(const pt of (g.partidas||[])){
+      if(!pt.art||normInvNombre(pt.art)!==normInvNombre(inv.nombre)||pt.entro==='conteo') continue;
+      // El mismo día del último conteo solo cuenta si entró DESPUÉS (a stock).
+      if(f===desde&&pt.entro!=='stock') continue;
+      const q=qtyToInvUnit(pt.q,pt.u,inv.unit); if(q==null) continue;
+      out.push({q:r2(q),fecha:f,prov:g.prov||''});
+    }
+  }
+  return out;
+}
 let MC={prov:'',metodo:'efectivo',items:[]};
 function mcSave(){try{localStorage.setItem('h5compra_draft',JSON.stringify(MC));}catch(e){}}
 // Los oninput/onchange del HTML corren en scope global: ahí ni MC ni mcSave
@@ -10368,6 +10429,7 @@ function mcSave(){try{localStorage.setItem('h5compra_draft',JSON.stringify(MC));
 // Se exponen setters (no el objeto: MC se reasigna al limpiar la compra).
 window.mcSetProv=v=>{MC.prov=v;mcSave();};
 window.mcSetMetodo=v=>{MC.metodo=v;mcSave();};
+window.mcSetLlegada=v=>{MC.llegada=v;mcSave();};
 try{const d=localStorage.getItem('h5compra_draft');if(d)MC=JSON.parse(d);}catch(e){}
 
 window.mcAddInv=id=>{
@@ -10423,6 +10485,7 @@ window.renderMercadoSug=()=>{
 function renderMercado(){
   if($('mc-prov')&&document.activeElement!==$('mc-prov'))$('mc-prov').value=MC.prov||'';
   if($('mc-metodo'))$('mc-metodo').value=MC.metodo||'efectivo';
+  if($('mc-llegada')){ $('mc-llegada').max=today(); $('mc-llegada').value=MC.llegada||today(); }
   renderMercadoSug();
   if($('mc-items'))$('mc-items').innerHTML=MC.items.map((x,ix)=>`
     <div class="card" id="mci-${ix}" style="padding:10px 12px;margin-bottom:8px;">
@@ -10448,27 +10511,38 @@ window.registrarCompra=async()=>{
   const total=Math.round(listos.reduce((s,x)=>s+parseFloat(x.importe),0)*100)/100;
   if(!confirm(`Compra en ${MC.prov}:\n${listos.map(x=>`· ${x.qty} ${x.unit} ${x.nombre} — $${x.importe}`).join('\n')}\n\nTOTAL: ${fmt(total)}${incompletos?`\n(${incompletos} renglón(es) sin completar se descartan)`:''}\n\n¿Registrar? Se suma a gastos e inventario.`)) return;
   let nid=Date.now();
+  const llegada=(MC.llegada&&MC.llegada<=today())?MC.llegada:today();
+  const partidas=listos.map(x=>{const inv=x.invId?D.inventario.find(i=>i.id==x.invId):null;
+    return {c:x.nombre,q:parseFloat(x.qty),u:x.unit,i:r2(parseFloat(x.importe)),art:inv?inv.nombre:x.nombre};});
   // 1) El dinero primero: si el gasto no entra, no se toca inventario
-  const g={id:nid,fecha:today(),cat:MC.prov.toLowerCase().includes('costco')?'costco':'proveedor',
-    prov:MC.prov,monto:total,ticket:'COMPRA-'+String(nid).slice(-6),metodo:MC.metodo,tipoEstrategico:'general',
-    notas:listos.map(x=>`${x.qty} ${x.unit} ${x.nombre} $${x.importe}`).join(' · ')};
+  const g={id:nid,...fechasDeCompra(llegada),cat:MC.prov.toLowerCase().includes('costco')?'costco':'proveedor',
+    prov:provCanonico(MC.prov),monto:total,ticket:'COMPRA-'+String(nid).slice(-6),metodo:MC.metodo,tipoEstrategico:'operacion',
+    partidas,notas:listos.map(x=>`${x.qty} ${x.unit} ${x.nombre} $${x.importe}`).join(' · ')};
   const ok=await fsSet('gastos',g);
   if(!ok){toast('❌ Sin conexión: la compra NO se registró. Tu lista sigue guardada — reintenta con señal.',5500,'error');return;}
-  // 2) Inventario: suma cantidades y fija costo por unidad
-  const omitidos=[];
-  for(const x of listos){
+  // 2) Inventario: entra UNA vez (ver entrarMercancia) y fija costo por unidad
+  const omitidos=[], porConteo=[];
+  for(let k=0;k<listos.length;k++){
+    const x=listos[k];
     let inv=x.invId?D.inventario.find(i=>i.id==x.invId):null;
     const qty=parseFloat(x.qty), precio=parseFloat(x.precio)||parseFloat(x.importe)/qty;
     if(inv){
       const qc=qtyToInvUnit(qty,x.unit,inv.unit);
-      if(qc!=null){inv.qty=Math.round(((inv.qty||0)+qc)*1000)/1000;inv.precio=Math.round(precio*(qty/qc)*10000)/10000;}
-      else{inv.precio=Math.round(precio*10000)/10000;omitidos.push(inv.nombre);}
+      if(qc!=null){
+        inv.precio=Math.round(precio*(qty/qc)*10000)/10000;
+        const via=await entrarMercancia(inv,qc,llegada);
+        if(via==='conteo'){ porConteo.push(inv.nombre); await fsSet('inventario',inv); }
+        partidas[k].entro=via;
+      }
+      else{inv.precio=Math.round(precio*10000)/10000;omitidos.push(inv.nombre);await fsSet('inventario',inv);}
     }else{
       inv={id:++nid,nombre:x.nombre,cat:'otros',catOf:'abarrotes',qty,unit:x.unit,min:0,precio:Math.round(precio*10000)/10000};
-      D.inventario.push(inv);
+      D.inventario.push(inv); partidas[k].entro='stock';
+      await fsSet('inventario',inv);
     }
-    await fsSet('inventario',inv);
   }
+  if(partidas.some(p=>p.entro)){ await fsSet('gastos',{...g,partidas}); }
+  if(porConteo.length) toast(`ℹ️ Ya contado después de que llegó, no se sumó otra vez: ${porConteo.join(', ')}`,6000);
   logAudit('compra_mercado',{prov:MC.prov,total,articulos:listos.length,ticket:g.ticket,omitidos:omitidos.length?omitidos:undefined});
   MC={prov:'',metodo:'efectivo',items:[]};mcSave();
   renderMercado();
@@ -14752,7 +14826,8 @@ function calcCierreDia(fecha){
     const inv=D.inventario.find(i=>i.id===c.productoId);
     const dif=c.diferencia;
     const precio=(c.precioUnit!=null?c.precioUnit:(inv?.precio||0));
-    return {nombre:inv?inv.nombre:'(artículo borrado)',unit:c.unit||inv?.unit||'',
+    const llego=c.comprasEsperado??(c.esperadoAntesCompras!=null&&c.esperado!=null?r2(c.esperado-c.esperadoAntesCompras):0);
+    return {nombre:inv?inv.nombre:'(artículo borrado)',unit:c.unit||inv?.unit||'',llego,
       contado:c.qty,esperado:c.esperado,dif,
       pesos:(dif!=null)?r2(dif*precio):null, quien:c.capturadoPorNombre||''};
   });
@@ -14797,7 +14872,7 @@ function renderCierreDia(){
       R.descuadres.slice(0,10).map(x=>`<div class="sr">
         <span style="font-size:12.5px;">${esc(x.nombre)}</span>
         <span style="display:flex;gap:12px;align-items:baseline;">
-          <span style="font-size:11px;color:var(--text3);">esperaba ${x.esperado} · contó ${x.contado} ${x.unit}</span>
+          <span style="font-size:11px;color:var(--text3);">esperaba ${x.esperado}${x.llego>0?` (llegaron ${x.llego})`:''} · contó ${x.contado} ${x.unit}${x.llego>0&&x.contado<x.llego*0.9?' · <b style="color:var(--goldd);">contó menos de lo que llegó: ¿quedó guardado?</b>':''}</span>
           <span class="mono" style="min-width:58px;text-align:right;color:${x.dif<0?'var(--red)':'var(--accent)'};font-weight:600;">${x.dif>0?'+':''}${x.dif}</span>
           <span class="mono" style="min-width:74px;text-align:right;font-weight:600;">${x.pesos!=null?fmt(x.pesos):'—'}</span>
         </span></div>`).join('')+
@@ -15053,6 +15128,10 @@ function renderInvCaptura(){
                 const falta=c.diferencia<0;
                 return `<div style="font-size:11px;margin-top:3px;color:${falta?'var(--red)':'var(--accent)'};font-weight:560;">
                   El sistema esperaba ${c.esperado} · ${falta?'faltan':'sobran'} ${Math.abs(c.diferencia)}</div>`;})()}
+              ${(()=>{const desde=ultimo?.fecha||'0000';const ll=llegadasDe(p.id,desde);
+                if(!ll.length) return '';
+                const tot=r2(ll.reduce((a,x)=>a+x.q,0));
+                return `<div style="font-size:11px;margin-top:3px;color:var(--blue,#1565c0);font-weight:560;">📦 Llegó +${tot} ${p.unidadOf||p.unit||''} (${[...new Set(ll.map(x=>x.fecha.slice(8)+'/'+x.fecha.slice(5,7)))].join(', ')}) — cuéntalo aunque esté guardado</div>`;})()}
               ${capturado?'':`<div style="font-size:10px;color:var(--orange);margin-top:3px;">Pendiente de capturar</div>`}
             </div>
             <div style="display:flex;gap:6px;align-items:center;">
@@ -16181,9 +16260,21 @@ function renderKpiFinancieros(fechas){
   // Crecimiento MoM (mes actual vs anterior)
   const cm=curM();
   const mesAnterior=(()=>{const d=new Date(cm+'-01T12:00:00');d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7);})();
-  const ventasMesActual=D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).reduce((s,v)=>s+v.total,0);
-  const ventasMesAnterior=D.ventas.filter(v=>mOf(v.fecha)===mesAnterior&&!v.anulada).reduce((s,v)=>s+v.total,0);
+  // ══ EL MISMO TRAMO CONTRA EL MISMO TRAMO (20-oct) ══
+  // Comparaba los 20 días que iban de octubre contra septiembre ENTERO:
+  // "−26%" cuando octubre iba arriba. Ahora: del 1 al día de hoy contra
+  // del 1 al mismo día del mes pasado. Y se proyecta el cierre al ritmo
+  // de los días hábiles que ya corrieron.
+  const tdM=today(), diaHoy=Number(tdM.slice(8,10));
+  const ultAnt=diasDelMes(mesAnterior).length;
+  const corteAnt=`${mesAnterior}-${String(Math.min(diaHoy,ultAnt)).padStart(2,'0')}`;
+  const ventasMesActual=r2(D.ventas.filter(v=>mOf(v.fecha)===cm&&v.fecha<=tdM&&!v.anulada).reduce((s,v)=>s+v.total,0));
+  const ventasMesAnterior=r2(D.ventas.filter(v=>mOf(v.fecha)===mesAnterior&&v.fecha<=corteAnt&&!v.anulada).reduce((s,v)=>s+v.total,0));
+  const ventasMesAntTotal=r2(D.ventas.filter(v=>mOf(v.fecha)===mesAnterior&&!v.anulada).reduce((s,v)=>s+v.total,0));
   const crecimientoMoM=ventasMesAnterior>0?((ventasMesActual-ventasMesAnterior)/ventasMesAnterior*100):null;
+  const habMes=diasDelMes(cm).filter(d=>!esDiaDescanso(d));
+  const habCorridos=habMes.filter(d=>d<=tdM).length;
+  const proyeccionMes=habCorridos>0?r2(ventasMesActual/habCorridos*habMes.length):null;
 
   let html=`<div class="kpi-grid">
     ${kpiCard({titulo:'Margen Bruto',valor:margenBruto,valorFmt:margenBruto.toFixed(1)+'%',target:T.margenBrutoMin,targetFmt:T.margenBrutoMin+'%',mejor:'mayor',info:`${fmt(totalVentas)} ventas − ${fmt(costoProductos)} insumos (receta) · costeado ${cobertura}%${cobertura<80?' ⚠ dato incompleto':''}`})}
@@ -16192,7 +16283,7 @@ function renderKpiFinancieros(fechas){
     ${kpiCard({titulo:'Utilidad Bruta',valor:utilBruta,valorFmt:fmt(utilBruta),target:null,info:'ventas − insumos que se consumieron'})}
     ${kpiCard({titulo:'Utilidad Operativa',valor:utilOper,valorFmt:fmt(utilOper),target:null,info:`margen ${margenOper}% · ${utilOper>=0?'✓ Positivo':'⚠ En pérdida'}`})}
     ${kpiCard({titulo:'Punto de Equilibrio',valor:puntoEquilibrio,valorFmt:puntoEquilibrio==null?'—':fmt(puntoEquilibrio)+'/día',target:null,info:'Venta diaria que cubre nómina, renta, operación y terminal'})}
-    ${kpiCard({titulo:'Crecimiento MoM',valor:crecimientoMoM,valorFmt:crecimientoMoM==null?'—':((crecimientoMoM>=0?'+':'')+crecimientoMoM.toFixed(1)+'%'),target:15,targetFmt:'≥15%',mejor:'mayor',info:`${cm}: ${fmt(ventasMesActual)} vs ${mesAnterior}: ${fmt(ventasMesAnterior)}`})}
+    ${kpiCard({titulo:'Crecimiento MoM',valor:crecimientoMoM,valorFmt:crecimientoMoM==null?'—':((crecimientoMoM>=0?'+':'')+crecimientoMoM.toFixed(1)+'%'),target:15,targetFmt:'≥15%',mejor:'mayor',info:`del 1 al ${diaHoy}: ${fmt(ventasMesActual)} vs ${fmt(ventasMesAnterior)} en ${mesAnterior}${proyeccionMes!=null&&habCorridos<habMes.length?` · al ritmo de hoy cierra en ~${fmt(proyeccionMes)} (${mesAnterior} cerró en ${fmt(ventasMesAntTotal)})`:''}`})}
   </div>`;
 
   // Comparativa ventas vs gastos por mes (últimos 6 meses)
