@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.35'; // Los toppings que elige la cajera se costean y se descuentan
+const CACHE_NAME = 'el-huerto-v15.36'; // Surtido del 18-oct: 8 gastos, $7,000, precios al día
 const ASSETS = [
   '/',
   '/index.html',

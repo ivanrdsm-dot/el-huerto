@@ -3202,6 +3202,8 @@ async function completeInit(){
   await migSandiaYEquipo15Oct();
   await migBobaYMango15Oct();
   await migZanahoria15Oct();
+  await migSurtido18Oct2026();
+  await migSurtido18OctArt();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -4281,6 +4283,8 @@ const PROVEEDORES=[
   {n:'Vega Life',                   cat:'proveedor', alias:['vegalife','vega']},
   {n:'La Comer',                    cat:'proveedor', alias:['lacomer','lacomerbosquereal']},
   {n:'Chilapita',                   cat:'proveedor', alias:['chilapita','chilapitaazcapotzalco']},
+  {n:'Saavedra Market',             cat:'proveedor', alias:['saavedramarket','saavedra']},
+  {n:'Fruta y verdura (Central de Abasto)', cat:'proveedor', alias:['frutayverdura','frutayverduracentraldeabasto','mercado','fruta']},
   {n:'Universidad Panamericana',    cat:'renta',     alias:['panamericana','universidadpanamericana','up','ciudadup']},
   {n:'IMSS',                        cat:'varios',    alias:['imss']},
   {n:'Nómina interna',              cat:'nomina',    alias:['nominainterna','nomina']},
@@ -5672,6 +5676,159 @@ async function migZanahoria15Oct(){
       toast('✓ Receta del Coctel de Zanahoria lista',4000);
     } else console.warn('Coctel de Zanahoria: falta',faltan);
   }
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// EL SURTIDO DEL DOMINGO 18-OCT — $7,000.00 exactos
+// Siete tickets ($5,528.11) más la fruta del mercado ($1,471.89, lo
+// que falta de los $7,000 que Iván llevó). Por la regla de la semana
+// del surtido: fecha = lunes 19, fechaTicket = domingo 18.
+//
+// LO QUE ESTA CARGA NO HACE: sumar existencias. El conteo físico del
+// lunes 19 (108 de 109 artículos) se capturó con la mercancía ya en
+// el anaquel —los vasos de smoothie marcaban 325, con los 200
+// de La Nueva ya adentro—. Volver a sumar los tickets duplicaría todo.
+// Lo que sí hace: registrar el gasto con sus partidas y fijar el
+// precio por unidad de cada insumo al de esta compra.
+//
+// Precios que NO se tocan, a propósito:
+//  · Piña, fresa, lechuga y aguacate del mercado: Iván dio el total
+//    de la fruta, no el desglose de estos cuatro ($474.89 entre los
+//    cuatro). Repartirlo a ojo metería un costo inventado.
+//
+// Costco: el descuento global ($36.24) se repartió en proporción; los
+// netos salen redondos ($215, $149, $179…) y suman exacto $1,578.60.
+// La granola lleva su IEPS ($3.19): es costo, no se recupera.
+//
+// Cada renglón: [concepto del ticket, artículo del inventario | null,
+//                cantidad, unidad, importe]
+// ═══════════════════════════════════════════════════════════
+const SURTIDO_18OCT=[
+  {ticket:'LANUEVA-218008', prov:'Materias Primas La Nueva', cat:'proveedor', metodo:'efectivo',
+   notas:'Folio 218008 · 18-oct 08:11. Desechables y limpieza.',
+   p:[['Classy tenedor sopero',          'Tenedores',          100,'pz',   36.00],
+      ['Can rollo negra 60×90',          'Bolsas de basura',     1,'rollo',43.00],
+      ['Reyma vaso 16 largo',            'Vaso smoothie 16 oz',200,'pz',  216.00],
+      ['Inix vaso blanco 12 oz',         'Vaso p/café 12 oz',  100,'pz',  126.00],
+      ['Inix tapa negra 12/16',          'Tapa para café',     100,'pz',   90.00],
+      ['Kleenex servitoalla',            'Servitoallas',         2,'paq',  68.00],
+      ['Goplas TD95 p/vaso 16 largo',    'Tapa Smoothie',      100,'pz',   94.00],
+      ['Inix guantes nitrilo',           'Guantes',              1,'caja',135.00]]},
+  {ticket:'COSTCO-7180030068101826', prov:'Costco', cat:'costco', metodo:'efectivo',
+   notas:'Interlomas · 18-oct 10:27 · efectivo. Subtotal $1,614.84 − descuento $36.24. Importes netos.',
+   p:[['Parmesano rallado 908 g',        'Queso parmesano',    908,'g',  215.00],
+      ['Espinaca 454 g',                 'Espinaca',           454,'g',   92.90],
+      ['Ensalada italiana 908 g ×2',     'Lechuga',           1816,'g',  107.80],
+      ['Mezcla de 4 quesos 2×1.13 kg',   'Mezcla 4 quesos',   2260,'g',  315.00],
+      ['KS bebida de almendra 6 pz',     'Leche de almendra',    6,'pz',  149.00],
+      ['Tomate Glory 907 g',             'Tomate cherry',      907,'g',   99.90],
+      ['KS leche deslactosada light 12 L','Leche deslactosada', 12,'L',  265.00],
+      ['KS crema de almendras',          'Crema de almendras',   1,'pz',  179.00],
+      ['Crutones 907 g',                 'Crutones',           907,'g',  155.00]]},
+  {ticket:'HM-263295', prov:'HM Central de Alimentos', cat:'proveedor', metodo:'efectivo',
+   notas:'Ticket 263295 · 18-oct 07:11. Serrano: 2.045 kg × $575 (el ticket redondea el total a $1,764.50).',
+   p:[['Queso mozzarella cubicado Billy 5 kg','Queso mozzarella',5000,'g',361.00],
+      ['Queso panela',                   'Queso panela',      1025,'g',  107.63],
+      ['Jamón serrano español',          'Jamón serrano',     2045,'g', 1175.87],
+      ['Pechuga de pavo San Ángel',      'Pechuga de pavo',   1000,'g',  120.00]]},
+  {ticket:'SAAVEDRA-212579', prov:'Saavedra Market', cat:'proveedor', metodo:'efectivo',
+   notas:'Folio 212579 · 18-oct 07:27.',
+   p:[['Chorizo pamplona Wunsch 1 kg',   'Chorizo pamplona',  1000,'g',  336.00]]},
+  {ticket:'MOLINERA-25250', prov:'La Molinera de Abastos', cat:'proveedor', metodo:'efectivo',
+   notas:'Ticket 205095 · folio 25250 · 18-oct 07:48. Incluye IEPS $3.19 de la granola.',
+   p:[['Avena en hojuela a granel',      'Avena',             3000,'g',   48.00],
+      ['Aderezo César Clemente Jacques', 'Aderezo César',        1,'pz',  142.00],
+      ['Granola Nutrigueña (con IEPS)',  'Granola',           1000,'g',   43.01],
+      ['Aderezo MCC guacamole 305 g',    'Aderezo guacamole',    3,'pz',  108.00],
+      ['Aceituna negra Carbonell 3.05 kg','Aceitunas negras', 3050,'g',  185.00]]},
+  {ticket:'MOLINERA-25251', prov:'La Molinera de Abastos', cat:'proveedor', metodo:'efectivo',
+   notas:'Ticket 205096 · folio 25251 · 18-oct 07:50.',
+   p:[['Azúcar estándar a granel',       'Azúcar',            2000,'g',   42.00]]},
+  {ticket:'PLASTIDORO-37574', prov:'Plastidoro', cat:'proveedor', metodo:'efectivo',
+   notas:'Nota AG-37574 · 18-oct 08:11.',
+   p:[['Bowl papel kraft 32 oz',         'Bowl papel kraft 32 oz',100,'pz',255.00],
+      ['Tapa p/bowl kraft',              'Tapa p/bowl kraft',  100,'pz',  164.00],
+      ['Bolsa semikraft No. 4 blanca',   'Bolsa semikraft #4', 100,'pz',   54.00]]},
+  {ticket:'MERCADO-18OCT26', prov:'Fruta y verdura (Central de Abasto)', cat:'proveedor', metodo:'efectivo',
+   notas:'Sin ticket: lo que falta de los $7,000 del surtido. Precios por kilo que dio Iván. Piña, fresa, lechuga y aguacate vienen juntos en $474.89 sin desglose: su precio por unidad no se tocó.',
+   p:[['Plátano 7 kg × $18',             'Plátano',           7000,'g',  126.00],
+      ['Mango 7 kg × $55',               'Mango verde',       7000,'g',  385.00],
+      ['Zanahoria 4 kg × $14',           'Zanahoria',         4000,'g',   56.00],
+      ['Jícama 7 kg × $23',              'Jícama',            7000,'g',  161.00],
+      ['Pepino 9 kg × $20',              'Pepino',            9000,'g',  180.00],
+      ['Jitomate 2 kg × $22',            'Jitomate',          2000,'g',   44.00],
+      ['Limón 3 kg × $15',               'Limón agrio',       3000,'g',   45.00],
+      ['Piña 3 pz, fresa, lechuga 3 pz, aguacate 2 kg', null,  1,'lote',474.89]]},
+];
+// Artículos que no existían. El azúcar del catálogo oficial (id 7302)
+// se volvió "Splenda" el 7-oct: éste es azúcar de verdad, con id propio.
+const NUEVOS_18OCT=[
+  {nombre:'Azúcar',            cat:'granos', catOf:'abarrotes',   unit:'g',  unidadOf:'g',  qty:2000},
+  {nombre:'Bolsa semikraft #4',cat:'empaque',catOf:'desechables', unit:'pz', unidadOf:'pz', qty:100},
+];
+// Las partidas del 18-oct se guardaron sin decir a qué artículo
+// corresponden, y "Reyma vaso 16 largo" no se parece en nada a "Vaso
+// smoothie 16 oz": la tarjeta de mercancía sin capturar seguía
+// reclamando compras que sí estaban. `art` es el nombre del inventario.
+// Llave nueva: la migración del surtido ya corrió.
+async function migSurtido18OctArt(){
+  const migKey='h5surtido_18oct26_art';
+  if(await migDone(migKey)) return;
+  for(const g of SURTIDO_18OCT){
+    const gx=D.gastos.find(x=>x.ticket===g.ticket); if(!gx) continue;
+    const partidas=g.p.map(([c,art,q,u,i])=>({c,q,u,i,...(art?{art}:{})}));
+    if(JSON.stringify(gx.partidas)===JSON.stringify(partidas)) continue;
+    const upd={...gx,partidas};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===gx.id); if(ix>=0) D.gastos[ix]=upd;
+  }
+  await markMig(migKey);
+}
+async function migSurtido18Oct2026(){
+  const migKey='h5surtido_18oct26';
+  if(await migDone(migKey)) return;
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  const precios=[], omitidos=[], creados=[];
+
+  // 1) Lo que no existía. Se crea con lo comprado porque el conteo del
+  //    lunes no pudo contarlo: no había renglón donde anotarlo.
+  let nid=Date.now();
+  for(const a of NUEVOS_18OCT){
+    if(buscar(a.nombre)) continue;
+    const nuevo={id:++nid,min:0,precio:0,...a};
+    await fsSet('inventario',nuevo); D.inventario.push(nuevo); creados.push(a.nombre);
+  }
+
+  // 2) Precio por unidad = el de esta compra. FIJAR, no sumar: si esto
+  //    corre dos veces deja exactamente lo mismo.
+  for(const g of SURTIDO_18OCT) for(const [c,art,q,u,imp] of g.p){
+    if(!art) continue;
+    const inv=buscar(art); if(!inv){ omitidos.push(`${c} → ${art}`); continue; }
+    const qi=qtyToInvUnit(q,u,inv.unit);
+    if(qi==null||!qi){ omitidos.push(`${art} (${u}→${inv.unit})`); continue; }
+    const precio=Math.round((imp/qi)*1000000)/1000000;
+    if(Math.abs((inv.precio||0)-precio)<0.000001) continue;
+    const upd={...inv,precio};
+    await fsSet('inventario',upd);
+    const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+    precios.push(`${inv.nombre}: $${inv.precio||0} → $${precio}/${inv.unit}`);
+  }
+
+  // 3) Los gastos: lunes en los números, domingo en el ticket.
+  let gid=Date.now()+5000, nuevos=0, total=0;
+  for(const g of SURTIDO_18OCT){
+    if(D.gastos.find(x=>x.ticket===g.ticket)) continue;
+    const partidas=g.p.map(([c,art,q,u,i])=>({c,q,u,i,...(art?{art}:{})}));
+    const monto=r2(partidas.reduce((a,x)=>a+x.i,0));
+    await fsSet('gastos',{id:++gid,fecha:'2026-10-19',fechaTicket:'2026-10-18',ticket:g.ticket,
+      prov:g.prov,cat:g.cat,tipoEstrategico:'operacion',metodo:g.metodo,monto,partidas,notas:g.notas});
+    nuevos++; total=r2(total+monto);
+  }
+
+  logAudit('compras_registradas',{lote:'domingo 18-oct-2026',gastosNuevos:nuevos,total,
+    precios,articulosNuevos:creados,sinVincular:omitidos,
+    motivo:'Tickets del surtido que Iván mandó el 19-oct. Existencias sin tocar: el conteo del 19 ya incluía la mercancía'});
+  if(nuevos) toast(`✓ Surtido del 18-oct: ${nuevos} gastos, ${fmt(total)} · ${precios.length} precios al día`,6000);
   await markMig(migKey);
 }
 async function migCostco14Oct2026(){
@@ -13126,7 +13283,10 @@ function comprasSinRegistrar(){
   const facturado=[];
   for(const g of D.gastos){
     if(!sem.has(g.fecha)) continue;
-    for(const pt of (g.partidas||[])) if(pt.c) facturado.push(normInvNombre(pt.c));
+    for(const pt of (g.partidas||[])){
+      if(pt.c) facturado.push(normInvNombre(pt.c));
+      if(pt.art) facturado.push(normInvNombre(pt.art));
+    }
   }
   return (R.descuadres||[]).filter(x=>x.dif>0&&(x.pesos||0)>=150&&!facturado.some(f=>mismoInsumo(f,x.nombre)))
     .sort((a,b)=>(b.pesos||0)-(a.pesos||0)).slice(0,6);
@@ -14525,6 +14685,14 @@ function renderInvCaptura(){
     capturados:c.productos.filter(p=>invStockHoy(p.id,td)!=null).length
   }));
 
+  // Sin artículos que contar —el inventario aún no carga, o se cayó la
+  // lectura— no hay categoría activa. Antes del 15-oct siempre había seis
+  // (vacías); al quitar las pestañas sin artículos, `catActiva` quedaba
+  // undefined y toda la pantalla de Inventario tronaba.
+  if(!productosPorCat.length){
+    if($('inv-content')) $('inv-content').innerHTML=`<div id="inv-cierre"></div><div class="card"><p style="color:var(--text3);text-align:center;padding:20px;margin:0;">Cargando el inventario…</p></div>`;
+    return;
+  }
   const catActiva=productosPorCat.find(c=>c.key===invCategoriaActiva)||productosPorCat[0];
 
   let html=`
@@ -16062,6 +16230,7 @@ const PREP_PORCION={
     'Pepino':['Pepino',60,'g'],'Jícama':['Jícama',60,'g'],'Zanahoria':['Zanahoria',60,'g']},
   bowl:{'Fresa':['Fresa',40,'g'],'Blueberry':['Blueberry',30,'g'],'Plátano':['Plátano',50,'g'],
     'Mango':['Mango verde',40,'g'],'Almond butter':['Crema de almendras',0.0196,'pz'],
+    'Peanut butter':['Crema de cacahuate',0.0136,'pz'],   // 15 g de un frasco de 1.1 kg (ticket Costco)
     'Granola':['Granola',20,'g'],'Avena':['Avena',20,'g'],'Miel de abeja':['Miel',0.01,'L']},
   ensalada:{'Pollo':['Tiras de pollo',60,'g'],'Aguacate':['Aguacate',40,'g'],'Pepino':['Pepino',40,'g'],
     'Jitomate cherry':['Tomate cherry',40,'g'],'Zanahoria rallada':['Zanahoria',30,'g'],
@@ -16070,8 +16239,7 @@ const PREP_PORCION={
     'Cacahuate':['Cacahuate natural',15,'g'],'Arándanos':['Arándano deshidratado',15,'g'],
     'Aceitunas negras':['Aceitunas negras',20,'g'],'Mango':['Mango verde',40,'g'],'Fresa':['Fresa',40,'g']},
   // Sin mapear a propósito, porque falta un dato de Iván:
-  //   Peanut butter (cuánto pesa el frasco) · Spread de matcha · Elote ·
-  //   Semillas de girasol (no están en el inventario)
+  //   Spread de matcha · Elote · Semillas de girasol (no están en el inventario)
 };
 // Líneas de insumo que agregan los toppings elegidos de UN renglón.
 function ingsDeToppings(prodId,prep){
@@ -16079,8 +16247,15 @@ function ingsDeToppings(prodId,prep){
   const tabla=pp&&pp.elige&&PREP_PORCION[pp.de];
   if(!tabla||!prep||!prep.length) return {ings:[],faltan:[]};
   const ings=[], faltan=[];
-  for(const raw of prep){
-    const op=String(raw).includes(':')?String(raw).split(':').slice(1).join(':').trim():String(raw).trim();
+  // Las ventas viejas guardaban los toppings JUNTOS en un solo texto:
+  // "Pollo, Queso parmesano, Crutones". Leerlo como un topping que se
+  // llama así dejó 456 ventas sin costear en el primer recosteo. Se
+  // parte por comas; ninguna opción de PREP_LISTAS lleva coma.
+  const opciones=prep.flatMap(raw=>{
+    const t=String(raw).includes(':')?String(raw).split(':').slice(1).join(':'):String(raw);
+    return t.split(',').map(x=>x.trim()).filter(Boolean);
+  });
+  for(const op of opciones){
     const m=tabla[op];
     if(!m){ faltan.push(op+' · topping sin porción'); continue; }
     const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(m[0]));
@@ -16418,11 +16593,37 @@ window.crearHuerfano=async ix=>{
 // El Panel usa el costo que cada venta guardó al cobrarse, así que
 // arreglar una receta hoy no mueve lo de ayer. Esto lo dice en voz alta
 // y ofrece rehacer SOLO las que quedaron sin costo.
+// Por qué una venta no se puede costear. Decir "456 ventas sin costo"
+// no ayuda a arreglarlas; decir "peanut butter: falta cuánto pesa el
+// frasco (210 ventas)" sí. Se agrupa por motivo y se ordena por cuántas
+// ventas destraba cada uno.
+function motivosSinCostear(){
+  const cuenta={};
+  for(const v of ventasSinCostear()){
+    const vistos=new Set(); let fc=0;
+    for(const it of (v.items||[])){
+      const r=foodCostProducto(it.id,it.prep);
+      if(r.costo!=null) fc+=r.costo*(it.qty||0);
+      (r.faltantes||[]).forEach(f=>vistos.add(f));
+    }
+    // Puede ser un precio de insumo mal escalado… o un producto que de
+    // verdad cuesta más de lo que se cobra. Se nombra para distinguirlo.
+    if(!vistos.size && fc>v.total && v.total>0)
+      vistos.add(`el costo ($${r2(fc)}) sale mayor que la venta ($${v.total}): ${[...new Set((v.items||[]).map(i=>i.nombre))].join(', ')}`);
+    vistos.forEach(f=>{ cuenta[f]=(cuenta[f]||0)+1; });
+  }
+  return Object.entries(cuenta).sort((a,b)=>b[1]-a[1]);
+}
+window.motivosSinCostear=motivosSinCostear;
 function pintarRecosteo(){
   const caja=$('rg-recost'); if(!caja) return;
   const n=ventasSinCostear().length;
+  const motivos=n?motivosSinCostear().slice(0,5):[];
+  const lista=motivos.length?`<div style="font-size:11.5px;color:var(--text3);margin-top:6px;">Lo que falta para costearlas:<br>${
+    motivos.map(([m,c])=>`· ${esc(m)} — <b class="mono">${c}</b> venta${c===1?'':'s'}`).join('<br>')}</div>`:'';
   caja.innerHTML=n?
-    `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:10px;border-top:1px solid var(--border);">
+    `<div style="padding-top:10px;border-top:1px solid var(--border);">${lista}</div>`+
+    `<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding-top:10px;">
       <span style="font-size:11.5px;color:var(--text2);">${n} venta(s) de las últimas ${COSTEO_SEMANAS} semanas se cobraron sin costo completo. El Panel las seguirá contando así hasta que las rehagas.</span>
       <button class="btn bs bsm" style="flex:none;white-space:nowrap;" onclick="recostearVentas()">Recostear</button>
     </div>`:'';
