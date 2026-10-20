@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.42'; // KPIs financieros con el costo de la receta; recosteo de 16 semanas
+const CACHE_NAME = 'el-huerto-v15.43'; // Cierre del día: fuera los $132K de la Valentina, compras en el esperado
 const ASSETS = [
   '/',
   '/index.html',
