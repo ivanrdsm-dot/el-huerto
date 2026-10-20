@@ -15917,10 +15917,12 @@ function renderKpiOperacion(fechas){
   const ventas=D.ventas.filter(v=>fechas.includes(v.fecha)&&!v.anulada);
   const totalVentas=ventas.reduce((s,v)=>s+v.total,0);
   // Margen contribución promedio
-  const prodsConCosto=D.productos.filter(p=>p.activo&&(p.costo??0)>0);
+  // Por receta, no por el campo `costo` tecleado a mano (casi todo en $0).
+  const prodsConCosto=D.productos.filter(p=>p.activo&&p.precio>0)
+    .map(p=>({p,fc:foodCostProducto(p.id)})).filter(x=>x.fc.completo&&x.fc.costo>0);
   let margenProm=0;
   if(prodsConCosto.length>0){
-    margenProm=prodsConCosto.reduce((s,p)=>s+((p.precio-p.costo)/p.precio*100),0)/prodsConCosto.length;
+    margenProm=prodsConCosto.reduce((s,x)=>s+((x.p.precio-x.fc.costo)/x.p.precio*100),0)/prodsConCosto.length;
   }
   // El costo bueno es el que sale de la RECETA, no el campo `costo` que
   // se teclea a mano y casi nadie llenó: este KPI marcaba como "sin
@@ -15977,42 +15979,70 @@ function renderKpiFinancieros(fechas){
   const T=CFG.kpiTargets;
   const ventas=D.ventas.filter(v=>fechas.includes(v.fecha)&&!v.anulada);
   const totalVentas=ventas.reduce((s,v)=>s+v.total,0);
-  // Costo de productos vendidos (si tienen costo definido)
-  let costoProductos=0;
-  ventas.forEach(v=>{
-    v.items.forEach(i=>{
-      const p=D.productos.find(x=>x.id===i.id);
-      if(p&&(p.costo??0)>0) costoProductos+=p.costo*i.qty;
-    });
-  });
-  const margenBruto=totalVentas>0?((totalVentas-costoProductos)/totalVentas*100):0;
-  // Gastos del período: sin nómina (va aparte) y con piso en el promedio
-  // semanal declarado, para que las semanas a medio capturar no finjan
-  // un punto de equilibrio bajísimo.
+  // ══ EL COSTO SALE DE LA RECETA, NO DEL CAMPO `costo` (19-oct) ══
+  // Esta pestaña leía `producto.costo`, que se teclea a mano y está en
+  // $0 en casi todo el menú: "Margen Bruto 100% · $0.00 costos". Y le
+  // restaba a las ventas de UN día la compra de TODA la semana:
+  // "Utilidad −$1,963". Ahora usa lo mismo que el estado de resultados:
+  // el costo que cada venta guardó al cobrarse (receta + toppings).
+  // Lo que no tiene costo completo se estima al mismo % que lo que sí;
+  // la cobertura se dice en la tarjeta.
+  const completas=ventas.filter(v=>v.foodCost!=null&&v.foodCostCompleto!==false);
+  const ventaCub=r2(completas.reduce((s,v)=>s+v.total,0));
+  const cogsCub=r2(completas.reduce((s,v)=>s+(v.foodCost||0),0));
+  const cobertura=totalVentas>0?Math.round(ventaCub/totalVentas*100):0;
+  const pctCosto=ventaCub>0?cogsCub/ventaCub:0;
+  const costoProductos=r2(totalVentas*pctCosto);
+  const margenBruto=ventaCub>0?(1-pctCosto)*100:0;
+  const utilBruta=r2(totalVentas-costoProductos);
+  // ── Gastos: lo corrido contra lo corrido (ver Panel) ──
+  // Las compras de insumo NO se restan aquí: ya están en el costo de
+  // lo vendido. Se restan nómina, operación (renta, servicios…) y la
+  // comisión de la terminal, medidos sobre los días que ya pasaron.
+  const tdK=today();
+  const habiles=fechas.filter(f=>!esDiaDescanso(f));
+  const habilesK=habiles.length||1;
+  const corridos=Math.max(1,habiles.filter(f=>f<=tdK).length);
+  const enCurso=corridos<habilesK, avance=corridos/habilesK;
   const gdK=desgloseGastos(D.gastos.filter(g=>fechas.includes(g.fecha)));
-  const habilesK=fechas.filter(f=>!esDiaDescanso(f)).length||1;
-  const gastos=r2(Math.max(gdK.sinNomina,gastoSemBase()/DIAS_OPERACION.length*habilesK));
-  // Punto de equilibrio (gastos fijos / margen contribución)
-  const prodsConCosto=D.productos.filter(p=>p.activo&&(p.costo??0)>0);
-  const margenContribProm=prodsConCosto.length>0?
-    prodsConCosto.reduce((s,p)=>s+((p.precio-p.costo)/p.precio),0)/prodsConCosto.length:0;
-  const puntoEquilibrio=margenContribProm>0?gastos/margenContribProm:null;
+  let opexReal, insumosDev;
+  if(fechas.length===1){
+    // "Hoy": el día que se surte cae la compra de la semana entera.
+    const ref=hoyOperativo(), diasSem=getWDays(ref).length||5;
+    const gSem=desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha)));
+    opexReal=r2(gSem.opex/diasSem); insumosDev=r2(gSem.insumos/diasSem);
+  } else {
+    opexReal=enCurso?r2(gdK.opex*avance):gdK.opex;
+    insumosDev=enCurso?r2(gdK.insumos*avance):gdK.insumos;
+  }
+  // Piso del promedio semanal declarado, sin cobrar dos veces el insumo
+  const baseK=r2(gastoSemBase()/DIAS_OPERACION.length*(fechas.length===1?1:corridos));
+  const opexNoCap=Math.max(0,r2(baseK-Math.max(insumosDev,costoProductos)-opexReal));
+  const opexK=r2(opexReal+opexNoCap);
+  const nomK=nominaDevengada(fechas);
+  const comisionK=sumaComision(ventas);
+  const fijos=r2(nomK+opexK);
+  const utilOper=r2(utilBruta-comisionK-fijos);
+  const margenOper=totalVentas>0?Math.round(utilOper/totalVentas*100):0;
+  // Punto de equilibrio: costos FIJOS del día entre lo que deja cada
+  // peso vendido (después de insumos y comisión de terminal).
+  const contrib=ventaCub>0?(1-pctCosto-(totalVentas>0?comisionK/totalVentas:0)):0;
+  const diasPE=fechas.length===1?1:corridos;
+  const puntoEquilibrio=contrib>0?r2(fijos/diasPE/contrib):null;
   // Crecimiento MoM (mes actual vs anterior)
   const cm=curM();
   const mesAnterior=(()=>{const d=new Date(cm+'-01T12:00:00');d.setMonth(d.getMonth()-1);return d.toISOString().slice(0,7);})();
   const ventasMesActual=D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada).reduce((s,v)=>s+v.total,0);
   const ventasMesAnterior=D.ventas.filter(v=>mOf(v.fecha)===mesAnterior&&!v.anulada).reduce((s,v)=>s+v.total,0);
   const crecimientoMoM=ventasMesAnterior>0?((ventasMesActual-ventasMesAnterior)/ventasMesAnterior*100):null;
-  // Cash burn (si gastos > ventas)
-  const comisionK=sumaComision(ventas);
-  const utilidad=totalVentas-comisionK-gastos;
 
   let html=`<div class="kpi-grid">
-    ${kpiCard({titulo:'Margen Bruto',valor:margenBruto,valorFmt:margenBruto.toFixed(1)+'%',target:T.margenBrutoMin,targetFmt:T.margenBrutoMin+'%',mejor:'mayor',info:`${fmt(totalVentas)} ventas - ${fmt(costoProductos)} costos`})}
-    ${kpiCard({titulo:'Total Ventas',valor:totalVentas,valorFmt:fmt(totalVentas),target:null,info:`${ventas.length} tickets`})}
-    ${kpiCard({titulo:'Total Gastos',valor:gastos,valorFmt:fmt(gastos),target:null})}
-    ${kpiCard({titulo:'Utilidad Bruta',valor:utilidad,valorFmt:fmt(utilidad),target:null,info:(utilidad>=0?'✓ Positivo':'⚠ En pérdida')+(comisionK>0?` · ya sin ${fmt(comisionK)} de comisión terminal`:'')})}
-    ${kpiCard({titulo:'Punto de Equilibrio',valor:puntoEquilibrio,valorFmt:puntoEquilibrio==null?'—':fmt(puntoEquilibrio),target:null,info:'Ventas necesarias para cubrir gastos'})}
+    ${kpiCard({titulo:'Margen Bruto',valor:margenBruto,valorFmt:margenBruto.toFixed(1)+'%',target:T.margenBrutoMin,targetFmt:T.margenBrutoMin+'%',mejor:'mayor',info:`${fmt(totalVentas)} ventas − ${fmt(costoProductos)} insumos (receta) · costeado ${cobertura}%${cobertura<80?' ⚠ dato incompleto':''}`})}
+    ${kpiCard({titulo:'Total Ventas',valor:totalVentas,valorFmt:fmt(totalVentas),target:null,info:`${ventas.length} tickets${enCurso&&fechas.length>1?` · día ${corridos} de ${habilesK}`:''}`})}
+    ${kpiCard({titulo:'Costos del período',valor:r2(fijos+comisionK),valorFmt:fmt(r2(fijos+comisionK)),target:null,info:`nómina ${fmt(nomK)} · operación ${fmt(opexK)}${opexNoCap>0?' (incl. est.)':''} · terminal ${fmt(comisionK)}${fechas.length===1?' · la parte del día':enCurso?' · lo que corre a hoy':''}`})}
+    ${kpiCard({titulo:'Utilidad Bruta',valor:utilBruta,valorFmt:fmt(utilBruta),target:null,info:'ventas − insumos que se consumieron'})}
+    ${kpiCard({titulo:'Utilidad Operativa',valor:utilOper,valorFmt:fmt(utilOper),target:null,info:`margen ${margenOper}% · ${utilOper>=0?'✓ Positivo':'⚠ En pérdida'}`})}
+    ${kpiCard({titulo:'Punto de Equilibrio',valor:puntoEquilibrio,valorFmt:puntoEquilibrio==null?'—':fmt(puntoEquilibrio)+'/día',target:null,info:'Venta diaria que cubre nómina, operación y terminal'})}
     ${kpiCard({titulo:'Crecimiento MoM',valor:crecimientoMoM,valorFmt:crecimientoMoM==null?'—':((crecimientoMoM>=0?'+':'')+crecimientoMoM.toFixed(1)+'%'),target:15,targetFmt:'≥15%',mejor:'mayor',info:`${cm}: ${fmt(ventasMesActual)} vs ${mesAnterior}: ${fmt(ventasMesAnterior)}`})}
   </div>`;
 
@@ -16767,9 +16797,9 @@ window.crearHuerfano=async ix=>{
 // no ayuda a arreglarlas; decir "peanut butter: falta cuánto pesa el
 // frasco (210 ventas)" sí. Se agrupa por motivo y se ordena por cuántas
 // ventas destraba cada uno.
-function motivosSinCostear(){
+function motivosSinCostear(semanas){
   const cuenta={};
-  for(const v of ventasSinCostear()){
+  for(const v of ventasSinCostear(semanas)){
     const vistos=new Set(); let fc=0;
     for(const it of (v.items||[])){
       const r=foodCostProducto(it.id,it.prep);
@@ -16833,7 +16863,7 @@ function renderCosteoGuia(){
 // su "snapshot" es un hueco. Si no se rehace, el Panel seguiría diciendo
 // 72% de cobertura semanas después de haber arreglado las recetas.
 // Por eso esto SOLO toca las incompletas y nunca las que ya cuadraban.
-function ventasSinCostear(){
+function ventasSinCostear(semanas){
   // Solo las que SABEMOS que quedaron mal: sin costo, o marcadas
   // incompletas al cobrarse. Una venta vieja que trae costo pero no
   // trae la marca (es anterior al campo) NO se toca: rehacerla con los
@@ -16844,12 +16874,15 @@ function ventasSinCostear(){
   // nombre, mal costeadas de hecho. La marca `fcToppings` evita que se
   // rehagan dos veces.
   const conToppings=v=>!v.fcToppings&&(v.items||[]).some(i=>PROD_PREP[i.id]?.elige&&(i.prep||[]).length);
-  return ventasRecientes().filter(v=>v.foodCost==null||v.foodCostCompleto===false||conToppings(v));
+  return ventasRecientes(semanas).filter(v=>v.foodCost==null||v.foodCostCompleto===false||conToppings(v));
 }
-window.recostearVentas=async()=>{
-  const faltan=ventasSinCostear();
-  if(!faltan.length){toast('✓ No hay ventas sin costear en las últimas 8 semanas',3200);return;}
-  if(!confirm(`Se van a recostear ${faltan.length} venta(s) de las últimas ${COSTEO_SEMANAS} semanas con las recetas de hoy.\n\nLas que ya tenían su costo completo NO se tocan.`)) return;
+// `semanas` opcional: el botón usa las 8 de siempre; los reportes de
+// 3 meses necesitan ir más atrás (19-oct: 72% costeado en 3 meses).
+window.recostearVentas=async(semanas)=>{
+  const sem=Number(semanas)>0?Number(semanas):COSTEO_SEMANAS;
+  const faltan=ventasSinCostear(sem);
+  if(!faltan.length){toast(`✓ No hay ventas sin costear en las últimas ${sem} semanas`,3200);return;}
+  if(!confirm(`Se van a recostear ${faltan.length} venta(s) de las últimas ${sem} semanas con las recetas de hoy.\n\nLas que ya tenían su costo completo NO se tocan.`)) return;
   let ok=0, siguen=0, lote=[];
   // Se escribe por tandas: esperar venta por venta son minutos con el
   // pulgar en la pantalla, y Firestore agrupa igual de bien.
@@ -16877,7 +16910,7 @@ window.recostearVentas=async()=>{
     if(lote.length>=50){ await vaciar(); toast(`Recosteando… ${n+1} de ${faltan.length}`,1200); }
   }
   await vaciar();
-  logAudit('ventas_recosteadas',{recosteadas:ok,siguenIncompletas:siguen,semanas:COSTEO_SEMANAS,
+  logAudit('ventas_recosteadas',{recosteadas:ok,siguenIncompletas:siguen,semanas:sem,
     motivo:'Recetas corregidas: las ventas que nunca se pudieron costear se rehacen con el costeo de hoy'});
   toast(`✓ ${ok} venta(s) recosteadas${siguen?` · ${siguen} siguen incompletas`:''}`,6000);
   renderAll();

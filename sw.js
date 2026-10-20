@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.41'; // Comisión de la terminal (3.5%) en toda utilidad y en el corte
+const CACHE_NAME = 'el-huerto-v15.42'; // KPIs financieros con el costo de la receta; recosteo de 16 semanas
 const ASSETS = [
   '/',
   '/index.html',
