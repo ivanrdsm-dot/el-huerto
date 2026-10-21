@@ -3225,6 +3225,7 @@ async function completeInit(){
   await migCierreConCompras19Oct();
   await migCocteles20Oct();
   await migProteinaExtra20Oct();
+  await migCompras21Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6024,6 +6025,61 @@ async function migProteinaExtra20Oct(){
     logAudit('precio_cambiado',{producto:p.nombre,de:p.precio,a:25,motivo:'Iván: cuesta $19.34 y se vendía en $15'});
     toast('✓ Proteína Extra ahora a $25',4000);
   }
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// 20 y 21-OCT — Costco (dos veces) y el pan de Renee
+//  · Costco 20-oct (CFDI ARG 5932357, $406.80, débito): 2 ensaladas
+//    italianas y totopos Susalia 20 pz. El conteo del 20 ya los traía
+//    (lechuga 1.5→2.7 kg, Susalias 15→32): no se suman otra vez, van
+//    al "esperado" de ese conteo.
+//  · Costco 21-oct: 12 L de leche deslactosada, $265 (Iván, sin ticket).
+//  · Renee 21-oct: llegaron los 40 panes (10 pizza, 10 verdes, 10 rojos,
+//    10 queso). Se pagan el lunes 26: el gasto cuenta en esa semana y
+//    queda en "Lo que debes" hasta entonces.
+// La entrada de mercancía lleva el ticket como marca: idempotente.
+// ═══════════════════════════════════════════════════════════
+const COMPRAS_21OCT=[
+  {ticket:'COSTCO-ARG5932357',prov:'Costco',cat:'costco',metodo:'tarjeta',fecha:'2026-10-20',llegada:'2026-10-20',yaContado:true,
+   notas:'CFDI ARG 5932357 · 20-oct 12:08 · tarjeta de débito. Importes netos (descuento $9.33 ya repartido). El conteo del 20 ya los traía.',
+   p:[['Ensalada italiana 908 g ×2','Lechuga',1816,'g',107.80],['Totopos horneados Susalia 20 × 50 g','Susalias',20,'pz',299.00]]},
+  {ticket:'COSTCO-21OCT26-LECHE',prov:'Costco',cat:'costco',metodo:'tarjeta',fecha:'2026-10-21',llegada:'2026-10-21',
+   notas:'12 L de leche deslactosada por $265 (Iván, sin ticket). Método de pago supuesto: tarjeta, como sus compras de Costco.',
+   p:[['KS leche deslactosada 12 L','Leche deslactosada',12,'L',265.00]]},
+  {ticket:'RENEE-21OCT26',prov:'Tía Renee',cat:'proveedor',metodo:'transferencia',fecha:'2026-10-26',fechaTicket:'2026-10-21',llegada:'2026-10-21',pendientePago:true,
+   notas:'40 panes con queso entregados el 21-oct: 10 pizza, 10 chilaquiles verdes, 10 chilaquiles rojos, 10 queso. $46.75 la pieza (lista $55 − 15%). Se paga el lunes 26: cuenta en esa semana.',
+   p:['Pizza','Chilaquiles Verdes','Chilaquiles Rojos','Queso'].map(sab=>[`Pan con queso — ${sab}`,`Pan Tía Renee — ${sab}`,10,'pz',467.50])},
+];
+async function migCompras21Oct(){
+  const migKey='h5compras_21oct26';
+  if(await migDone(migKey)) return;
+  const hechos=[];
+  for(const g of COMPRAS_21OCT){
+    const partidas=[];
+    for(const [c,art,q,u,imp] of g.p){
+      const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(art));
+      const pt={c,q,u,i:imp,art};
+      if(inv){
+        const qi=qtyToInvUnit(q,u,inv.unit);
+        if(qi!=null){
+          const precio=Math.round(imp/qi*1000000)/1000000;
+          if(inv.precio!==precio){ inv.precio=precio; await fsSet('inventario',inv); }
+          const via=await entrarMercancia(inv,qi,g.llegada,g.ticket,g.yaContado);
+          pt.entro=via==='ya'?(inv.entradas||[]).includes(g.ticket)?'stock':'conteo':via;
+          hechos.push(`${inv.nombre}: ${q} ${u} → ${via}`);
+        }
+      }
+      partidas.push(pt);
+    }
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      const monto=r2(partidas.reduce((a,x)=>a+x.i,0));
+      await fsSet('gastos',{id:Date.now()+hechos.length,fecha:g.fecha,...(g.fechaTicket?{fechaTicket:g.fechaTicket}:{}),
+        ticket:g.ticket,prov:g.prov,cat:g.cat,tipoEstrategico:'operacion',metodo:g.metodo,monto,partidas,
+        ...(g.pendientePago?{pendientePago:true}:{}),notas:g.notas});
+    }
+  }
+  logAudit('compras_registradas',{lote:'20 y 21-oct',inventario:hechos,motivo:'Costco 20 y 21-oct y pan de Renee del 21-oct'});
+  toast('✓ Costco 20 y 21-oct y pan de Renee registrados',5000);
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){
@@ -10386,22 +10442,33 @@ function fechasDeCompra(llegada){
   if(dow===6||dow===0){ d.setDate(d.getDate()+(dow===6?2:1)); return {fecha:localDate(d),fechaTicket:llegada}; }
   return {fecha:llegada};
 }
-async function entrarMercancia(inv,q,llegada){
+// `ref` (el ticket) hace la entrada idempotente: queda escrito en el
+// MISMO documento que la cantidad (el artículo o la captura), así que
+// si una carga corre dos veces la segunda lo ve y no vuelve a sumar.
+// `yaContado`: se sabe que el último conteo ya la traía aunque sea del
+// mismo día (se contó después de que llegó).
+async function entrarMercancia(inv,q,llegada,ref,yaContado){
   const caps=D.invDiario.filter(c=>c.productoId===inv.id)
     .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
   const ult=caps[0];
-  if(ult&&(ult.fecha||'')>llegada){
+  if(ref&&((inv.entradas||[]).includes(ref)||(ult?.entradas||[]).includes(ref))) return 'ya';
+  const marca=arr=>ref?[...(arr||[]),ref].slice(-20):arr;
+  if(ult&&((ult.fecha||'')>llegada||(yaContado&&(ult.fecha||'')>=llegada))){
+    let upd=null;
     if(ult.esperado!=null){
       const base=ult.esperadoAntesCompras??ult.esperado;
       const antes=ult.comprasEsperado??(ult.esperadoAntesCompras!=null?r2(ult.esperado-ult.esperadoAntesCompras):0);
       const llego=r2(antes+q), esperado=r2(base+llego);
-      const upd={...ult,esperadoAntesCompras:base,comprasEsperado:llego,esperado,diferencia:r2((ult.qty||0)-esperado)};
+      upd={...ult,esperadoAntesCompras:base,comprasEsperado:llego,esperado,diferencia:r2((ult.qty||0)-esperado),...(ref?{entradas:marca(ult.entradas)}:{})};
+    } else if(ref) upd={...ult,entradas:marca(ult.entradas)};
+    if(upd){
       await fsSet('invDiario',upd);
       const ix=D.invDiario.findIndex(x=>x.id===ult.id); if(ix>=0) D.invDiario[ix]=upd;
     }
     return 'conteo';
   }
   inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;
+  if(ref) inv.entradas=marca(inv.entradas);
   await fsSet('inventario',inv);
   return 'stock';
 }
