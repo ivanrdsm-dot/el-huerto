@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.51'; // Costco 20 y 21-oct; pan de Renee del 21-oct
+const CACHE_NAME = 'el-huerto-v15.52'; // Orden de compra con consumo real; cierre en palabras; KPIs corregidos; inventario rápido
 const ASSETS = [
   '/',
   '/index.html',

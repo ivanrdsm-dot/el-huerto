@@ -2986,6 +2986,7 @@ const escrituraOk=async p=>{
   return r;
 };
 const fsSet=async(c,item)=>{
+  if(c==='invDiario') _conteosVer++;   // el índice de conteos se rehace
   try{ await escrituraOk(setDoc(docRef(c,item.id),item)); return true; }
   catch(e){
     // Antes de que alguien entre, la sesión es anónima y las reglas
@@ -3226,6 +3227,7 @@ async function completeInit(){
   await migCocteles20Oct();
   await migProteinaExtra20Oct();
   await migCompras21Oct();
+  await migValentinaConteos27Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6080,6 +6082,28 @@ async function migCompras21Oct(){
   }
   logAudit('compras_registradas',{lote:'20 y 21-oct',inventario:hechos,motivo:'Costco 20 y 21-oct y pan de Renee del 21-oct'});
   toast('✓ Costco 20 y 21-oct y pan de Renee registrados',5000);
+  await markMig(migKey);
+}
+// 27-oct: la Valentina se contó varios días en MILILITROS (900) en vez
+// de botes; el consumo "real" salía en 300 botes por semana. Esos
+// conteos pasan a botes (900 ml = 1 bote). Fijar, no sumar.
+async function migValentinaConteos27Oct(){
+  const migKey='h5valentina_conteos_27oct26';
+  if(await migDone(migKey)) return;
+  const val=D.inventario.find(i=>normInvNombre(i.nombre)==='valentina');
+  const hechos=[];
+  if(val){
+    for(const c of D.invDiario.filter(c=>c.productoId===val.id&&(c.qty||0)>20)){
+      const qty=Math.round(c.qty/900*100)/100;
+      const upd={...c,qty,qtyMililitros:c.qty,esperado:null,diferencia:null};
+      await fsSet('invDiario',upd);
+      const ix=D.invDiario.findIndex(x=>x.id===c.id); if(ix>=0) D.invDiario[ix]=upd;
+      hechos.push(`${c.fecha}: ${c.qty} → ${qty} bote(s)`);
+    }
+    if((val.qty||0)>20){ const u={...val,qty:Math.round(val.qty/900*100)/100}; await fsSet('inventario',u);
+      const ix=D.inventario.findIndex(i=>i.id===val.id); if(ix>=0) D.inventario[ix]=u; hechos.push(`existencia ${val.qty} → ${u.qty}`); }
+  }
+  if(hechos.length) logAudit('inventario_correccion',{articulo:'Valentina',cambios:hechos,motivo:'Contada en mililitros como botes'});
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){
@@ -14847,19 +14871,31 @@ const CAT_OFICIALES=[
 ];
 
 // ─── Helpers de stock ───
+// Índice de conteos por artículo. Estas dos funciones se llaman cientos
+// de veces por pantalla (stock, predicción, histórico) y cada llamada
+// filtraba y ordenaba TODOS los conteos: 1-3 s por vista. El índice se
+// rehace solo cuando cambia el arreglo (largo o algún registro).
+let _idxConteos=null;
+var _conteosVer=0;   // fsSet('invDiario') lo sube: un registro cambió sin cambiar el largo
+function idxConteos(){
+  const arr=D.invDiario;
+  const firma=arr.length+'|'+(arr.length?(arr[arr.length-1].ts||0)+(arr[0].ts||0):0);
+  if(_idxConteos&&_idxConteos.arr===arr&&_idxConteos.firma===firma&&_idxConteos.ver===_conteosVer) return _idxConteos.m;
+  const m=new Map();
+  for(const c of arr){ let l=m.get(c.productoId); if(!l){l=[];m.set(c.productoId,l);} l.push(c); }
+  for(const l of m.values()) l.sort((a,b)=>b.fecha.localeCompare(a.fecha)||(b.ts||0)-(a.ts||0));
+  _idxConteos={arr,firma,ver:_conteosVer,m};
+  return m;
+}
 function invStockHoy(productoId, fecha){
   fecha=fecha||today();
-  const captura=D.invDiario
-    .filter(c=>c.productoId===productoId && c.fecha===fecha)
-    .sort((a,b)=>b.ts-a.ts)[0];
-  return captura?captura.qty:null;
+  const c=(idxConteos().get(productoId)||[]).find(x=>x.fecha===fecha);
+  return c?c.qty:null;
 }
 function invStockUltimo(productoId, beforeDate){
   // Última captura antes de la fecha (ayer o más atrás)
-  const capturas=D.invDiario
-    .filter(c=>c.productoId===productoId && (!beforeDate||c.fecha<beforeDate))
-    .sort((a,b)=>b.fecha.localeCompare(a.fecha)||b.ts-a.ts);
-  return capturas[0]?{qty:capturas[0].qty,fecha:capturas[0].fecha}:null;
+  const c=(idxConteos().get(productoId)||[]).find(x=>!beforeDate||x.fecha<beforeDate);
+  return c?{qty:c.qty,fecha:c.fecha}:null;
 }
 function invConsumoPromedio(productoId, dias=14){
   const hoy=new Date();
@@ -14947,42 +14983,170 @@ function compradoPorSemana(desde,hasta,semanas){
   const out={}; for(const [id,q] of Object.entries(tot)) out[id]=q/semanas;
   return out;
 }
+// ══ CONSUMO REAL, DE LOS CONTEOS (22-oct) ══
+// Iván: "dame un análisis REAL de lo que consumo en la semana de TODOS
+// los productos". La receta dice lo que DEBERÍA gastarse; el conteo dice
+// lo que SE GASTÓ: entre dos conteos, lo que había + lo que llegó (por
+// los tickets) − lo que quedó. Incluye merma y la porción de verdad, y
+// cubre todo lo que se cuenta (limpieza, bolsas, gas…), no solo lo que
+// lleva receta. Un tramo que da negativo (llegó algo que no se
+// registró) no se usa: no se sabe cuánto fue.
+// Índice de compras por artículo: UNA pasada por los tickets (antes se
+// recorrían todos por cada artículo y tramo: 10 s en abrir la pantalla).
+function indiceCompras(){
+  const porInv={};
+  const invs=D.inventario.map(i=>({i,k:normInvNombre(i.nombre)}));
+  for(const g of D.gastos){
+    const f=llegadaDe(g); if(!f) continue;
+    const prov=provCanonico(g.prov)||g.prov||'';
+    for(const pt of (g.partidas||[])){
+      const nom=pt.art||pt.c; if(!nom) continue;
+      const k=normInvNombre(nom);
+      const hit=invs.find(x=>x.k===k)||(!pt.art&&invs.find(x=>mismoInsumo(k,x.i.nombre)));
+      if(!hit) continue;
+      const qi=qtyToInvUnit(pt.q,pt.u,hit.i.unit);
+      (porInv[hit.i.id]??=[]).push({f,q:qi,prov});
+    }
+  }
+  return porInv;
+}
+function consumoRealSemanal(inv,idx,semanas=SURTIDO_SEMANAS){
+  const ini=new Date(today()+'T12:00:00'); ini.setDate(ini.getDate()-7*semanas-3);
+  const desde=localDate(ini);
+  const caps=D.invDiario.filter(c=>c.productoId===inv.id&&c.fecha>=desde&&c.qty!=null)
+    .sort((a,b)=>a.fecha.localeCompare(b.fecha));
+  const compras=(idx[inv.id]||[]).filter(x=>x.q!=null);
+  const tramos=[];
+  for(let k=1;k<caps.length;k++){
+    const a=caps[k-1], b=caps[k];
+    const lleg=compras.filter(x=>x.f>a.fecha&&x.f<=b.fecha).reduce((s,x)=>s+x.q,0);
+    const u=(a.qty||0)+lleg-(b.qty||0);
+    if(u<0) continue;
+    let d=0; const x=new Date(a.fecha+'T12:00:00');
+    while(true){ x.setDate(x.getDate()+1); const f=localDate(x); if(f>b.fecha) break; if(!esDiaDescanso(f)) d++; }
+    if(d) tramos.push({u,d,r:u/d});
+  }
+  if(tramos.length<4) return null;
+  // Un tramo absurdo (900 "botes" de Valentina que eran mililitros) no
+  // puede mandar: fuera los que gastan más de 4 veces la mediana.
+  const rs=tramos.map(t=>t.r).sort((a,b)=>a-b), med=rs[Math.floor(rs.length/2)];
+  const ok=med>0?tramos.filter(t=>t.r<=med*4):tramos;
+  const dias=ok.reduce((s,t)=>s+t.d,0);
+  if(!dias) return null;
+  return ok.reduce((s,t)=>s+t.u,0)/dias*(DIAS_OPERACION.length||5);
+}
+// Quién le vende cada artículo: el proveedor de su última compra.
+function proveedorDe(inv,idx){
+  const c=(idx[inv.id]||[]).slice().sort((a,b)=>b.f.localeCompare(a.f))[0];
+  return c?.prov||'Sin proveedor';
+}
+// Se recalcula solo si cambió algo (ventas, gastos, conteos, inventario)
+let _surtidoMemo=null;
 function surtidoSugerido(){
+  const llave=[today(),D.ventas.length,D.gastos.length,D.invDiario.length,D.inventario.length,
+    D.inventario.reduce((a,i)=>a+(i.noComprar?1:0),0)].join('|');
+  if(_surtidoMemo&&_surtidoMemo.llave===llave) return _surtidoMemo.r;
+  const r=_surtidoSugerido(); _surtidoMemo={llave,r}; return r;
+}
+function _surtidoSugerido(){
   const {porSemana,desde,hasta,quien}=consumoTeoricoSemanal();
   // Los últimos 3 surtidos: del domingo que cierra la primera semana de
   // la ventana a hoy (incluye el surtido de este fin de semana).
   const dC=new Date(desde+'T12:00:00'); dC.setDate(dC.getDate()+6);
   const compra=compradoPorSemana(localDate(dC),today(),SURTIDO_SEMANAS);
-  const filas=[];
-  for(const [id,sem] of Object.entries(porSemana)){
-    const inv=D.inventario.find(i=>String(i.id)===String(id)); if(!inv||!(sem>0)) continue;
-    if(inv.catOf==='equipo'||inv.noContar||inv.esInterno) continue;
+  const ids=new Set([...invConteo().map(i=>String(i.id)),...Object.keys(porSemana).map(String)]);
+  const idx=indiceCompras();
+  const filas=[], revisar=[], quitados=[], dudosos=[];
+  for(const id of ids){
+    const inv=D.inventario.find(i=>String(i.id)===id); if(!inv) continue;
+    if(inv.catOf==='equipo'||inv.noContar) continue;
+    if(inv.noComprar){ quitados.push(inv); continue; }
+    const real=consumoRealSemanal(inv,idx), receta=porSemana[id]??null, comp=compra[id]??null;
+    // Manda el conteo (lo que de verdad se fue); si no hay suficientes
+    // conteos, la receta; si tampoco, lo que se compra por semana.
+    const sem=real??receta??comp;
+    const base=real!=null?'conteo':(receta!=null?'receta':(comp!=null?'tickets':null));
+    if(!(sem>0)) continue;
     const hay=Math.max(0,invStockHoy(inv.id)??inv.qty??0);
+    // La receta descuadra contra lo real (o lo comprado) por más de 50%
+    const ref=real??comp;
+    const impacto=receta>0&&ref>0?Math.abs(receta-ref)*(inv.precio||0):0;
+    if(receta>0&&ref>0&&(receta/ref>1.5||receta/ref<0.67)&&impacto>=30) revisar.push({inv,receta,ref,impacto,quien:(quien[id]||[]).slice(0,2)});
     const falta=sem*SURTIDO_COLCHON-hay;
     if(falta<=0) continue;
     const c=enUnidadDeCompra(inv,falta);
     if(!(c.q>0)) continue;
-    const comp=compra[inv.id]??null;
-    // No cuadra: la receta pide 50% más (o menos) de lo que se compra.
-    const descuadre=comp!=null&&comp>0&&(sem/comp>1.5||sem/comp<0.67);
-    filas.push({inv,sem:r2(sem),hay:r2(hay),comprar:c.q,u:c.u,factor:c.factor,comp:comp!=null?r2(comp):null,descuadre,quien:(quien[inv.id]||[]).slice(0,2),
-      costo:inv.precio>0?r2(c.q*c.factor*inv.precio):null});
+    const fila={inv,sem:r2(sem),base,real,receta,comp,hay:r2(hay),comprar:c.q,u:c.u,factor:c.factor,
+      prov:proveedorDe(inv,idx),costo:inv.precio>0?r2(c.q*c.factor*inv.precio):null};
+    // Ningún insumo de la semana cuesta más de $5,000: es un conteo con
+    // la unidad equivocada. Se aparta para revisar, no se compra.
+    if((fila.costo||0)>5000){ dudosos.push(fila); continue; }
+    filas.push(fila);
   }
   const orden=Object.fromEntries((CAT_OFICIALES||[]).map((c,i)=>[c.key,i]));
-  filas.sort((a,b)=>(orden[a.inv.catOf]??99)-(orden[b.inv.catOf]??99)||(b.costo||0)-(a.costo||0));
-  return {filas,desde,hasta,total:r2(filas.reduce((a,x)=>a+(x.costo||0),0))};
+  filas.sort((a,b)=>a.prov.localeCompare(b.prov)||(orden[a.inv.catOf]??99)-(orden[b.inv.catOf]??99)||a.inv.nombre.localeCompare(b.inv.nombre));
+  revisar.sort((a,b)=>b.impacto-a.impacto);
+  return {filas,revisar:revisar.slice(0,10),quitados,dudosos,desde,hasta,total:r2(filas.reduce((a,x)=>a+(x.costo||0),0))};
 }
 const fmtCant=(q,u)=>`${Number.isInteger(q)?q:q.toFixed(1)} ${u}`;
+// En la unidad de compra (kg, L) para leer sin calculadora
+const enCompra=(f,q)=>q==null?'—':fmtCant(r2(q/(f.factor||1)),f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit));
+const porProveedor=S=>{const m={}; S.filas.forEach(f=>(m[f.prov]??=[]).push(f)); return Object.entries(m);};
 window.surtidoCopiar=async()=>{
   const S=surtidoSugerido();
-  const porCat={};
-  S.filas.forEach(f=>{(porCat[f.inv.catOf||'otros']??=[]).push(f);});
-  const nombreCat=k=>(CAT_OFICIALES.find(c=>c.key===k)?.nombre||k).replace(/^[^\s]+\s/,'');
-  const txt=`🌿 *Surtido El Huerto* — semana del ${getMonday(hoyOperativo())}\n`+
-    Object.entries(porCat).map(([k,arr])=>`\n*${nombreCat(k)}*\n`+arr.map(f=>`• ${f.inv.nombre}: ${fmtCant(f.comprar,f.u)}`).join('\n')).join('\n')+
+  const txt=`🌿 *Orden de compra El Huerto* — semana del ${getMonday(hoyOperativo())}\n`+
+    porProveedor(S).map(([prov,arr])=>`\n*${prov}*\n`+arr.map(f=>`☐ ${f.inv.nombre}: ${fmtCant(f.comprar,f.u)}`).join('\n')).join('\n')+
     `\n\n≈ ${fmt(S.total)} (a los últimos precios)`;
-  try{await navigator.clipboard.writeText(txt);toast('📋 Lista copiada — pégala en WhatsApp',3000);}
+  try{await navigator.clipboard.writeText(txt);toast('📋 Orden copiada — pégala en WhatsApp',3000);}
   catch(e){prompt('Copia la lista:',txt);}
+};
+// Quitar un artículo de la orden (el pan de rajas que ya no se pide):
+// la marca vive en el artículo, así se ve en todos los aparatos.
+window.surtidoQuitar=async(id,quitar)=>{
+  const inv=D.inventario.find(i=>String(i.id)===String(id)); if(!inv) return;
+  const upd={...inv,noComprar:!!quitar};
+  await fsSet('inventario',upd);
+  const ix=D.inventario.findIndex(i=>i.id===inv.id); if(ix>=0) D.inventario[ix]=upd;
+  toast(quitar?`${inv.nombre}: fuera de la orden de compra`:`${inv.nombre}: de vuelta en la orden`,2500);
+  renderInv();
+};
+// La orden de compra impresa: por proveedor, con casilla para palomear.
+window.ordenCompraPDF=()=>{
+  if(SESSION?.tipo!=='admin'){toast('⚠ Solo administrador (incluye costos)',2600,'warn');return;}
+  const J=window.jspdf?.jsPDF; if(!J){toast('⚠ Cargando librería PDF, reintenta',2500,'warn');return;}
+  const S=surtidoSugerido();
+  if(!S.filas.length){toast('No hay nada que surtir',2200);return;}
+  const doc=new J(); const W=doc.internal.pageSize.getWidth();
+  doc.setFont('helvetica','bold');doc.setFontSize(15);doc.setTextColor(26,46,24);
+  doc.text('EL HUERTO — ORDEN DE COMPRA',W/2,15,{align:'center'});
+  doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(110);
+  doc.text(`Semana del ${getMonday(hoyOperativo())} · generada ${today()} · consumo real de los conteos (${S.desde} a ${S.hasta}) + 10% − lo que hay`,W/2,21,{align:'center'});
+  doc.setDrawColor(126,200,80);doc.setLineWidth(.6);doc.line(14,24,W-14,24);
+  let y=30;
+  for(const [prov,arr] of porProveedor(S)){
+    if(y>245){doc.addPage();y=18;}
+    const sub=r2(arr.reduce((a,f)=>a+(f.costo||0),0));
+    doc.setFont('helvetica','bold');doc.setFontSize(10.5);doc.setTextColor(26,46,24);
+    doc.text(`${prov.toUpperCase()}  ·  ≈ ${fmt(sub)}`,14,y);y+=2;
+    doc.autoTable({startY:y,
+      head:[['✓','Artículo','Hay','Usa/sem','COMPRAR','Últ. precio','≈ $','Pagué']],
+      body:arr.map(f=>['',f.inv.nombre,enCompra(f,f.hay),enCompra(f,f.sem),fmtCant(f.comprar,f.u),
+        f.inv.precio>0?fmt(r2(f.inv.precio*(f.factor||1)))+'/'+f.u:'—',f.costo!=null?fmt(f.costo):'—','']),
+      theme:'grid',headStyles:{fillColor:[26,46,24],textColor:[126,200,80],fontStyle:'bold',fontSize:7.5,halign:'center'},
+      bodyStyles:{fontSize:8.5,textColor:[40,40,40]},
+      columnStyles:{0:{cellWidth:7},1:{cellWidth:52},2:{cellWidth:18,halign:'right'},3:{cellWidth:18,halign:'right'},
+        4:{cellWidth:22,halign:'right',fontStyle:'bold'},5:{cellWidth:24,halign:'right'},6:{cellWidth:20,halign:'right'},7:{cellWidth:21}},
+      margin:{left:14,right:14}});
+    y=doc.lastAutoTable.finalY+7;
+  }
+  if(y>262){doc.addPage();y=20;}
+  doc.setFont('helvetica','bold');doc.setFontSize(10);doc.setTextColor(26,46,24);
+  doc.text(`TOTAL ESTIMADO: ${fmt(S.total)}          TOTAL PAGADO: $__________`,14,y+4);
+  doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(150);
+  doc.text('Al volver: registra cada ticket en Compras (o mándaselo a Claude) para que el inventario y los costos se actualicen.',W/2,doc.internal.pageSize.getHeight()-8,{align:'center'});
+  doc.save(`ElHuerto_OrdenCompra_${getMonday(hoyOperativo())}.pdf`);
+  logAudit('orden_compra_pdf',{semana:getMonday(hoyOperativo()),articulos:S.filas.length,total:S.total});
+  toast('🖨 Orden de compra descargada',3000);
 };
 // Pasa la lista a Compras (Modo Mercado) con cantidades y último precio:
 // en el mercado solo se corrige lo que cambió.
@@ -15027,18 +15191,35 @@ window.ajustarPorcion=async(prodNombre,invId)=>{
 };
 function renderSurtidoCard(){
   const S=surtidoSugerido();
-  if(!S.filas.length) return '';
+  if(!S.filas.length&&!S.revisar.length) return '';
+  const etq={conteo:'conteo',receta:'receta',tickets:'tickets'};
+  const filas=porProveedor(S).map(([prov,arr])=>`<tr><td colspan="8" style="background:var(--surface2);font-weight:700;font-size:12px;">${esc(prov)} <span style="font-weight:400;color:var(--text3);">· ≈ ${fmt(r2(arr.reduce((a,f)=>a+(f.costo||0),0)))}</span></td></tr>`+
+    arr.map(f=>`<tr><td>${esc(f.inv.nombre)}</td>
+      <td class="mono" style="text-align:right;">${enCompra(f,f.sem)} <span style="font-size:9.5px;color:var(--text3);">${etq[f.base]||''}</span></td>
+      <td class="mono" style="text-align:right;color:var(--text3);">${enCompra(f,f.receta)}</td>
+      <td class="mono" style="text-align:right;color:var(--text3);">${enCompra(f,f.comp)}</td>
+      <td class="mono" style="text-align:right;">${enCompra(f,f.hay)}</td>
+      <td class="mono fw7" style="text-align:right;">${fmtCant(f.comprar,f.u)}</td>
+      <td class="mono" style="text-align:right;">${f.costo!=null?fmt(f.costo):'—'}</td>
+      <td><button class="oi-del" title="No comprar esto" onclick="surtidoQuitar(${JSON.stringify(String(f.inv.id))},true)" style="font-size:13px;">✕</button></td></tr>`).join('')).join('');
+  const revisar=S.revisar.length?`<details style="margin-top:10px;"><summary style="font-size:12px;font-weight:650;color:var(--goldd);cursor:pointer;">⚠ Recetas por revisar (${S.revisar.length}) — las que más dinero mueven y no cuadran con lo que de verdad se gasta</summary>
+    <p style="font-size:11px;color:var(--text3);margin:6px 0;">Pesa una porción real y ajústala: el costo de cada venta y la orden de compra salen más exactos.</p>
+    ${S.revisar.map(r=>{const uu=normUnit(r.inv.unit)==='g'?'kg':r.inv.unit, fx=normUnit(r.inv.unit)==='g'?1000:1;
+      return `<div class="sr" style="align-items:flex-start;"><span style="font-size:12px;"><b>${esc(r.inv.nombre)}</b>: la receta gasta ${r2(r.receta/fx)} ${uu}/sem, de verdad se van ${r2(r.ref/fx)} ${uu}/sem
+      <div style="font-size:11px;color:var(--text3);">${r.quien.map(q=>`${esc(q.prod)} (${Math.round(q.nSem)}/sem × ${Math.round(q.porcion*100)/100} ${r.inv.unit}) <button class="btn bs bxs" style="padding:1px 7px;font-size:10px;" onclick='ajustarPorcion(${JSON.stringify(q.prod).replace(/'/g,"&#39;")},${JSON.stringify(String(r.inv.id))})'>Ajustar porción</button>`).join(' · ')}</div></span></div>`;}).join('')}
+  </details>`:'';
   return `<div class="card" style="margin-bottom:12px;border:2px solid var(--accent);">
-    <div class="sh"><span class="ct" style="margin-bottom:0;">Surtido sugerido para la semana</span>
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Orden de compra de la semana</span>
       <div style="display:flex;gap:5px;flex-wrap:wrap;">
-        <button class="btn bp bsm" onclick="surtidoACompras()">🧺 Pasar a Compras</button>
-        <button class="btn bs bsm" onclick="surtidoCopiar()">📋 Copiar para WhatsApp</button>
+        <button class="btn bp bsm" onclick="ordenCompraPDF()">🖨 Imprimir orden</button>
+        <button class="btn bs bsm" onclick="surtidoACompras()">🧺 Pasar a Compras</button>
+        <button class="btn bs bsm" onclick="surtidoCopiar()">📋 WhatsApp</button>
       </div></div>
-    <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;">Lo que se usó por semana (ventas × receta, ${S.desde} a ${S.hasta}) + 10% de colchón − lo que hay hoy. ≈ <b>${fmt(S.total)}</b> a los últimos precios.</p>
-    <div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Artículo</th><th style="text-align:right;">Se usa / semana<br><span style="font-weight:400;font-size:10px;">según recetas</span></th><th style="text-align:right;">Compras / semana<br><span style="font-weight:400;font-size:10px;">según tickets</span></th><th style="text-align:right;">Hay</th><th style="text-align:right;">Comprar</th><th style="text-align:right;">≈ $</th></tr></thead><tbody>
-    ${S.filas.map(f=>{const uu=f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit);return `<tr><td>${esc(f.inv.nombre)}${f.descuadre?' <span title="La receta y lo que compras no cuadran: pesa una porción real" style="color:var(--goldd);">⚠</span>':''}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.sem/(f.factor||1)),uu)}</td><td class="mono" style="text-align:right;${f.descuadre?'color:var(--goldd);font-weight:700;':''}">${f.comp!=null?fmtCant(r2(f.comp/(f.factor||1)),uu):'—'}</td><td class="mono" style="text-align:right;">${fmtCant(r2(f.hay/(f.factor||1)),f.factor>1?f.u:(f.inv.unidadOf||f.inv.unit))}</td><td class="mono fw7" style="text-align:right;">${fmtCant(f.comprar,f.u)}</td><td class="mono" style="text-align:right;">${f.costo!=null?fmt(f.costo):'—'}</td></tr>${f.descuadre&&f.quien.length?`<tr><td colspan="6" style="font-size:10.5px;color:var(--text3);padding-top:0;border-top:none;">↳ lo piden sobre todo: ${f.quien.map(q=>`${esc(q.prod)} (${Math.round(q.nSem)}/sem × ${Math.round(q.porcion*100)/100} ${f.inv.unit}) <button class="btn bs bxs" style="padding:1px 7px;font-size:10px;" onclick='ajustarPorcion(${JSON.stringify(q.prod).replace(/'/g,"&#39;")},${JSON.stringify(String(f.inv.id))})'>Ajustar porción</button>`).join(' · ')}</td></tr>`:''}`;}).join('')}
-    </tbody></table></div>
-    ${S.filas.some(f=>f.descuadre)?`<p style="font-size:11px;color:var(--goldd);margin:8px 0 0;">⚠ La receta y lo que compras no cuadran por más de 50%. O la porción de la receta está alta (pesa un plato real y ajústala en Recetas) o se está quedando corto. Mientras tanto, compra lo de siempre.</p>`:''}
+    <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;"><b>Se usa/semana</b> = consumo REAL de los conteos (lo que había + lo que llegó − lo que quedó, ${S.desde} a ${S.hasta}); si un artículo no tiene suficientes conteos, se usa la receta. Se compra eso + 10% − lo que hay. ≈ <b>${fmt(S.total)}</b> a los últimos precios.</p>
+    ${S.filas.length?`<div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Artículo</th><th style="text-align:right;">Se usa / sem</th><th style="text-align:right;">Receta</th><th style="text-align:right;">Compras</th><th style="text-align:right;">Hay</th><th style="text-align:right;">Comprar</th><th style="text-align:right;">≈ $</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`:'<p style="font-size:12px;color:var(--accent);">Hay de todo para la semana.</p>'}
+    ${S.dudosos.length?`<div style="font-size:11px;color:var(--goldd);margin-top:8px;">⚠ Apartados por cifra imposible (revisa cómo se cuentan): ${S.dudosos.map(f=>`${esc(f.inv.nombre)} — ${enCompra(f,f.sem)}/sem`).join(' · ')}</div>`:''}
+    ${S.quitados.length?`<div style="font-size:11px;color:var(--text3);margin-top:8px;">Fuera de la orden: ${S.quitados.map(i=>`${esc(i.nombre)} <a href="#" onclick="surtidoQuitar(${JSON.stringify(String(i.id)).replace(/"/g,'&quot;')},false);return false;">regresar</a>`).join(' · ')}</div>`:''}
+    ${revisar}
   </div>`;
 }
 function invMinimoSugerido(productoId){
@@ -15086,7 +15267,7 @@ function calcCierreDia(fecha){
     const dif=c.diferencia;
     const precio=(c.precioUnit!=null?c.precioUnit:(inv?.precio||0));
     const llego=c.comprasEsperado??(c.esperadoAntesCompras!=null&&c.esperado!=null?r2(c.esperado-c.esperadoAntesCompras):0);
-    return {nombre:inv?inv.nombre:'(artículo borrado)',unit:c.unit||inv?.unit||'',llego,
+    return {id:c.productoId,nombre:inv?inv.nombre:'(artículo borrado)',unit:c.unit||inv?.unit||'',llego,
       contado:c.qty,esperado:c.esperado,dif,
       pesos:(dif!=null)?r2(dif*precio):null, quien:c.capturadoPorNombre||''};
   });
@@ -15103,6 +15284,20 @@ function calcCierreDia(fecha){
   const sobrante=r2(descuadres.filter(x=>x.dif>0).reduce((s,x)=>s+(x.pesos||0),0));
   return {fecha:f,contados:caps.length,conDato:conDato.length,descuadres,imposibles,
     faltante,sobrante,neto:r2(faltante+sobrante)};
+}
+// 1250 g → "1.25 kg"; 3 pz → "3 pz". Para leer sin calculadora.
+function cantTxt(q,unit){
+  const n=Number(q)||0, u=normUnit(unit||'');
+  if(u==='g'&&Math.abs(n)>=1000) return `${r2(n/1000)} kg`;
+  if(u==='ml'&&Math.abs(n)>=1000) return `${r2(n/1000)} L`;
+  return `${r2(n)} ${unit||''}`.trim();
+}
+// En cuántos de los últimos 7 conteos (antes de `hasta`) el artículo
+// salió del mismo lado: si sobra casi siempre, es la receta, no el azar.
+function patronDescuadre(id,signo,hasta){
+  const caps=D.invDiario.filter(c=>c.productoId===id&&c.fecha<hasta&&c.diferencia!=null)
+    .sort((a,b)=>b.fecha.localeCompare(a.fecha)).slice(0,7);
+  return caps.filter(c=>Math.sign(c.diferencia)===signo&&Math.abs(c.diferencia)>DESCUADRE_MIN).length;
 }
 function renderCierreDia(){
   const caja=$('inv-cierre'); if(!caja) return;
@@ -15124,18 +15319,32 @@ function renderCierreDia(){
         <div class="mono" style="font-size:19px;font-weight:700;color:var(--red);">${fmt(Math.abs(R.faltante))}</div></div>
       <div style="text-align:center;"><div style="font-size:11px;color:var(--text3);">Sobra</div>
         <div class="mono" style="font-size:19px;font-weight:700;color:var(--accent);">${fmt(R.sobrante)}</div></div>
-      <div style="text-align:center;"><div style="font-size:11px;color:var(--text3);">Neto</div>
-        <div class="mono" style="font-size:19px;font-weight:700;color:${R.neto<0?'var(--red)':'var(--text)'};">${fmt(R.neto)}</div></div>
+      <div style="text-align:center;"><div style="font-size:11px;color:var(--text3);">${R.neto<0?'En total faltó':'En total sobró'}</div>
+        <div class="mono" style="font-size:19px;font-weight:700;color:${R.neto<0?'var(--red)':'var(--text)'};">${fmt(Math.abs(R.neto))}</div></div>
     </div>
-    ${hay?`<p style="font-size:12px;color:var(--text2);margin:0 0 8px;">Lo que falta es merma, receta mal medida o algo que salió sin cobrarse. Lo que sobra suele ser una compra que no se registró.</p>`+
-      R.descuadres.slice(0,10).map(x=>`<div class="sr">
-        <span style="font-size:12.5px;">${esc(x.nombre)}</span>
-        <span style="display:flex;gap:12px;align-items:baseline;">
-          <span style="font-size:11px;color:var(--text3);">esperaba ${x.esperado}${x.llego>0?` (llegaron ${x.llego})`:''} · contó ${x.contado} ${x.unit}${x.llego>0&&x.contado<x.llego*0.9?' · <b style="color:var(--goldd);">contó menos de lo que llegó: ¿quedó guardado?</b>':''}</span>
-          <span class="mono" style="min-width:58px;text-align:right;color:${x.dif<0?'var(--red)':'var(--accent)'};font-weight:600;">${x.dif>0?'+':''}${x.dif}</span>
-          <span class="mono" style="min-width:74px;text-align:right;font-weight:600;">${x.pesos!=null?fmt(x.pesos):'—'}</span>
-        </span></div>`).join('')+
-      (hay>10?`<div style="font-size:11px;color:var(--text3);margin-top:6px;">y ${hay-10} más</div>`:'')
+    ${hay?(()=>{
+      // En palabras, sin signos (Iván, 22-oct: "no entiendo los negativos").
+      const faltan=R.descuadres.filter(x=>x.dif<0), sobran=R.descuadres.filter(x=>x.dif>0);
+      const fila=x=>{
+        const pat=patronDescuadre(x.id,Math.sign(x.dif),R.fecha);
+        const pista=x.llego>0&&x.contado<x.llego*0.9?'se contó menos de lo que llegó: ¿quedó guardado sin contar?'
+          :(x.dif>0&&pat>=3?`sobra ${pat} de los últimos 7 conteos: la receta descuenta más de lo que de verdad se usa — pesa la porción`
+          :(x.dif<0&&pat>=3?`falta ${pat} de los últimos 7 conteos: merma constante o porción más grande que la receta`:''));
+        return `<div class="sr" style="align-items:flex-start;">
+          <span style="font-size:12.5px;">${esc(x.nombre)}
+            <div style="font-size:11px;color:var(--text3);">el sistema esperaba ${cantTxt(x.esperado,x.unit)}${x.llego>0?` (con ${cantTxt(x.llego,x.unit)} que llegaron)`:''} · se contaron ${cantTxt(x.contado,x.unit)}</div>
+            ${pista?`<div style="font-size:11px;color:var(--goldd);font-weight:560;">${pista}</div>`:''}</span>
+          <span style="text-align:right;white-space:nowrap;">
+            <div style="font-size:12.5px;font-weight:650;color:${x.dif<0?'var(--red)':'var(--accent)'};">${x.dif<0?'Faltan':'Sobran'} ${cantTxt(Math.abs(x.dif),x.unit)}</div>
+            <div class="mono" style="font-size:11.5px;color:var(--text2);">${x.pesos!=null?fmt(Math.abs(x.pesos)):'—'}</div></span></div>`;
+      };
+      const bloque=(titulo,expl,arr,col)=>arr.length?`<div style="margin-top:8px;">
+        <div style="font-size:12px;font-weight:700;color:${col};">${titulo} (${arr.length})</div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">${expl}</div>
+        ${arr.slice(0,8).map(fila).join('')}${arr.length>8?`<div style="font-size:11px;color:var(--text3);margin-top:4px;">y ${arr.length-8} más</div>`:''}</div>`:'';
+      return bloque('Falta — hay MENOS de lo que debería','Se usó más de lo que se vendió: merma, porción más grande que la receta o algo que salió sin cobrarse.',faltan,'var(--red)')+
+        bloque('Sobra — hay MÁS de lo que debería','Llegó algo que no se registró, o la receta descuenta más de lo que de verdad se usa.',sobran,'var(--accent)');
+    })()
       :`<p style="font-size:12.5px;color:var(--accent);margin:0;">Todo lo contado cuadra con lo que el sistema esperaba.</p>`}
     ${R.imposibles.length?`<div style="font-size:11.5px;color:var(--goldd);margin-top:8px;">⚠ Fuera de la cuenta por imposibles (revisa la unidad o la captura): ${R.imposibles.map(x=>`${esc(x.nombre)} — esperaba ${x.esperado}, contó ${x.contado} ${esc(x.unit)}`).join(' · ')}</div>`:''}
   </div>`;
@@ -15143,6 +15352,14 @@ function renderCierreDia(){
 window.invGuardarCantidad=async(productoId,qty)=>{
   const valor=parseFloat(qty);
   if(isNaN(valor)||valor<0){toast('⚠ Cantidad inválida',2400,'warn');return;}
+  // Un dedazo de unidad (900 "botes" de Valentina que eran mililitros)
+  // envenena el consumo, la orden de compra y el cierre. Se pregunta.
+  { const it=D.inventario.find(i=>i.id===productoId);
+    const prev=invStockUltimo(productoId,today())?.qty;
+    if(it&&prev!=null&&valor>20&&valor>Math.max(prev,1)*10&&
+       !confirm(`${it.nombre}: escribiste ${valor} ${it.unidadOf||it.unit}, y el último conteo fue ${prev}.\n\n¿Es correcto? (revisa que sea en ${it.unidadOf||it.unit}, no en gramos o mililitros)`)){
+      renderInv(); return;
+    } }
   // ÚNICA TOMA POR DÍA: si ya existe captura del día, se ACTUALIZA (no se duplica).
   // Da igual si la primera la hizo Adilene y la segunda Claudia: solo queda la última.
   const td=today();
@@ -16259,7 +16476,10 @@ function renderKpiComerciales(fechas){
   const totalVentas=ventas.reduce((s,v)=>s+v.total,0);
   const numTickets=ventas.length;
   const ticketProm=numTickets>0?totalVentas/numTickets:0;
-  const ticketsPorDia=fechas.length>0?numTickets/fechas.length:0;
+  // Entre los días que de verdad se vendió: el mes en curso dividía
+  // entre sus 31 días (los que faltan y los de descanso incluidos).
+  const diasVenta=new Set(ventas.map(v=>v.fecha)).size;
+  const ticketsPorDia=diasVenta>0?numTickets/diasVenta:0;
   const clientesUnicos=new Set(ventas.map(v=>v.cliente).filter(Boolean)).size;
   // Conversión a combo: ventas que tienen un producto categoría 'combo'
   const ventasConCombo=ventas.filter(v=>v.items.some(i=>{
@@ -16285,7 +16505,7 @@ function renderKpiComerciales(fechas){
 
   let html=`<div class="kpi-grid">
     ${kpiCard({titulo:'Ticket Promedio',valor:ticketProm,valorFmt:fmt(ticketProm),target:T.ticketPromedio,targetFmt:'$'+T.ticketPromedio,mejor:'mayor'})}
-    ${kpiCard({titulo:'Tickets / día (avg)',valor:ticketsPorDia,valorFmt:ticketsPorDia.toFixed(1),target:null,info:`${numTickets} tickets en ${fechas.length} días`})}
+    ${kpiCard({titulo:'Tickets / día (avg)',valor:ticketsPorDia,valorFmt:ticketsPorDia.toFixed(1),target:null,info:`${numTickets} tickets en ${diasVenta} días con venta`})}
     ${kpiCard({titulo:'Clientes Únicos',valor:clientesUnicos,valorFmt:String(clientesUnicos),target:null,info:'Identificados por tel/nombre'})}
     ${kpiCard({titulo:'Conversión a Combo',valor:conversionCombo,valorFmt:conversionCombo.toFixed(1)+'%',target:T.conversionCombo,targetFmt:T.conversionCombo+'%',mejor:'mayor',info:`${ventasConCombo} de ${numTickets} tickets incluyen combo`})}
     ${kpiCard({titulo:"% Ventas Pal'…",valor:pctPal,valorFmt:pctPal.toFixed(1)+'%',target:T.pctVentasPal,targetFmt:T.pctVentasPal+'%',mejor:'mayor',info:'Línea estratégica de smoothies'})}
@@ -16415,14 +16635,27 @@ function renderKpiOperacion(fechas){
   // El costo bueno es el que sale de la RECETA, no el campo `costo` que
   // se teclea a mano y casi nadie llenó: este KPI marcaba como "sin
   // costo" a los 11 cafés, que están costeados al centavo.
-  const sinCosto=D.productos.filter(p=>p.activo&&!foodCostProducto(p.id).completo).length;
-  // Mermas
-  const mermas=D.kpiCaptura.filter(c=>c.tipo==='merma'&&fechas.includes(c.fecha)).reduce((s,c)=>s+c.valor,0);
+  // Los combos no tienen receta propia: se costean en cada venta con lo
+  // que elige el cliente. Contarlos aquí era una alarma falsa de 6.
+  const sinCosto=D.productos.filter(p=>p.activo&&!COMBO_FIJOS[p.id]&&!foodCostProducto(p.id).completo).length;
+  // Mermas: lo que de verdad FALTÓ en el conteo diario (cierre del día)
+  // más lo que se registró a mano. Antes solo contaba lo registrado a
+  // mano ($54 en un mes) mientras el conteo marcaba cientos por día.
+  const mermaManual=D.kpiCaptura.filter(c=>c.tipo==='merma'&&fechas.includes(c.fecha)).reduce((s,c)=>s+c.valor,0);
+  // NETO del período (faltas − sobras): lo que no se contó un día (estaba
+  // guardado) "falta" ese día y "sobra" al siguiente. Sumar solo las
+  // faltas lo contaba como merma (22.8% el 22-oct).
+  const mermaConteo=Math.max(0,r2(-fechas.reduce((a,f)=>a+(calcCierreDia(f).neto||0),0)));
+  const mermas=r2(mermaManual+mermaConteo);
   const pctMermas=totalVentas>0?(mermas/totalVentas*100):0;
-  // Tiempo de servicio promedio
-  const ventasConTiempo=ventas.filter(v=>v.tsCreacion&&v.tsCobro&&v.tsCobro>v.tsCreacion);
-  const tiempoProm=ventasConTiempo.length>0?
-    ventasConTiempo.reduce((s,v)=>s+((v.tsCobro-v.tsCreacion)/60000),0)/ventasConTiempo.length:null;
+  // Tiempo de servicio: de que se COBRA a que se ENTREGA (cocina). Antes
+  // medía de abrir la orden a cobrarla: 0.7 min, la velocidad de la
+  // cajera, no la del servicio. Mediana, sin entregas marcadas horas
+  // después (más de 60 min es olvido de tocar "Entregada").
+  const tiempos=ventas.filter(v=>v.prep?.estado==='entregada'&&v.prep.tsEntrega)
+    .map(v=>(v.prep.tsEntrega-(v.tsCobro||v.id))/60000).filter(t=>t>0&&t<=60).sort((a,b)=>a-b);
+  const ventasConTiempo=tiempos;
+  const tiempoProm=tiempos.length?tiempos[Math.floor(tiempos.length/2)]:null;
   // Productividad por empleado
   const empProd={};
   ventas.forEach(v=>{
@@ -16435,9 +16668,9 @@ function renderKpiOperacion(fechas){
 
   let html=`<div class="kpi-grid">
     ${kpiCard({titulo:'Margen Contribución Prom.',valor:margenProm,valorFmt:margenProm.toFixed(1)+'%',target:T.margenProducto,targetFmt:T.margenProducto+'%',mejor:'mayor',info:`Calculado de ${prodsConCosto.length} productos con costo definido`})}
-    ${kpiCard({titulo:'Productos sin costo',valor:sinCosto,valorFmt:String(sinCosto),target:0,targetFmt:'0',mejor:'menor',info:sinCosto>0?'⚠ Define el costo en Ajustes → Productos':'✓ Todos los productos tienen costo'})}
-    ${kpiCard({titulo:'Mermas (% ventas)',valor:pctMermas,valorFmt:pctMermas.toFixed(2)+'%',target:T.mermasMaxPct,targetFmt:'<'+T.mermasMaxPct+'%',mejor:'menor',info:`${fmt(mermas)} en mermas / ${fmt(totalVentas)} en ventas`})}
-    ${kpiCard({titulo:'Tiempo Servicio',valor:tiempoProm,valorFmt:tiempoProm==null?'Sin datos':tiempoProm.toFixed(1)+' min',target:T.tiempoServicioMaxMin,targetFmt:'<'+T.tiempoServicioMaxMin+' min',mejor:'menor',info:`${ventasConTiempo.length} ventas con tiempo registrado`})}
+    ${kpiCard({titulo:'Productos sin costo',valor:sinCosto,valorFmt:String(sinCosto),target:0,targetFmt:'0',mejor:'menor',info:sinCosto>0?'⚠ Complétalo en Recetas → Costeo guiado':'✓ Todo el menú tiene receta (los combos se costean al vender)'})}
+    ${kpiCard({titulo:'Mermas (% ventas)',valor:pctMermas,valorFmt:pctMermas.toFixed(2)+'%',target:T.mermasMaxPct,targetFmt:'<'+T.mermasMaxPct+'%',mejor:'menor',info:`${fmt(mermas)} (${fmt(mermaConteo)} faltó en los conteos + ${fmt(mermaManual)} registradas) / ${fmt(totalVentas)} en ventas`})}
+    ${kpiCard({titulo:'Tiempo Servicio',valor:tiempoProm,valorFmt:tiempoProm==null?'Sin datos':tiempoProm.toFixed(1)+' min',target:T.tiempoServicioMaxMin,targetFmt:'<'+T.tiempoServicioMaxMin+' min',mejor:'menor',info:`de cobrar a entregar · mediana de ${ventasConTiempo.length} órdenes`})}
   </div>`;
 
   // Productividad por empleado
