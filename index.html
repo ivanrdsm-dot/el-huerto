@@ -3228,6 +3228,7 @@ async function completeInit(){
   await migProteinaExtra20Oct();
   await migCompras21Oct();
   await migValentinaConteos27Oct();
+  await migEsperadosInflados27Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6104,6 +6105,34 @@ async function migValentinaConteos27Oct(){
       const ix=D.inventario.findIndex(i=>i.id===val.id); if(ix>=0) D.inventario[ix]=u; hechos.push(`existencia ${val.qty} → ${u.qty}`); }
   }
   if(hechos.length) logAudit('inventario_correccion',{articulo:'Valentina',cambios:hechos,motivo:'Contada en mililitros como botes'});
+  await markMig(migKey);
+}
+// 27-oct: conteos con el esperado inflado por una recaptura (dedazo y
+// corrección el mismo día): "Vaso p/café 12 oz: faltan 1,507". Un
+// esperado 5 veces mayor que lo contado ese día Y el anterior no es
+// merma: sale de la comparación.
+async function migEsperadosInflados27Oct(){
+  const migKey='h5esperados_inflados_27oct26';
+  if(await migDone(migKey)) return;
+  const hechos=[];
+  const porProd={};
+  D.invDiario.forEach(c=>(porProd[c.productoId]??=[]).push(c));
+  for(const lista of Object.values(porProd)){
+    lista.sort((a,b)=>a.fecha.localeCompare(b.fecha));
+    for(let k=0;k<lista.length;k++){
+      const c=lista[k]; if(c.esperado==null) continue;
+      const prev=k>0?(lista[k-1].qty||0):0;
+      const ref=Math.max(prev,c.qty||0,1);
+      if(c.esperado>ref*5&&c.esperado-ref>=5){
+        const upd={...c,esperadoErroneo:c.esperado,esperado:null,diferencia:null};
+        await fsSet('invDiario',upd);
+        const ix=D.invDiario.findIndex(x=>x.id===c.id); if(ix>=0) D.invDiario[ix]=upd;
+        const inv=D.inventario.find(i=>i.id===c.productoId);
+        hechos.push(`${inv?.nombre||c.productoId} ${c.fecha}: esperaba ${c.esperado}, contó ${c.qty}`);
+      }
+    }
+  }
+  if(hechos.length) logAudit('inventario_correccion',{cambios:hechos,motivo:'Esperado inflado por recaptura del mismo día'});
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){
@@ -10108,7 +10137,8 @@ function prepPasosDe(pid){
 window.abrirPrepModal=pid=>{
   const p=D.productos.find(x=>x.id===pid); const pasos=prepPasosDe(pid);
   if(!p||!pasos) return;
-  prepPendiente={pid,pasos,idx:0,sel:new Set(),resultado:[]};
+  prepPendiente={pid,pasos,idx:0,sel:new Set(),resultado:[],presel:_comboPresel};
+  _comboPresel=null;
   pintarPasoPrep();
   $('prep-modal').style.display='flex';
 };
@@ -10120,6 +10150,18 @@ function pintarPasoPrep(){
   if(paso.presel&&!prepPendiente._preselHecho?.[idx]){
     PREP_LISTAS[paso.de].forEach(t=>sel.add(t));
     (prepPendiente._preselHecho??={})[idx]=true;
+  }
+  // "Hazlo combo": lo que ya había elegido llega marcado
+  const ps=prepPendiente.presel;
+  if(ps&&!prepPendiente._psHecho?.[idx]){
+    (prepPendiente._psHecho??={})[idx]=true;
+    const lista=PREP_LISTAS[paso.de]||[];
+    if(paso.libre) lista.forEach(t=>{ if(ps.sin.has(normInvNombre(t))) sel.delete(t); });
+    else for(const t of lista){
+      if(sel.size>=paso.n) break;
+      const k=normInvNombre(t);
+      if(ps.vals.has(k)||(k.length>=4&&ps.nombres.some(n=>n.includes(k)))) sel.add(t);
+    }
   }
   (prepPendiente.vistos??=new Set()).add(idx); // para numerar sin contar los saltados
   $('prep-title').textContent=`🧩 ${p?.nombre||''}`;
@@ -10190,8 +10232,8 @@ function pushItemOrden(pid,prep){
   // Vino de un chip de sugeridos: se marca para poder medir el upsell
   if(_sugPend===pid){
     const l=order.find(o=>o.id===pid&&((o.prep||[]).join('|')===key));
-    if(l) l.sug=true;
-    _sugPend=null;
+    if(l){ l.sug=true; if(_sugComboPend) l.sugCombo=_sugComboPend; }
+    _sugPend=null; _sugComboPend=null;
   }
   renderOrder();
   try{navigator.vibrate&&navigator.vibrate(20);}catch(_){}
@@ -11216,12 +11258,61 @@ function calcSugerencias(){
     .filter(p=>p&&p.activo!==false);
 }
 
+// ══ "HAZLO COMBO" (27-oct) ══
+// Solo el 5.9% de los tickets lleva combo (meta 30%) y el ticket promedio
+// está en $94.56 (meta $130). Cuando la orden trae UNA parte de un combo,
+// se ofrece completarlo: "+ smoothie y queda Combo El OG, +$90".
+// Nunca se sugiere convertir dos cosas que ya pidieron por separado:
+// eso BAJA el ticket. Qué parte cumple cada combo:
+const COMBO_SLOTS={
+  1048:[{cat:'smoothie'},{cat:'panini'}],   // El OG
+  1049:[{ids:[1030]},{cat:'panini'}],       // El Mañanero (capuchino chico)
+  1050:[{ids:[1030]},{cat:'pan'}],          // El de Renee
+  1016:[{ids:[1005]},{cat:'smoothie'}],     // Home Run (oats 2 toppings)
+  1017:[{ids:[1013]},{cat:'smoothie'}],     // Gym Rat (coctel de fruta)
+  1018:[{ids:[1002]},{cat:'smoothie'}],     // El Fresa (açaí 2 toppings)
+};
+const QUE_FALTA={smoothie:'smoothie',panini:'panini',pan:'pan de Renee'};
+const slotCumple=(sl,p)=>sl.ids?sl.ids.includes(p.id):p.cat===sl.cat;
+function calcSugerenciaCombo(){
+  if(!order.length) return null;
+  if(order.some(o=>D.productos.find(p=>p.id===o.id)?.cat==='combo')) return null;
+  const manana=new Date().getHours()<12;
+  const opciones=[];
+  order.forEach((o,ix)=>{
+    const p=D.productos.find(x=>x.id===o.id); if(!p) return;
+    for(const [cid,slots] of Object.entries(COMBO_SLOTS)){
+      const combo=D.productos.find(x=>x.id===Number(cid)); if(!combo||combo.activo===false) continue;
+      const cumple=slots.findIndex(sl=>slotCumple(sl,p)); if(cumple<0) continue;
+      // La otra parte ya está en la orden: no se ofrece (bajaría el ticket)
+      const otra=slots.find((sl,i)=>i!==cumple);
+      if(order.some((q,j)=>j!==ix&&(()=>{const pq=D.productos.find(x=>x.id===q.id);return pq&&slotCumple(otra,pq);})())) continue;
+      const falta=otra.ids?(D.productos.find(x=>x.id===otra.ids[0])?.nombre||'').replace(/ chico$/i,''):QUE_FALTA[otra.cat]||otra.cat;
+      const mas=r2(combo.precio-p.precio);
+      if(!(mas>0)) continue;
+      // En la mañana, los combos con café (Mañanero, El de Renee); el
+      // resto del día, los otros (El OG con su smoothie).
+      const conCafe=!!otra.ids?.includes(1030);
+      const peso=(conCafe===manana?0:1)*1000+mas;
+      opciones.push({ix,base:p,combo,falta,mas,peso});
+    }
+  });
+  opciones.sort((a,b)=>a.peso-b.peso);
+  return opciones[0]||null;
+}
+let _comboOfrecido=false;     // se ofreció un combo en esta orden (para medir)
 function renderSugerencias(){
   const box=$('op-sugeridos'); if(!box) return;
   const sug=calcSugerencias();
-  if(!sug.length){box.innerHTML='';return;}
+  const sc=calcSugerenciaCombo();
+  if(!order.length) _comboOfrecido=false;
+  if(!sug.length&&!sc){box.innerHTML='';return;}
+  if(sc) _comboOfrecido=true;
   const hoy=sugeridosHoyMonto();
-  box.innerHTML=`<div class="op-sug">
+  const comboHtml=sc?`<button class="sug-chip" style="width:100%;justify-content:space-between;border:2px solid var(--gold);background:color-mix(in srgb,var(--gold) 12%,transparent);margin-bottom:6px;" onclick="hazloCombo(${sc.ix},${sc.combo.id})">
+      <span><b>Hazlo ${esc(sc.combo.nombre)}</b> · + ${esc(sc.falta)}</span><span class="sug-p">+${fmt(sc.mas)}</span></button>`:'';
+  if(!sug.length){ box.innerHTML=`<div class="op-sug">${comboHtml}</div>`; return; }
+  box.innerHTML=`<div class="op-sug">${comboHtml}
     <div class="op-sug-t"><span><svg class="ic"><use href="#i-bolt"/></svg> Ofrécele al cliente</span>${hoy>0?`<span class="op-sug-hoy">hoy +${fmt(hoy)}</span>`:''}</div>
     <div class="op-sug-chips">${sug.map(p=>`<button class="sug-chip" onclick="addSugerido(${p.id})" title="${(p.desc||'').replace(/"/g,'&quot;')}">
       <span>${p.nombre}</span><span class="sug-p">+${fmt(p.precio)}</span>
@@ -11229,6 +11320,29 @@ function renderSugerencias(){
   </div>`;
 }
 
+// Convierte el renglón en el combo: quita una pieza del producto y abre
+// el combo con lo que ya había elegido (el panini, el smoothie, el pan,
+// las frutas) PRESELECCIONADO. La cajera solo elige la parte nueva.
+let _sugComboPend=null;
+window.hazloCombo=(ix,comboId)=>{
+  const o=order[ix]; if(!o) return;
+  const base=D.productos.find(p=>p.id===o.id);
+  const presel={nombres:[normInvNombre(o.nombre||base?.nombre||'')],vals:new Set(),sin:new Set()};
+  (o.prep||[]).forEach(l=>{
+    const t=String(l);
+    if(/^sin /i.test(t)){ presel.sin.add(normInvNombre(t.slice(4))); return; }
+    const v=t.includes(':')?t.split(':').slice(1).join(':'):t;
+    v.split(',').forEach(x=>presel.vals.add(normInvNombre(x.trim())));
+  });
+  if(o.qty>1) o.qty--; else order.splice(ix,1);
+  _sugComboPend={base:o.precio,de:o.nombre};
+  _comboPresel=presel;
+  _sugPend=comboId;
+  logAudit('combo_sugerido_aceptado',{combo:D.productos.find(p=>p.id===comboId)?.nombre||comboId,desde:o.nombre});
+  addItem(comboId);
+  renderOrder();
+};
+let _comboPresel=null;
 // Agrega el extra marcándolo como sugerido: el flag viaja al item de la
 // venta (items:order.map(o=>({...o}))) y permite medir después cuánto
 // dinero extra trajo esta función.
@@ -12009,6 +12123,7 @@ async function cobrar(metodo,recibido=0,pagos=null,extra=null){
       id:tid, fecha:fechaVenta,
       hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
       items:order.map(o=>({...o})),
+      ...(_comboOfrecido||order.some(o=>o.sugCombo)?{comboOfrecido:true}:{}),
       subtotal:sub, descuento:desc, total, nota, anulada:false,
       // `metodo` se queda por compatibilidad con el histórico y la UI;
       // el dinero real siempre se lee de `pagos` vía ventaEf()/ventaTc().
@@ -15189,6 +15304,76 @@ window.ajustarPorcion=async(prodNombre,invId)=>{
   toast(`✓ ${prodNombre}: ${inv.nombre} ${ing.qty} → ${q} ${ing.unit} · costo ${fmt(antes||0)} → ${fmt(despues||0)}`,6000);
   renderInv();
 };
+// ══ MERMA DE LA SEMANA (27-oct) ══
+// La merma pasó de "0.06%" (solo lo registrado a mano) a 5.5% real, arriba
+// de la meta de 5%. Esto dice QUÉ se pierde, cuánto y qué días: la
+// diferencia neta (falta − sobra) de los conteos de los últimos 7 días,
+// por artículo, con la causa probable. Por día: cuánto faltó, quién
+// contó y quién atendió la caja.
+// Merma de un período, POR ARTÍCULO: dentro de cada artículo se
+// compensan faltas y sobras (un día mal contado sobra al siguiente),
+// pero lo que sobra de uno no tapa lo que se pierde de otro — el serrano
+// que "sobra" porque la receta descuenta de más no puede esconder la
+// mozzarella que de verdad falta.
+function mermaPorArticulo(desdeExcl,hastaIncl){
+  const porArt={};
+  for(const c of D.invDiario){
+    if(!(c.fecha>desdeExcl&&c.fecha<=hastaIncl)||c.diferencia==null||c.esperado==null) continue;
+    const inv=D.inventario.find(i=>i.id===c.productoId); if(!inv) continue;
+    const pesos=r2(c.diferencia*(c.precioUnit??inv.precio??0));
+    if(Math.abs(pesos)>5000) continue;
+    porArt[inv.id]=r2((porArt[inv.id]||0)+pesos);
+  }
+  const vals=Object.values(porArt);
+  return {perdida:r2(vals.filter(v=>v<0).reduce((s,v)=>s-v,0)),sobra:r2(vals.filter(v=>v>0).reduce((s,v)=>s+v,0))};
+}
+function mermaSemana(dias=7){
+  const td=today(), ini=new Date(td+'T12:00:00'); ini.setDate(ini.getDate()-dias);
+  const desde=localDate(ini);
+  const caps=D.invDiario.filter(c=>c.fecha>desde&&c.fecha<=td&&c.diferencia!=null&&c.esperado!=null);
+  const porArt={}, porDia={};
+  for(const c of caps){
+    const inv=D.inventario.find(i=>i.id===c.productoId); if(!inv) continue;
+    const pesos=r2(c.diferencia*(c.precioUnit??inv.precio??0));
+    if(Math.abs(pesos)>5000) continue;   // captura imposible: no es merma
+    const a=(porArt[inv.id]??={inv,neto:0,q:0,dias:0,faltoDias:0});
+    a.neto=r2(a.neto+pesos); a.q=r2(a.q+c.diferencia); a.dias++; if(c.diferencia<-DESCUADRE_MIN) a.faltoDias++;
+    const d=(porDia[c.fecha]??={fecha:c.fecha,neto:0,conto:{}});
+    d.neto=r2(d.neto+pesos); const k=c.capturadoPorNombre||'—'; d.conto[k]=(d.conto[k]||0)+1;
+  }
+  const revisar=new Set((surtidoSugerido().revisar||[]).map(r=>String(r.inv.id)));
+  const top=Object.values(porArt).filter(a=>a.neto<-1).sort((a,b)=>a.neto-b.neto).slice(0,10).map(a=>({...a,
+    causa:revisar.has(String(a.inv.id))?'la porción real es distinta a la receta: pésala'
+      :(a.faltoDias>=Math.max(3,Math.ceil(a.dias*0.6))?'se pierde casi a diario: revisa cómo se guarda o si sale sin cobrarse'
+      :'irregular: puede ser un día mal contado')}));
+  const dias7=Object.values(porDia).sort((a,b)=>b.fecha.localeCompare(a.fecha)).map(d=>{
+    const cajeras=[...new Set(D.ventas.filter(v=>v.fecha===d.fecha&&!v.anulada).map(v=>v.vendedorNombre).filter(Boolean))];
+    return {...d,conto:Object.entries(d.conto).sort((a,b)=>b[1]-a[1])[0]?.[0]||'—',cajeras};
+  });
+  const perdida=r2(Object.values(porArt).filter(a=>a.neto<0).reduce((s,a)=>s-a.neto,0));
+  const sobra=r2(Object.values(porArt).filter(a=>a.neto>0).reduce((s,a)=>s+a.neto,0));
+  const ventas=r2(D.ventas.filter(v=>!v.anulada&&v.fecha>desde&&v.fecha<=td).reduce((s,v)=>s+v.total,0));
+  return {top,dias:dias7,perdida,sobra,pct:ventas>0?perdida/ventas*100:0,ventas};
+}
+function renderMermaCard(){
+  const M=mermaSemana();
+  if(!M.top.length&&!M.dias.length) return '';
+  const meta=CFG.kpiTargets?.mermasMaxPct??5;
+  const col=M.pct>meta?'var(--red)':'var(--accent)';
+  return `<div class="card" style="margin-bottom:12px;border-left:3px solid ${col};">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Merma de la semana</span>
+      <span class="mono" style="font-weight:700;color:${col};">${fmt(M.perdida)} · ${M.pct.toFixed(1)}% de la venta</span></div>
+    <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;">Lo que se perdió en los conteos de los últimos 7 días, artículo por artículo (meta: menos de ${meta}%). Aparte, sobraron ${fmt(M.sobra)}: casi siempre es una receta que descuenta de más o una compra sin registrar.</p>
+    ${M.top.length?`<div style="font-size:12px;font-weight:700;margin-bottom:4px;">Lo que más se pierde</div>
+    ${M.top.map(a=>`<div class="sr" style="align-items:flex-start;"><span style="font-size:12.5px;">${esc(a.inv.nombre)}
+        <div style="font-size:11px;color:var(--text3);">faltó ${a.faltoDias} de ${a.dias} días · ${cantTxt(Math.abs(a.q),a.inv.unit)} en la semana</div>
+        <div style="font-size:11px;color:var(--goldd);">${a.causa}</div></span>
+      <span class="mono ar fw7">${fmt(Math.abs(a.neto))}</span></div>`).join('')}`:''}
+    ${M.dias.length?`<div style="font-size:12px;font-weight:700;margin:10px 0 4px;">Por día</div>
+    ${M.dias.map(d=>`<div class="sr" style="font-size:12px;"><span>${fmtFecha(d.fecha)} <span style="color:var(--text3);">· contó ${esc(d.conto)}${d.cajeras.length?` · caja: ${d.cajeras.map(esc).join(', ')}`:''}</span></span>
+      <span class="mono ${d.neto<0?'ar':'ag'}">${d.neto<0?'faltó':'sobró'} ${fmt(Math.abs(d.neto))}</span></div>`).join('')}`:''}
+  </div>`;
+}
 function renderSurtidoCard(){
   const S=surtidoSugerido();
   if(!S.filas.length&&!S.revisar.length) return '';
@@ -15372,14 +15557,15 @@ window.invGuardarCantidad=async(productoId,qty)=>{
   // Hasta hoy el conteo lo pisaba y la diferencia se perdía — que es
   // justo el dato que convierte el inventario en control: lo que falta
   // es merma, receta mal medida, o algo que salió sin cobrarse.
-  // Se compara contra lo que el sistema cree AHORA, en cada captura.
-  // Conservar el esperado de la primera toma estaba mal: si cuentan en
-  // la mañana (100) y recuentan en la tarde después de vender 20, el
-  // sistema ya cree 80 y el conteo de 80 cuadra; con el esperado viejo
-  // salían −20 de "merma" que en realidad eran ventas. Corrigiendo un
-  // dedazo también sale bien: el sistema sigue creyendo el primer
-  // número y la diferencia contra el bueno es la de verdad.
-  const esperado=inv?r2(inv.qty||0):null;
+  // Recaptura del mismo día: el esperado NO es la existencia actual,
+  // porque esa la fijó la primera captura. Si fue un dedazo ("1,600
+  // vasos") y se corrige a 160, comparar contra 1,600 marcaba "faltan
+  // 1,440" (27-oct). Es el esperado de la primera toma, movido por lo
+  // que pasó desde entonces: lo vendido (baja) y lo que llegó (sube).
+  // Si recuentan en la tarde después de vender 20, sigue cuadrando.
+  const esperado=!inv?null:(existe&&existe.esperado!=null
+    ? r2(existe.esperado-((existe.qty||0)-(inv.qty||0)))
+    : r2(inv.qty||0));
   const diferencia=esperado!=null?r2(valor-esperado):null;
   const empNombre=SESSION?.nombre||(SESSION?.tipo==='admin'?'Admin':'Sin sesión');
   const extra={esperado,diferencia,precioUnit:inv?.precio||0,unit:inv?.unit||''};
@@ -15697,6 +15883,7 @@ function renderInvDashboard(){
   }
 
   html+=renderSurtidoCard();
+  html+=renderMermaCard();
 
   // A7: PREDICCIÓN DE FALTANTES — días restantes según consumo real
   const predicciones=items.map(p=>{
@@ -16645,7 +16832,9 @@ function renderKpiOperacion(fechas){
   // NETO del período (faltas − sobras): lo que no se contó un día (estaba
   // guardado) "falta" ese día y "sobra" al siguiente. Sumar solo las
   // faltas lo contaba como merma (22.8% el 22-oct).
-  const mermaConteo=Math.max(0,r2(-fechas.reduce((a,f)=>a+(calcCierreDia(f).neto||0),0)));
+  const fOrd=[...fechas].sort();
+  const dAntes=new Date(fOrd[0]+'T12:00:00'); dAntes.setDate(dAntes.getDate()-1);
+  const mermaConteo=mermaPorArticulo(localDate(dAntes),fOrd[fOrd.length-1]).perdida;
   const mermas=r2(mermaManual+mermaConteo);
   const pctMermas=totalVentas>0?(mermas/totalVentas*100):0;
   // Tiempo de servicio: de que se COBRA a que se ENTREGA (cocina). Antes
@@ -16669,7 +16858,7 @@ function renderKpiOperacion(fechas){
   let html=`<div class="kpi-grid">
     ${kpiCard({titulo:'Margen Contribución Prom.',valor:margenProm,valorFmt:margenProm.toFixed(1)+'%',target:T.margenProducto,targetFmt:T.margenProducto+'%',mejor:'mayor',info:`Calculado de ${prodsConCosto.length} productos con costo definido`})}
     ${kpiCard({titulo:'Productos sin costo',valor:sinCosto,valorFmt:String(sinCosto),target:0,targetFmt:'0',mejor:'menor',info:sinCosto>0?'⚠ Complétalo en Recetas → Costeo guiado':'✓ Todo el menú tiene receta (los combos se costean al vender)'})}
-    ${kpiCard({titulo:'Mermas (% ventas)',valor:pctMermas,valorFmt:pctMermas.toFixed(2)+'%',target:T.mermasMaxPct,targetFmt:'<'+T.mermasMaxPct+'%',mejor:'menor',info:`${fmt(mermas)} (${fmt(mermaConteo)} faltó en los conteos + ${fmt(mermaManual)} registradas) / ${fmt(totalVentas)} en ventas`})}
+    ${kpiCard({titulo:'Mermas (% ventas)',valor:pctMermas,valorFmt:pctMermas.toFixed(2)+'%',target:T.mermasMaxPct,targetFmt:'<'+T.mermasMaxPct+'%',mejor:'menor',info:`${fmt(mermas)} (${fmt(mermaConteo)} se perdió en los conteos, artículo por artículo + ${fmt(mermaManual)} registradas) / ${fmt(totalVentas)} en ventas`})}
     ${kpiCard({titulo:'Tiempo Servicio',valor:tiempoProm,valorFmt:tiempoProm==null?'Sin datos':tiempoProm.toFixed(1)+' min',target:T.tiempoServicioMaxMin,targetFmt:'<'+T.tiempoServicioMaxMin+' min',mejor:'menor',info:`de cobrar a entregar · mediana de ${ventasConTiempo.length} órdenes`})}
   </div>`;
 
@@ -18828,7 +19017,7 @@ function calcUpsell(ventas){
   vv.forEach(v=>{
     (v.items||[]).forEach(i=>{
       if(!i.sug) return;
-      const q=i.qty||1, imp=(i.precio||0)*q;
+      const q=i.qty||1, imp=((i.precio||0)-(i.sugCombo?.base||0))*q;
       monto+=imp; unidades+=q; conUpsell.add(v.id);
       const k=i.nombre||'—';
       porProd[k]=porProd[k]||{q:0,$:0}; porProd[k].q+=q; porProd[k].$+=imp;
@@ -18843,14 +19032,38 @@ function calcUpsell(ventas){
     promCon:prom(ticketsCon), promSin:prom(ticketsSin),
     top:Object.entries(porProd).sort((a,b)=>b[1].$-a[1].$).slice(0,4)};
 }
+// "Hazlo combo": cuántas veces se ofreció, cuántas se aceptó, por cajera
+function calcCombosOfrecidos(ventas){
+  const vv=ventas.filter(v=>!v.anulada&&v.comboOfrecido);
+  const porCaj={};
+  let acept=0, sube=0;
+  vv.forEach(v=>{
+    const k=v.vendedorNombre||'—';
+    const c=(porCaj[k]??={of:0,ac:0,$:0}); c.of++;
+    const lines=(v.items||[]).filter(i=>i.sugCombo);
+    if(lines.length){ c.ac++; acept++; const d=lines.reduce((a,i)=>a+((i.precio||0)-(i.sugCombo.base||0))*(i.qty||1),0); c.$+=d; sube+=d; }
+  });
+  return {ofrecidos:vv.length,aceptados:acept,sube:r2(sube),pct:vv.length?Math.round(acept/vv.length*100):0,
+    porCaj:Object.entries(porCaj).sort((a,b)=>b[1].of-a[1].of)};
+}
 function renderUpsell(ventas,label){
   const box=$('rp-upsell'); if(!box) return;
   const u=calcUpsell(ventas);
+  const cb=calcCombosOfrecidos(ventas);
+  const combosHtml=cb.ofrecidos?`<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);">
+    <div class="ct">Hazlo combo — se ofrece en caja cuando la orden trae una parte</div>
+    <div class="g3" style="margin:8px 0;">
+      <div style="text-align:center;"><div class="kv">${cb.ofrecidos}</div><div style="font-size:10px;color:var(--text3);">tickets donde se ofreció</div></div>
+      <div style="text-align:center;"><div class="kv gold">${cb.pct}%</div><div style="font-size:10px;color:var(--text3);">lo aceptaron (${cb.aceptados})</div></div>
+      <div style="text-align:center;"><div class="kv ag">+${fmt(cb.sube)}</div><div style="font-size:10px;color:var(--text3);">subió la venta</div></div>
+    </div>
+    ${cb.porCaj.map(([n,c])=>`<div class="sr" style="font-size:12px;"><span>${esc(n)}</span><span class="mono">${c.ac} de ${c.of} · ${c.of?Math.round(c.ac/c.of*100):0}% · +${fmt(r2(c.$))}</span></div>`).join('')}
+  </div>`:'';
   const head=`<div class="ct">Upsell — extras sugeridos en el POS</div>`;
   if(!u.unidades){
     box.innerHTML=head+`<p style="font-size:12px;color:var(--text3);margin:8px 0 0;">
       Sin extras vendidos por sugerencia en ${label}. La función se publicó el
-      <b>${UPSELL_DESDE}</b>: solo cuenta lo aceptado desde un chip a partir de esa fecha.</p>`;
+      <b>${UPSELL_DESDE}</b>: solo cuenta lo aceptado desde un chip a partir de esa fecha.</p>`+combosHtml;
     return;
   }
   const dif=u.promCon-u.promSin;
@@ -18862,7 +19075,7 @@ function renderUpsell(ventas,label){
       <div style="text-align:center;"><div class="kv ${dif>=0?'at':'ar'}">${dif>=0?'+':''}${fmt(dif)}</div><div style="font-size:10px;color:var(--text3);">vs ${fmt(u.promSin)} sin extra</div></div>
     </div>
     <div style="font-size:11px;color:var(--text2);margin-bottom:4px;">Lo que más se acepta:</div>
-    ${u.top.map(([n,d])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${d.q}× · ${fmt(d.$)}</span></div>`).join('')}`;
+    ${u.top.map(([n,d])=>`<div class="sr" style="font-size:12px;"><span>${n}</span><span class="mono ag">${d.q}× · ${fmt(d.$)}</span></div>`).join('')}`+combosHtml;
 }
 
 // ══════════════════════════════════════════════════════════════

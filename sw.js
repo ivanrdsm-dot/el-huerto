@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.52'; // Orden de compra con consumo real; cierre en palabras; KPIs corregidos; inventario rápido
+const CACHE_NAME = 'el-huerto-v15.53'; // Hazlo combo en caja; merma de la semana; recaptura sin falsos faltantes
 const ASSETS = [
   '/',
   '/index.html',
