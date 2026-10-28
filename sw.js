@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.53'; // Hazlo combo en caja; merma de la semana; recaptura sin falsos faltantes
+const CACHE_NAME = 'el-huerto-v15.54'; // Foto del ticket, quitar del menú, clientes por recuperar, dónde se tarda
 const ASSETS = [
   '/',
   '/index.html',

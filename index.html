@@ -1493,6 +1493,9 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div class="fg" style="margin:8px 0 0;"><label>¿Cuándo llegó la mercancía?</label><input type="date" id="mc-llegada" onchange="mcSetLlegada(this.value)"></div>
     <div style="font-size:11px;color:var(--text3);margin-top:4px;">Si fue sábado o domingo, el gasto cuenta en la semana que surte (el lunes). Si ya se contó el inventario después de que llegó, no se vuelve a sumar.</div>
+    <div class="fg" style="margin:8px 0 0;"><label>📷 Foto del ticket (se guarda con el gasto)</label>
+      <input type="file" accept="image/*" capture="environment" id="mc-foto" onchange="mcFoto(this)">
+      <div id="mc-foto-prev" style="font-size:11px;color:var(--text3);margin-top:3px;"></div></div>
   </div>
   <div class="card" style="padding:12px;margin-bottom:10px;">
     <div class="ct">Se está acabando — toca para agregar</div>
@@ -1912,6 +1915,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div id="lealtad-tabla" style="overflow-x:auto;"></div>
   </div>
   <div class="g4" style="margin-bottom:12px;" id="cl-kpis"></div>
+  <div id="cl-recuperar"></div>
   <div class="card">
     <div class="sh"><span class="ct" style="margin-bottom:0;">Directorio de Clientes</span>
       <input id="cl-q" placeholder="Buscar cliente…" oninput="renderClientes()" style="width:auto;min-width:180px;padding:6px 10px;font-size:12px;">
@@ -10554,6 +10558,62 @@ function llegadasDe(invId,desde){
   }
   return out;
 }
+// ══ LA FOTO DEL TICKET VIVE CON SU GASTO (28-oct) ══
+// Los tickets llegaban por chat y se cargaban a mano. Ahora la foto se
+// sube al registrar la compra (o se adjunta a un gasto ya capturado) y
+// queda guardada con él. Va comprimida (~1280 px, JPEG) en su propia
+// colección, que solo se lee al abrirla: no se carga con la app.
+function comprimirFoto(file,maxLado=1280,calidad=0.6){
+  return new Promise((ok,mal)=>{
+    const img=new Image(), url=URL.createObjectURL(file);
+    img.onload=()=>{
+      const k=Math.min(1,maxLado/Math.max(img.width,img.height));
+      const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k);
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      URL.revokeObjectURL(url);
+      let q=calidad, data=cv.toDataURL('image/jpeg',q);
+      while(data.length>900000&&q>0.3){ q-=0.1; data=cv.toDataURL('image/jpeg',q); }
+      ok(data);
+    };
+    img.onerror=()=>{URL.revokeObjectURL(url);mal(new Error('No se pudo leer la imagen'));};
+    img.src=url;
+  });
+}
+async function guardarFotoTicket(gastoId,data){
+  const ok=await fsSet('ticketsFotos',{id:gastoId,gastoId,data,ts:Date.now()});
+  if(!ok) return false;
+  const g=D.gastos.find(x=>x.id===gastoId);
+  if(g&&!g.foto){ const u={...g,foto:true}; await fsSet('gastos',u); const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=u; }
+  return true;
+}
+window.mcFoto=async inp=>{
+  const f=inp.files&&inp.files[0]; if(!f) return;
+  try{ MC.foto=await comprimirFoto(f); mcSave();
+    if($('mc-foto-prev')) $('mc-foto-prev').innerHTML=`✓ Foto lista (${Math.round(MC.foto.length/1024)} KB) — se guarda al registrar la compra`; }
+  catch(e){ toast('⚠ No se pudo leer la foto',2500,'warn'); }
+};
+window.verFotoTicket=async gastoId=>{
+  try{
+    const snap=await getDoc(docRef('ticketsFotos',gastoId));
+    const d=snap.exists()?snap.data():null;
+    if(!d?.data){toast('Este gasto no tiene foto',2200,'warn');return;}
+    const w=window.open('','_blank');
+    if(w){ w.document.write(`<title>Ticket</title><body style="margin:0;background:#111;display:flex;justify-content:center;"><img src="${d.data}" style="max-width:100%;height:auto;"></body>`); w.document.close(); }
+    else toast('Permite ventanas emergentes para ver la foto',3000,'warn');
+  }catch(e){ toast('⚠ No se pudo abrir la foto',2500,'warn'); }
+};
+window.adjuntarFotoGasto=gastoId=>{
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/*'; inp.capture='environment';
+  inp.onchange=async()=>{
+    const f=inp.files&&inp.files[0]; if(!f) return;
+    try{ const data=await comprimirFoto(f);
+      const ok=await guardarFotoTicket(gastoId,data);
+      toast(ok?'✓ Foto del ticket guardada':'❌ No se pudo guardar la foto',3000,ok?'':'error');
+      if(ok) renderGastos();
+    }catch(e){ toast('⚠ No se pudo leer la foto',2500,'warn'); }
+  };
+  inp.click();
+};
 let MC={prov:'',metodo:'efectivo',items:[]};
 function mcSave(){try{localStorage.setItem('h5compra_draft',JSON.stringify(MC));}catch(e){}}
 // Los oninput/onchange del HTML corren en scope global: ahí ni MC ni mcSave
@@ -10619,6 +10679,8 @@ function renderMercado(){
   if($('mc-prov')&&document.activeElement!==$('mc-prov'))$('mc-prov').value=MC.prov||'';
   if($('mc-metodo'))$('mc-metodo').value=MC.metodo||'efectivo';
   if($('mc-llegada')){ $('mc-llegada').max=today(); $('mc-llegada').value=MC.llegada||today(); }
+  if($('mc-foto-prev')) $('mc-foto-prev').innerHTML=MC.foto?`✓ Foto lista (${Math.round(MC.foto.length/1024)} KB)`:'';
+  if(!MC.foto&&$('mc-foto')) $('mc-foto').value='';
   renderMercadoSug();
   if($('mc-items'))$('mc-items').innerHTML=MC.items.map((x,ix)=>`
     <div class="card" id="mci-${ix}" style="padding:10px 12px;margin-bottom:8px;">
@@ -10676,6 +10738,7 @@ window.registrarCompra=async()=>{
   }
   if(partidas.some(p=>p.entro)){ await fsSet('gastos',{...g,partidas}); }
   if(porConteo.length) toast(`ℹ️ Ya contado después de que llegó, no se sumó otra vez: ${porConteo.join(', ')}`,6000);
+  if(MC.foto){ const okF=await guardarFotoTicket(g.id,MC.foto); if(!okF) toast('⚠ La compra quedó, pero la foto no se guardó: adjúntala desde Gastos',5000,'warn'); }
   logAudit('compra_mercado',{prov:MC.prov,total,articulos:listos.length,ticket:g.ticket,omitidos:omitidos.length?omitidos:undefined});
   MC={prov:'',metodo:'efectivo',items:[]};mcSave();
   renderMercado();
@@ -14104,6 +14167,7 @@ function renderGastos(){
       <td>${mi[r.metodo]||''}${r.pendientePago?' <span class="badge xb" style="background:#fff8e1;color:var(--goldd);">por pagar</span>':''}</td>
       <td class="mono ar fw7">${fmt(r.monto)}</td>
       <td style="display:flex;gap:3px;" onclick="event.stopPropagation();">
+        ${r.foto?`<button class="btn bs bxs" onclick="verFotoTicket(${r.id})" title="Ver foto del ticket">📷</button>`:`<button class="btn bs bxs" onclick="adjuntarFotoGasto(${r.id})" title="Adjuntar foto del ticket" style="opacity:.55;">📎</button>`}
         <button class="btn bs bxs" onclick="editGasto(${r.id})" title="Editar">✏️</button>
         <button class="btn bd bxs" onclick="delGasto(${r.id})" title="Eliminar">✕</button>
       </td>
@@ -14644,6 +14708,30 @@ function renderClientes(){
     <div class="card" style="text-align:center;"><div class="ct">Recurrentes (3+)</div><div class="kv gold">${recurrentes}</div></div>
     <div class="card" style="text-align:center;"><div class="ct">🆕 Nuevos este mes</div><div class="kv teal">${nuevosMes}</div></div>
     <div class="card" style="text-align:center;"><div class="ct">% ventas identificadas</div><div class="kv blue">${ventasTot>0?Math.round(ventasIdent/ventasTot*100):0}%</div><div style="font-size:10px;color:var(--text3);margin-top:2px;">Captura el cliente al cobrar para subirlo</div></div>`;
+  // ══ CLIENTES POR RECUPERAR (28-oct) ══
+  // 30% de clientes recurrentes contra una meta de 40%. Los que vinieron
+  // 2+ veces y llevan 14-60 días sin volver son los más fáciles de
+  // recuperar: se ordenan por lo que han gastado, con su favorito y un
+  // mensaje de WhatsApp listo (lo manda Iván, no el sistema).
+  const tdC=today();
+  const dias=f=>Math.round((new Date(tdC)-new Date(f))/86400000);
+  const recuperar=Object.values(map).filter(c=>c.visitas>=2&&dias(c.ultima)>=14&&dias(c.ultima)<=60)
+    .sort((a,b)=>b.total-a.total).slice(0,25);
+  if($('cl-recuperar')) $('cl-recuperar').innerHTML=recuperar.length?`<div class="card" style="margin-bottom:12px;border-left:3px solid var(--gold);">
+    <div class="ct">Por recuperar — venían seguido y llevan 2 a 8 semanas sin volver (${recuperar.length})</div>
+    <p style="font-size:11px;color:var(--text3);margin:2px 0 8px;">Ordenados por lo que han gastado. Si su nombre trae teléfono, el botón abre WhatsApp con el mensaje listo.</p>
+    ${recuperar.map(c=>{
+      const fav=Object.entries(c.prods).sort((a,b)=>b[1]-a[1])[0]?.[0]||'';
+      // El teléfono: del nombre capturado en caja o de su tarjeta de sellos
+      const nomN=normInvNombre(c.cliente.replace(/\d[\d\s-]{8,}\d/,''));
+      const tarjeta=nomN.length>=3?(D.lealtad||[]).find(l=>normInvNombre(l.nombre||'')===nomN&&l.tel):null;
+      const tel=((c.cliente.match(/\d[\d\s-]{8,}\d/)||[''])[0]||tarjeta?.tel||'').replace(/\D/g,'');
+      const nom=c.cliente.replace(/\d[\d\s-]{8,}\d/,'').trim().split(/\s+/)[0]||'';
+      const msg=`¡Hola${nom?' '+nom:''}! 🌱 Te extrañamos en El Huerto.${fav?` Tu ${fav} te está esperando`:''} — pásate esta semana.`;
+      return `<div class="sr" style="align-items:center;"><span style="font-size:12.5px;"><b>${esc(c.cliente)}</b>
+        <div style="font-size:11px;color:var(--text3);">${c.visitas} visitas · ${fmt(c.total)} · hace ${dias(c.ultima)} días${fav?' · le gusta '+esc(fav):''}</div></span>
+        ${tel.length>=10?`<a class="btn bp bxs" target="_blank" rel="noopener" href="https://wa.me/52${tel.slice(-10)}?text=${encodeURIComponent(msg)}">WhatsApp</a>`:'<span style="font-size:10.5px;color:var(--text3);">sin teléfono</span>'}</div>`;}).join('')}
+  </div>`:'';
   if(q) lista=lista.filter(c=>c.cliente.toLowerCase().includes(q));
   lista.sort((a,b)=>b.total-a.total);
   $('cl-tabla').innerHTML=lista.length===0?
@@ -16725,18 +16813,41 @@ function renderKpiComerciales(fechas){
     D.ventas.filter(v=>!v.anulada&&v.fecha>=f14).forEach(v=>(v.items||[]).forEach(i=>vendidos14.add(i.id)));
     const lentos=D.productos.filter(p=>p.activo&&p.cat!=='otro'&&!vendidos14.has(p.id));
     if(lentos.length>0){
+      // Cuándo se vendió por última vez y cuánto en 90 días: para decidir
+      const h90=new Date(hoy); h90.setDate(h90.getDate()-90); const f90=localDate(h90);
+      const info=p=>{ let ult='', n=0;
+        D.ventas.forEach(v=>{ if(v.anulada) return; (v.items||[]).forEach(i=>{ if(i.id!==p.id) return; if(v.fecha>ult) ult=v.fecha; if(v.fecha>=f90) n+=i.qty||1; }); });
+        return {ult,n}; };
+      const enCombo=new Set(Object.keys(COMBO_SLOTS||{}).map(Number));
       html+=`<div class="card" style="margin-top:14px;border-left:4px solid var(--gold);">
         <div class="ct">Baja Rotación — sin ventas en 14 días (${lentos.length})</div>
-        <p style="font-size:10.5px;color:var(--text3);margin:2px 0 8px;">Candidatos a promoción, rediseño o salir del menú.</p>
-        <div style="display:flex;flex-wrap:wrap;gap:6px;">
-          ${lentos.map(p=>`<span class="badge xy" style="font-size:10.5px;padding:4px 10px;">${p.nombre} · ${fmt(p.precio)}</span>`).join('')}
-        </div>
+        <p style="font-size:10.5px;color:var(--text3);margin:2px 0 8px;">Ocupan lugar en la caja, insumos en bodega y cosas que contar. Quítalos del menú (no se borran: se pueden regresar) o conviértelos en promoción.</p>
+        ${lentos.map(p=>{const x=info(p); return `<div class="sr" style="align-items:center;"><span style="font-size:12.5px;">${esc(p.nombre)} · ${fmt(p.precio)}
+            <div style="font-size:11px;color:var(--text3);">${x.ult?`última venta ${fmtFecha(x.ult)}`:'nunca se ha vendido'} · ${x.n} en 90 días${enCombo.has(p.id)?' · <b style="color:var(--goldd);">la caja lo ofrece como "Hazlo combo"</b>':''}</div></span>
+          <button class="btn bs bxs" onclick="quitarDelMenu(${p.id})">Quitar del menú</button></div>`;}).join('')}
       </div>`;
     }
+    const fuera=D.productos.filter(p=>p.activo===false&&p.bajaRotacion);
+    if(fuera.length) html+=`<div style="font-size:11px;color:var(--text3);margin-top:6px;">Quitados por baja rotación: ${fuera.map(p=>`${esc(p.nombre)} <a href="#" onclick="regresarAlMenu(${p.id});return false;">regresar</a>`).join(' · ')}</div>`;
   }catch(e){}
   $('kpi-content').innerHTML=html;
 }
 
+window.quitarDelMenu=async id=>{
+  const p=D.productos.find(x=>x.id===id); if(!p) return;
+  if(!confirm(`¿Quitar "${p.nombre}" del menú?\n\nDeja de salir en la caja. No se borra: lo puedes regresar desde aquí mismo.`)) return;
+  const u={...p,activo:false,bajaRotacion:today()};
+  await fsSet('productos',u); const ix=D.productos.findIndex(x=>x.id===id); if(ix>=0) D.productos[ix]=u;
+  logAudit('menu_baja',{producto:p.nombre,motivo:'Sin ventas en 14 días'});
+  toast(`✓ ${p.nombre} fuera del menú`,2500); renderKPIs();
+};
+window.regresarAlMenu=async id=>{
+  const p=D.productos.find(x=>x.id===id); if(!p) return;
+  const u={...p,activo:true}; delete u.bajaRotacion;
+  await fsSet('productos',u); const ix=D.productos.findIndex(x=>x.id===id); if(ix>=0) D.productos[ix]=u;
+  logAudit('menu_alta',{producto:p.nombre});
+  toast(`✓ ${p.nombre} de vuelta en el menú`,2500); renderKPIs();
+};
 // ─── PESTAÑA MARKETING ───
 function renderKpiMarketing(fechas){
   const T=CFG.kpiTargets;
@@ -16861,6 +16972,25 @@ function renderKpiOperacion(fechas){
     ${kpiCard({titulo:'Mermas (% ventas)',valor:pctMermas,valorFmt:pctMermas.toFixed(2)+'%',target:T.mermasMaxPct,targetFmt:'<'+T.mermasMaxPct+'%',mejor:'menor',info:`${fmt(mermas)} (${fmt(mermaConteo)} se perdió en los conteos, artículo por artículo + ${fmt(mermaManual)} registradas) / ${fmt(totalVentas)} en ventas`})}
     ${kpiCard({titulo:'Tiempo Servicio',valor:tiempoProm,valorFmt:tiempoProm==null?'Sin datos':tiempoProm.toFixed(1)+' min',target:T.tiempoServicioMaxMin,targetFmt:'<'+T.tiempoServicioMaxMin+' min',mejor:'menor',info:`de cobrar a entregar · mediana de ${ventasConTiempo.length} órdenes`})}
   </div>`;
+
+  // ── Dónde se tarda: por hora del día y por tipo de producto ──
+  const conT=ventas.filter(v=>v.prep?.estado==='entregada'&&v.prep.tsEntrega).map(v=>({v,t:(v.prep.tsEntrega-(v.tsCobro||v.id))/60000})).filter(x=>x.t>0&&x.t<=60);
+  const med=a=>{const s=[...a].sort((x,y)=>x-y);return s.length?s[Math.floor(s.length/2)]:null;};
+  const porHora={}, porCat={};
+  conT.forEach(({v,t})=>{
+    const h=new Date(v.tsCobro||v.id).getHours(); (porHora[h]??=[]).push(t);
+    new Set((v.items||[]).map(i=>D.productos.find(p=>p.id===i.id)?.cat).filter(Boolean)).forEach(c=>(porCat[c]??=[]).push(t));
+  });
+  const meta=T.tiempoServicioMaxMin||4;
+  const filaT=(et,arr)=>{const m=med(arr);return `<div class="sr" style="font-size:12px;"><span>${et} <span style="color:var(--text3);">(${arr.length})</span></span><span class="mono fw7" style="color:${m>meta?'var(--red)':'var(--accent)'};">${m.toFixed(1)} min</span></div>`;};
+  if(conT.length>=10) html+=`<div class="card" style="margin-top:14px;">
+    <div class="ct">Dónde se tarda el servicio — de cobrar a entregar (meta &lt;${meta} min)</div>
+    <div class="g2" style="gap:14px;margin-top:6px;">
+      <div><div style="font-size:11.5px;font-weight:700;margin-bottom:4px;">Por hora</div>
+        ${Object.entries(porHora).filter(([,a])=>a.length>=3).sort((a,b)=>a[0]-b[0]).map(([h,a])=>filaT(`${h}:00`,a)).join('')}</div>
+      <div><div style="font-size:11.5px;font-weight:700;margin-bottom:4px;">Por lo que lleva la orden</div>
+        ${Object.entries(porCat).filter(([,a])=>a.length>=3).sort((a,b)=>med(b[1])-med(a[1])).map(([c,a])=>filaT((catPOS[c]||c).replace(/^\S+\s/,''),a)).join('')}</div>
+    </div></div>`;
 
   // Productividad por empleado
   const empData=Object.entries(empProd).map(([id,d])=>{
