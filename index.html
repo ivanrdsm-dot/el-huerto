@@ -3233,6 +3233,7 @@ async function completeInit(){
   await migCompras21Oct();
   await migValentinaConteos27Oct();
   await migEsperadosInflados27Oct();
+  await migSurtido26Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -4313,6 +4314,7 @@ const PROVEEDORES=[
   {n:'La Comer',                    cat:'proveedor', alias:['lacomer','lacomerbosquereal']},
   {n:'Chilapita',                   cat:'proveedor', alias:['chilapita','chilapitaazcapotzalco']},
   {n:'Saavedra Market',             cat:'proveedor', alias:['saavedramarket','saavedra']},
+  {n:'Sigma Alimentos',             cat:'proveedor', alias:['sigmaalimentos','sigma','sigmaalimentoscomercial','yoplait']},
   {n:'Universidad Panamericana',    cat:'renta',     alias:['panamericana','universidadpanamericana','up','ciudadup']},
   {n:'IMSS',                        cat:'varios',    alias:['imss']},
   {n:'Nómina interna',              cat:'nomina',    alias:['nominainterna','nomina']},
@@ -6137,6 +6139,127 @@ async function migEsperadosInflados27Oct(){
     }
   }
   if(hechos.length) logAudit('inventario_correccion',{cambios:hechos,motivo:'Esperado inflado por recaptura del mismo día'});
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// LA SEMANA DEL 26-OCT — el surtido de $7,000 y Costco del 29
+// Iván, 30-oct: "estos son los 7,000 que apartamos de mandado; sobró un
+// poco". Siete tickets del domingo 25 y lunes 26 ($5,867.88) y la
+// factura de Costco del jueves 29 ($1,212.80). La fruta de esta semana
+// no trae ticket: no se inventa, se le pregunta.
+//
+// Fechas: lo del domingo cuenta el lunes 26 (fechaTicket 25). La
+// mercancía entra UNA vez (entrarMercancia, con el ticket como marca):
+// el conteo del 26 ya la vio, así que se suma a lo que ESE conteo
+// esperaba — de ahí salía la "sobra" de $3,115 del lunes.
+//
+// Precio: el promedio ponderado de lo que se compró esta semana (el
+// serrano de HM a $575/kg y el de Costco a $649/kg dan $597.77/kg). El
+// jitomate de Costco ($66/kg) no mueve el precio: el de diario es el de
+// mercado ($22/kg). Lo que no es insumo (estacionamiento, cuchilla, el
+// pastelito) va al gasto sin tocar inventario.
+// Renglón: [concepto, artículo|null, cantidad, unidad, importe, {sinPrecio}]
+// ═══════════════════════════════════════════════════════════
+const SURTIDO_26OCT=[
+  {ticket:'COSTCO-7180020104102626',prov:'Costco',cat:'costco',metodo:'efectivo',fecha:'2026-10-26',llegada:'2026-10-26',yaContado:true,
+   notas:'Interlomas · 26-oct 10:58 · efectivo. Subtotal $1,864.45 − descuento $41.90. Importes netos.',
+   p:[['KS leche deslactosada light 12 L','Leche deslactosada',12,'L',265.00],
+      ['KS bebida de almendra 6 pz','Leche de almendra',6,'pz',149.00],
+      ['Tiras de pechuga de pollo 1.36 kg','Tiras de pollo',1360,'g',359.00],
+      ['Ensalada italiana 908 g ×3','Lechuga',2724,'g',179.65],
+      ['Espinaca 454 g','Espinaca',454,'g',92.90],
+      ['Chai latte 700 g','Chai',700,'g',319.00],
+      ['Susalitas 20 × 50 g','Susalias',20,'pz',299.00],
+      ['Crema de cacahuate','Crema de cacahuate',1,'pz',159.00]]},
+  {ticket:'LACOMER-PAN-6062',prov:'La Comer',cat:'proveedor',metodo:'tarjeta',fecha:'2026-10-26',fechaTicket:'2026-10-25',llegada:'2026-10-26',yaContado:true,
+   notas:'Bosque Real · pedido 6062 del 25-oct, entregado el 26 a las 4 pm. Tarjeta de débito.',
+   p:[['Pan precocido para panini 150 pz × $5.80','Pan para panini',150,'pz',870.00],
+      ['Estacionamiento',null,1,'pz',5.00]]},
+  {ticket:'HM-995675',prov:'HM Central de Alimentos',cat:'proveedor',metodo:'efectivo',fecha:'2026-10-26',llegada:'2026-10-26',yaContado:true,
+   notas:'Ticket 995675 · 26-oct 07:49. Chorizo: la pieza es de 1 kg (Iván).',
+   p:[['Queso mozzarella cubicado Billy 5 kg','Queso mozzarella',5000,'g',361.00],
+      ['Queso panela 0.915 kg × $105','Queso panela',915,'g',96.08],
+      ['Chorizo Wunsch pamplona 1 pz','Chorizo pamplona',1000,'g',295.00],
+      ['Jamón serrano español 2 kg × $575','Jamón serrano',2000,'g',1150.00],
+      ['Jamón serrano español 0.250 kg × $575','Jamón serrano',250,'g',143.75],
+      ['Pechuga de pavo San Ángel 2 kg × $120','Pechuga de pavo',2000,'g',240.00]]},
+  {ticket:'MOLINERA-27233',prov:'La Molinera de Abastos',cat:'proveedor',metodo:'efectivo',fecha:'2026-10-26',llegada:'2026-10-26',yaContado:true,
+   notas:'Ticket 207066 · folio 27233 · 26-oct 07:53. IEPS $4.00 del cacahuate japonés. El chamoy ahora es galón de 4.1 L: su precio por bote no se tocó.',
+   p:[['Salsa botanera 4 L','Mega botanera',1,'bote',88.00],
+      ['Chamoy mega 4.1 L','Chamoy',1,'bote',106.00,{sinPrecio:true}],
+      ['Salsa Valentina roja 1 L','Valentina',1,'bote',33.00],
+      ['Avena en hojuela 2 kg × $16','Avena',2000,'g',32.00],
+      ['Cacahuate japonés 1 kg (con IEPS)','Cacahuate japonés',1000,'g',54.00]]},
+  {ticket:'PLASTIDORO-42511',prov:'Plastidoro',cat:'proveedor',metodo:'efectivo',fecha:'2026-10-26',llegada:'2026-10-26',yaContado:true,
+   notas:'Nota AG-42511 · 26-oct 08:23.',
+   p:[['Bolsa semikraft No. 4 blanca','Bolsa semikraft #4',100,'pz',54.00],
+      ['Tenedor sopero Jessy','Tenedores',150,'pz',42.00],
+      ['Contenedor papel 12 oz Inix','Contenedor papel 12 oz',100,'pz',170.00]]},
+  {ticket:'LACOMER-26OCT26-LIMPIEZA',prov:'La Comer',cat:'varios',metodo:'tarjeta',fecha:'2026-10-26',llegada:'2026-10-26',yaContado:true,
+   notas:'Lomas Anáhuac · 26-oct 14:33 · tarjeta. Limpieza y una cuchilla; el Fabuloso no dice cuántos litros, entra al gasto y el conteo lo afina.',
+   p:[['Limpiador Fabuloso',null,1,'pz',56.00],
+      ['Detergente Salvo','Salvo (lavatrastes)',1,'bote',67.50],
+      ['Pastelito Kinder',null,1,'pz',19.00],
+      ['Cuchilla Rosan',null,1,'pz',114.00]]},
+  {ticket:'SIGMA-25OCT26',prov:'Sigma Alimentos',cat:'proveedor',metodo:'efectivo',fecha:'2026-10-26',fechaTicket:'2026-10-25',llegada:'2026-10-25',yaContado:true,
+   notas:'Central de Abasto, bodega G-49 · 25-oct.',
+   p:[['Yogurt natural Yoplait 1 L','Yogurth natural',1,'L',49.00]]},
+  {ticket:'COSTCO-ARG5945651',prov:'Costco',cat:'costco',metodo:'tarjeta',fecha:'2026-10-29',llegada:'2026-10-29',
+   notas:'CFDI ARG 5945651 · 29-oct 12:34 · tarjeta de débito. Importes netos (descuento $27.85 ya repartido).',
+   p:[['Aceituna negra rodajas 3 kg Carbonell','Aceitunas negras',3000,'g',179.00],
+      ['Ensalada italiana 908 g','Lechuga',908,'g',59.90],
+      ['KS leche deslactosada light 12 L','Leche deslactosada',12,'L',265.00],
+      ['Tomate en racimo 907 g','Jitomate',907,'g',59.90,{sinPrecio:true}],
+      ['Jamón serrano gran reserva 10 × 100 g','Jamón serrano',1000,'g',649.00]]},
+];
+const NUEVOS_26OCT=[{nombre:'Contenedor papel 12 oz',cat:'empaque',catOf:'desechables',unit:'pz',unidadOf:'pz'}];
+async function migSurtido26Oct(){
+  const migKey='h5surtido_26oct26';
+  if(await migDone(migKey)) return;
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+  let nid=Date.now();
+  for(const a of NUEVOS_26OCT) if(!buscar(a.nombre)){
+    const nuevo={id:++nid,qty:0,min:0,precio:0,...a}; await fsSet('inventario',nuevo); D.inventario.push(nuevo); }
+  // Precio: promedio ponderado de la semana por artículo
+  const acum={};
+  for(const g of SURTIDO_26OCT) for(const [c,art,q,u,imp,o] of g.p){
+    if(!art||o?.sinPrecio) continue;
+    const inv=buscar(art); if(!inv) continue;
+    const qi=qtyToInvUnit(q,u,inv.unit); if(qi==null||!qi) continue;
+    const x=(acum[inv.id]??={q:0,i:0}); x.q+=qi; x.i+=imp;
+  }
+  const precios=[];
+  for(const [id,x] of Object.entries(acum)){
+    const inv=D.inventario.find(i=>String(i.id)===id); if(!inv) continue;
+    const precio=Math.round(x.i/x.q*1000000)/1000000;
+    if(Math.abs((inv.precio||0)-precio)<0.000001) continue;
+    precios.push(`${inv.nombre}: $${inv.precio||0} → $${precio}/${inv.unit}`);
+    inv.precio=precio; await fsSet('inventario',inv);
+  }
+  // Mercancía (una vez, con el ticket como marca) y gastos
+  const hechos=[];
+  let gid=Date.now()+7000;
+  for(const g of SURTIDO_26OCT){
+    const partidas=[];
+    for(const [c,art,q,u,imp] of g.p){
+      const pt={c,q,u,i:imp,...(art?{art}:{})};
+      const inv=art&&buscar(art);
+      if(inv){
+        const qi=qtyToInvUnit(q,u,inv.unit);
+        if(qi!=null){ const via=await entrarMercancia(inv,qi,g.llegada,g.ticket,g.yaContado);
+          pt.entro=via==='ya'?'conteo':via; hechos.push(`${inv.nombre}: ${q} ${u} → ${via}`); }
+      }
+      partidas.push(pt);
+    }
+    if(!D.gastos.find(x=>x.ticket===g.ticket)){
+      const monto=r2(partidas.reduce((a,x)=>a+x.i,0));
+      await fsSet('gastos',{id:++gid,fecha:g.fecha,...(g.fechaTicket?{fechaTicket:g.fechaTicket}:{}),ticket:g.ticket,
+        prov:g.prov,cat:g.cat,tipoEstrategico:'operacion',metodo:g.metodo,monto,partidas,notas:g.notas});
+    }
+  }
+  logAudit('compras_registradas',{lote:'semana del 26-oct',precios,inventario:hechos,
+    motivo:'Surtido de $7,000 (tickets del 25 y 26-oct) y Costco del 29-oct'});
+  toast(`✓ Semana del 26-oct: ${SURTIDO_26OCT.length} gastos registrados · ${precios.length} precios al día`,6000);
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){
@@ -10521,26 +10644,35 @@ async function entrarMercancia(inv,q,llegada,ref,yaContado){
   const caps=D.invDiario.filter(c=>c.productoId===inv.id)
     .sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||'')||(b.ts||0)-(a.ts||0));
   const ult=caps[0];
-  if(ref&&((inv.entradas||[]).includes(ref)||(ult?.entradas||[]).includes(ref))) return 'ya';
+  if(ref&&((inv.entradas||[]).includes(ref)||caps.some(c=>(c.entradas||[]).includes(ref)))) return 'ya';
   const marca=arr=>ref?[...(arr||[]),ref].slice(-20):arr;
+  // El conteo que "vio" la mercancía es el PRIMERO después de que llegó,
+  // no el último: si llegó el lunes y hoy es jueves, la sobra apareció
+  // en el conteo del lunes y ahí es donde va a lo esperado.
   if(ult&&((ult.fecha||'')>llegada||(yaContado&&(ult.fecha||'')>=llegada))){
-    let upd=null;
-    if(ult.esperado!=null){
-      const base=ult.esperadoAntesCompras??ult.esperado;
-      const antes=ult.comprasEsperado??(ult.esperadoAntesCompras!=null?r2(ult.esperado-ult.esperadoAntesCompras):0);
-      const llego=r2(antes+q), esperado=r2(base+llego);
-      upd={...ult,esperadoAntesCompras:base,comprasEsperado:llego,esperado,diferencia:r2((ult.qty||0)-esperado),...(ref?{entradas:marca(ult.entradas)}:{})};
-    } else if(ref) upd={...ult,entradas:marca(ult.entradas)};
-    if(upd){
-      await fsSet('invDiario',upd);
-      const ix=D.invDiario.findIndex(x=>x.id===ult.id); if(ix>=0) D.invDiario[ix]=upd;
-    }
-    return 'conteo';
+    const primero=[...caps].reverse().find(c=>(c.fecha||'')>llegada||(yaContado&&(c.fecha||'')>=llegada))||ult;
+    return await sumarAlEsperado(primero,q,ref?marca:null);
   }
   inv.qty=Math.round(((inv.qty||0)+q)*1000)/1000;
   if(ref) inv.entradas=marca(inv.entradas);
   await fsSet('inventario',inv);
   return 'stock';
+}
+// `marca` (o null): agrega el ticket a `entradas` para que no se repita
+async function sumarAlEsperado(c,q,marca){
+  const ent=marca?{entradas:marca(c.entradas)}:{};
+  let upd;
+  if(c.esperado!=null){
+    const base=c.esperadoAntesCompras??c.esperado;
+    const antes=c.comprasEsperado??(c.esperadoAntesCompras!=null?r2(c.esperado-c.esperadoAntesCompras):0);
+    const llego=r2(antes+q), esperado=r2(base+llego);
+    upd={...c,esperadoAntesCompras:base,comprasEsperado:llego,esperado,diferencia:r2((c.qty||0)-esperado),...ent};
+  } else upd={...c,...ent};
+  if(upd.esperado!==c.esperado||JSON.stringify(upd.entradas)!==JSON.stringify(c.entradas)){
+    await fsSet('invDiario',upd);
+    const ix=D.invDiario.findIndex(x=>x.id===c.id); if(ix>=0) D.invDiario[ix]=upd;
+  }
+  return 'conteo';
 }
 // Lo que llegó de un artículo desde una fecha (para avisar al contar).
 function llegadasDe(invId,desde){

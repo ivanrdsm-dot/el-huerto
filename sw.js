@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.54'; // Foto del ticket, quitar del menú, clientes por recuperar, dónde se tarda
+const CACHE_NAME = 'el-huerto-v15.55'; // Surtido del 26-oct y Costco del 29-oct
 const ASSETS = [
   '/',
   '/index.html',
