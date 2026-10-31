@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.55'; // Surtido del 26-oct y Costco del 29-oct
+const CACHE_NAME = 'el-huerto-v15.56'; // La fruta del 25-oct (lo que faltaba de los $7,000)
 const ASSETS = [
   '/',
   '/index.html',

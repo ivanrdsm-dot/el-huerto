@@ -3234,6 +3234,7 @@ async function completeInit(){
   await migValentinaConteos27Oct();
   await migEsperadosInflados27Oct();
   await migSurtido26Oct();
+  await migFruta26Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6220,9 +6221,18 @@ async function migSurtido26Oct(){
   let nid=Date.now();
   for(const a of NUEVOS_26OCT) if(!buscar(a.nombre)){
     const nuevo={id:++nid,qty:0,min:0,precio:0,...a}; await fsSet('inventario',nuevo); D.inventario.push(nuevo); }
-  // Precio: promedio ponderado de la semana por artículo
+  const {precios,hechos}=await registrarLote(SURTIDO_26OCT);
+  logAudit('compras_registradas',{lote:'semana del 26-oct',precios,inventario:hechos,
+    motivo:'Surtido de $7,000 (tickets del 25 y 26-oct) y Costco del 29-oct'});
+  toast(`✓ Semana del 26-oct: ${SURTIDO_26OCT.length} gastos registrados · ${precios.length} precios al día`,6000);
+  await markMig(migKey);
+}
+// Un lote de tickets: precio (promedio ponderado del lote por artículo),
+// mercancía (una vez, con el ticket como marca) y el gasto si no existe.
+async function registrarLote(lote){
+  const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
   const acum={};
-  for(const g of SURTIDO_26OCT) for(const [c,art,q,u,imp,o] of g.p){
+  for(const g of lote) for(const [c,art,q,u,imp,o] of g.p){
     if(!art||o?.sinPrecio) continue;
     const inv=buscar(art); if(!inv) continue;
     const qi=qtyToInvUnit(q,u,inv.unit); if(qi==null||!qi) continue;
@@ -6239,7 +6249,7 @@ async function migSurtido26Oct(){
   // Mercancía (una vez, con el ticket como marca) y gastos
   const hechos=[];
   let gid=Date.now()+7000;
-  for(const g of SURTIDO_26OCT){
+  for(const g of lote){
     const partidas=[];
     for(const [c,art,q,u,imp] of g.p){
       const pt={c,q,u,i:imp,...(art?{art}:{})};
@@ -6257,9 +6267,38 @@ async function migSurtido26Oct(){
         prov:g.prov,cat:g.cat,tipoEstrategico:'operacion',metodo:g.metodo,monto,partidas,notas:g.notas});
     }
   }
-  logAudit('compras_registradas',{lote:'semana del 26-oct',precios,inventario:hechos,
-    motivo:'Surtido de $7,000 (tickets del 25 y 26-oct) y Costco del 29-oct'});
-  toast(`✓ Semana del 26-oct: ${SURTIDO_26OCT.length} gastos registrados · ${precios.length} precios al día`,6000);
+  return {precios,hechos};
+}
+// ═══════════════════════════════════════════════════════════
+// LA FRUTA DEL 25-OCT — lo que faltaba de los $7,000
+//
+// Sin ticket: Iván pasó precio y cantidad de cada cosa (31-oct). Con
+// esto el surtido suma $6,681.88 y sobran $318.12 de los $7,000. Va a
+// Reyes Ramiro como toda la fruta. Se compró el domingo con lo demás:
+// cuenta el lunes 26 y el conteo de ese día ya la tenía.
+// ═══════════════════════════════════════════════════════════
+const FRUTA_26OCT=[
+  {ticket:'MERCADO-25OCT26',prov:'Reyes Ramiro',cat:'proveedor',metodo:'efectivo',fecha:'2026-10-26',fechaTicket:'2026-10-25',llegada:'2026-10-26',yaContado:true,
+   notas:'Sin ticket: lo que faltaba de los $7,000 del surtido (sobraron $318.12). Varios puestos, englobado con Reyes Ramiro. Precios y cantidades de Iván (31-oct).',
+   p:[['Plátano 8 kg × $15','Plátano',8000,'g',120.00],
+      ['Fresa 1 kg × $60','Fresa',1000,'g',60.00],
+      ['Manzana 1 kg × $50','Manzana',1000,'g',50.00],
+      ['Piña 3 pz × $40','Piña',3,'pz',120.00],
+      ['Pepino 9 kg × $12','Pepino',9000,'g',108.00],
+      ['Jícama 7 kg × $17','Jícama',7000,'g',119.00],
+      ['Zanahoria 4 kg × $9','Zanahoria',4000,'g',36.00],
+      ['Limón 2 kg × $16','Limón agrio',2000,'g',32.00],
+      ['Aguacate 2 kg × $30','Aguacate',2000,'g',60.00],
+      ['Jitomate cherry 1 kg × $65','Tomate cherry',1000,'g',65.00],
+      ['Jitomate 2 kg × $22','Jitomate',2000,'g',44.00]]},
+];
+async function migFruta26Oct(){
+  const migKey='h5fruta_26oct26';
+  if(await migDone(migKey)) return;
+  const {precios,hechos}=await registrarLote(FRUTA_26OCT);
+  logAudit('compras_registradas',{lote:'fruta del 25-oct',precios,inventario:hechos,
+    motivo:'Lo que faltaba del surtido de $7,000 de la semana del 26-oct'});
+  toast(`✓ Fruta del 25-oct: $814 registrados · ${precios.length} precios al día`,6000);
   await markMig(migKey);
 }
 async function migSurtido18OctArt(){
