@@ -3236,6 +3236,7 @@ async function completeInit(){
   await migSurtido26Oct();
   await migFruta26Oct();
   await migFabulosoYKinder31Oct();
+  await migFacturaCostco26Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6164,11 +6165,11 @@ async function migEsperadosInflados27Oct(){
 // ═══════════════════════════════════════════════════════════
 const SURTIDO_26OCT=[
   {ticket:'COSTCO-7180020104102626',prov:'Costco',cat:'costco',metodo:'efectivo',fecha:'2026-10-26',llegada:'2026-10-26',yaContado:true,
-   notas:'Interlomas · 26-oct 10:58 · efectivo. Subtotal $1,864.45 − descuento $41.90. Importes netos.',
+   notas:'Interlomas · lunes 26-oct 10:58 · efectivo. Factura CFDI ARG 5940264: subtotal $1,864.18 − descuento $41.58 = $1,822.60. Importes netos.',
    p:[['KS leche deslactosada light 12 L','Leche deslactosada',12,'L',265.00],
       ['KS bebida de almendra 6 pz','Leche de almendra',6,'pz',149.00],
       ['Tiras de pechuga de pollo 1.36 kg','Tiras de pollo',1360,'g',359.00],
-      ['Ensalada italiana 908 g ×3','Lechuga',2724,'g',179.65],
+      ['Ensalada italiana 908 g ×3','Lechuga',2724,'g',179.70],
       ['Espinaca 454 g','Espinaca',454,'g',92.90],
       ['Chai latte 700 g','Chai',700,'g',319.00],
       ['Susalitas 20 × 50 g','Susalias',20,'pz',299.00],
@@ -6316,6 +6317,26 @@ async function migFabulosoYKinder31Oct(){
     logAudit('gasto_corregido',{ticket:tk,antes:g.monto,despues:monto,
       motivo:'Pastelito Kinder personal fuera del gasto; Fabuloso 1.5 L al inventario'});
   }
+  await markMig(migKey);
+}
+// 31-oct — Llegó la factura del Costco del lunes 26 (CFDI ARG 5940264).
+// Es el mismo ticket que ya estaba: se le pega el folio y se corrige la
+// ensalada ($179.65 → $179.70, la factura reparte el descuento distinto).
+async function migFacturaCostco26Oct(){
+  const migKey='h5factura_costco_26oct26';
+  if(await migDone(migKey)) return;
+  const g=D.gastos.find(x=>x.ticket==='COSTCO-7180020104102626');
+  if(g){
+    const partidas=(g.partidas||[]).map(p=>/ensalada/i.test(p.c||'')?{...p,i:179.70}:p);
+    const monto=r2(partidas.reduce((a,x)=>a+(x.i||0),0));
+    await fsSet('gastos',{...g,partidas,monto,factura:'ARG 5940264',
+      notas:'Interlomas · lunes 26-oct 10:58 · efectivo. Factura CFDI ARG 5940264: subtotal $1,864.18 − descuento $41.58 = $1,822.60. Importes netos.'});
+    logAudit('gasto_corregido',{ticket:g.ticket,antes:g.monto,despues:monto,factura:'ARG 5940264',
+      motivo:'Factura del Costco del 26-oct asociada al ticket'});
+  }
+  // Lechuga: promedio de la semana con el importe de la factura
+  const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Lechuga'));
+  if(inv&&inv.unit==='g'){ inv.precio=Math.round((179.70+59.90)/(2724+908)*1000000)/1000000; await fsSet('inventario',inv); }
   await markMig(migKey);
 }
 async function migFruta26Oct(){

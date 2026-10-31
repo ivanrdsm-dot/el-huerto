@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.57'; // Fabuloso 1.5 L y sin el pastelito Kinder
+const CACHE_NAME = 'el-huerto-v15.58'; // Factura del Costco del 26-oct
 const ASSETS = [
   '/',
   '/index.html',
