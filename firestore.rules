@@ -66,6 +66,8 @@ service cloud.firestore {
 
     // ── Solo el dueño ──
     match /nomPagos/{id}  { allow read, write: if esAdmin(); }
+    // Fondo de ahorro de las chicas: saldo de cada una, solo el dueño (31-oct)
+    match /fondoAhorro/{id} { allow read, write: if esAdmin(); }
     match /gastos/{id}    { allow read, write: if esAdmin(); }
     match /empleados/{id} { allow read: if esStaff(); allow write: if esAdmin(); }
     match /usuarios/{id} {
@@ -90,9 +92,9 @@ service cloud.firestore {
     // unión permisiva volvería a conceder lo que arriba se restringió.
     match /{col}/{docId} {
       allow read: if esStaff()
-        && !(col in ['nomPagos','gastos','usuarios','auditLog']);
+        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro']);
       allow write: if esStaff()
-        && !(col in ['nomPagos','gastos','usuarios','auditLog','empleados','productos']);
+        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','empleados','productos']);
     }
   }
 }

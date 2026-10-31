@@ -1792,6 +1792,7 @@ nav{padding-top:env(safe-area-inset-top);}
   </div>
   <div id="g-faltantes"></div>
   <div id="g-porpagar"></div>
+  <div id="g-fijos"></div>
   <div id="g-sinprov"></div>
   <div class="card" style="margin-top:10px;">
     <div class="sh">
@@ -1827,6 +1828,8 @@ nav{padding-top:env(safe-area-inset-top);}
   <div id="nom-kpis" class="g4" style="margin-bottom:12px;"></div>
   <!-- Propinas de tarjeta acumuladas en la semana (de los cortes) -->
   <div id="nom-propinas" style="margin-bottom:12px;"></div>
+  <!-- Fondo de ahorro: lo que pone cada una y lo que pone el negocio -->
+  <div id="nom-ahorro" style="margin-bottom:12px;"></div>
   <div id="emp-nom-cards"></div>
   <!-- EXTRAS / DEDUCCIONES -->
   <div class="card" style="margin-top:10px;margin-bottom:10px;">
@@ -2912,7 +2915,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[],usuarios:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[],usuarios:[],fondoAhorro:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
@@ -3238,6 +3241,7 @@ async function completeInit(){
   await migFabulosoYKinder31Oct();
   await migFacturaCostco26Oct();
   await migNotaFruta26Oct();
+  await migFondoAhorro31Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -3285,7 +3289,7 @@ function listenAll(){
   // Con el menú QR repartido en toda la universidad eso dejaba de ser
   // teórico. Cada modo baja solo lo suyo y ninguno migra nada.
   // ══════════════════════════════════════════════════════════════
-  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos','usuarios'];
+  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos','usuarios','fondoAhorro'];
   const publico = MODO_MENU || MODO_PANTALLA || !!_tarjetaCode;
   const cols = MODO_PANTALLA ? []
     : MODO_MENU ? ['productos']
@@ -3328,7 +3332,7 @@ function listenAll(){
       // regla haciendo su trabajo. Avisar de eso entrena a ignorar la
       // barra, y entonces el día que falle algo de verdad tampoco se
       // ve. Solo se avisa de lo que ese rol SÍ debería poder leer.
-      const porRol=['gastos','nomPagos','usuarios','auditLog'];
+      const porRol=['gastos','nomPagos','usuarios','auditLog','fondoAhorro'];
       if(!(err.code==='permission-denied' && porRol.includes(col))) marcaColeccionCaida(col,err.code||err.message);
       if(!READY){
         loaded.add(col);
@@ -4320,7 +4324,8 @@ const PROVEEDORES=[
   {n:'Saavedra Market',             cat:'proveedor', alias:['saavedramarket','saavedra']},
   {n:'Sigma Alimentos',             cat:'proveedor', alias:['sigmaalimentos','sigma','sigmaalimentoscomercial','yoplait']},
   {n:'Universidad Panamericana',    cat:'renta',     alias:['panamericana','universidadpanamericana','up','ciudadup']},
-  {n:'IMSS',                        cat:'varios',    alias:['imss']},
+  {n:'IMSS',                        cat:'servicios', alias:['imss','segurosocial']},
+  {n:'Banamex',                     cat:'varios',    alias:['banamex','citibanamex']},
   {n:'Nómina interna',              cat:'nomina',    alias:['nominainterna','nomina']},
 ];
 // Devuelve el nombre canónico de un proveedor escrito de cualquier forma
@@ -6346,6 +6351,26 @@ async function migNotaFruta26Oct(){
   if(await migDone(migKey)) return;
   const g=D.gastos.find(x=>x.ticket==='MERCADO-25OCT26');
   if(g) await fsSet('gastos',{...g,notas:'Sin ticket: lo que faltaba de los $7,000 del surtido. Varios puestos, englobado con Reyes Ramiro. Precios y cantidades de Iván (31-oct). Con los dos Costco (26 y 29-oct) el mandado de la semana fue $7,875.73: $875.73 arriba de los $7,000.'});
+  await markMig(migKey);
+}
+// 31-oct — Saldos del fondo de ahorro que dio Iván. Claudia $7,750 =
+// 12 semanas × ($310 + $310) + lo del negocio de esta semana; falta su
+// $310. Erandy $4,560 = 9 semanas × ($240 + $240) + lo del negocio; falta
+// lo de ella. Ids fijos: si corre dos veces, escribe lo mismo.
+async function migFondoAhorro31Oct(){
+  const migKey='h5fondo_ahorro_31oct26';
+  if(await migDone(migKey)) return;
+  const movs=[
+    {id:3110001,empId:2002,nombre:'Claudia',tipo:'inicial',semana:'2026-10-19',monto:7440,fecha:'2026-10-25',nota:'Saldo al 25-oct: 12 semanas × ($310 de ella + $310 del negocio)'},
+    {id:3110002,empId:2002,nombre:'Claudia',tipo:'negocio',semana:'2026-10-26',monto:310,fecha:'2026-10-31'},
+    {id:3110003,empId:2005,nombre:'Erandy', tipo:'inicial',semana:'2026-10-19',monto:4320,fecha:'2026-10-25',nota:'Saldo al 25-oct: 9 semanas × ($240 de ella + $240 del negocio)'},
+    {id:3110004,empId:2005,nombre:'Erandy', tipo:'negocio',semana:'2026-10-26',monto:240,fecha:'2026-10-31'},
+  ];
+  for(const m of movs){
+    if(!await fsSet('fondoAhorro',m)) return;   // sin permiso no se marca: que vuelva a intentar
+    if(!D.fondoAhorro.some(z=>z.id===m.id)) D.fondoAhorro.push(m);
+  }
+  logAudit('ahorro_saldo_inicial',{Claudia:7750,Erandy:4560,motivo:'Saldos que dio Iván el 31-oct; falta el depósito de ellas de la semana del 26-oct'});
   await markMig(migKey);
 }
 async function migFruta26Oct(){
@@ -10044,31 +10069,79 @@ function desgloseGastos(gastos){
   const nomina=suma(gastos.filter(esNom));
   const insumos=suma(gastos.filter(esIns));
   const opex=suma(gastos.filter(g=>!esNom(g)&&!esIns(g)));
-  const renta=suma(gastos.filter(g=>g.cat==='renta'));
-  return {nomina,insumos,opex,renta,sinNomina:r2(insumos+opex),total:suma(gastos)};
+  const fijos=suma(gastos.filter(esPagoFijo));
+  return {nomina,insumos,opex,fijos,sinNomina:r2(insumos+opex),total:suma(gastos)};
 }
 // ══ LA RENTA ES UN COSTO FIJO, NO UN TICKET (Iván, 20-oct) ══
 // "Al mes lo que gasto es de 1500 de renta nada más". Nunca se capturó
 // un solo gasto de renta, así que ningún reporte la veía. Se devenga
 // como la nómina: $1,500 al mes repartidos entre los días hábiles del
-// mes, y cada período carga los días que ya corrieron. Si algún día se
-// registra el PAGO como gasto (cat 'renta'), los reportes de utilidad
-// lo apartan con sinRenta() para no cobrarla dos veces; el flujo de
-// caja sí lo ve.
+// mes, y cada período carga los días que ya corrieron. Desde el 31-oct
+// vive con los demás costos fijos (COSTOS_FIJOS, abajo). El PAGO
+// registrado como gasto se aparta con sinFijos() para no cobrarlo dos
+// veces; el flujo de caja sí lo ve.
 const RENTA_MENSUAL=1500;
 const rentaMensual=()=>{const v=Number(CFG?.rentaMensual);return Number.isFinite(v)&&v>=0&&CFG?.rentaMensual!=null?v:RENTA_MENSUAL;};
-function rentaDevengada(dias){
-  const td=today(), habPorMes={};
-  let tot=0;
+const sinFijos=g=>({...g,opex:r2(g.opex-(g.fijos||0)),sinNomina:r2(g.sinNomina-(g.fijos||0))});
+// El PAGO de un costo fijo (renta, IMSS, Banamex) es salida de caja; el
+// costo ya entra devengado por fijosDevengados(). Se aparta de la utilidad.
+const esPagoFijo=g=>!!g.fijo||g.cat==='renta';
+// ══ COSTOS FIJOS (Iván, 31-oct) ═════════════════════════════
+// "Todas las semanas agregamos 1,000 pesos fijos para el pago del seguro
+// social", la renta de $1,500 se paga la primera semana del mes, el
+// mueble se paga a Banamex en 6 cuotas de $3,000 (los días 29; la de
+// octubre se paga el martes 3-nov) y el negocio pone su parte del fondo
+// de ahorro de las chicas cada semana: el 10% de su sueldo.
+// Se devengan como la renta antes: lo semanal entre los días hábiles de
+// la semana, lo mensual entre los del mes; cada período carga los días
+// que ya corrieron. `desde`/`hasta` acotan cuándo existe el costo.
+// Si alguien deja de tener fondo, ponerle `hasta` (no borrarla: la
+// historia debe seguir cobrando lo que sí se pagó).
+// ═══════════════════════════════════════════════════════════
+const FONDO_AHORRO=[
+  {empId:2002,nombre:'Claudia',sem:310,desde:'2026-08-03'},
+  {empId:2005,nombre:'Erandy', sem:240,desde:'2026-08-24'},
+];
+const ahorroNegocio=f=>FONDO_AHORRO.filter(x=>f>=x.desde&&(!x.hasta||f<=x.hasta)).reduce((a,x)=>a+x.sem,0);
+const BANAMEX_CUOTAS=[
+  {n:1,vence:'2026-10-29',fecha:'2026-11-03'},
+  {n:2,vence:'2026-11-29'},{n:3,vence:'2026-12-29'},{n:4,vence:'2027-01-29'},
+  {n:5,vence:'2027-02-28'},{n:6,vence:'2027-03-29'},
+];
+const COSTOS_FIJOS=[
+  {id:'renta',  nombre:'Renta',                corto:'renta',   cada:'mes',    monto:()=>rentaMensual(), cat:'renta',     prov:'Universidad Panamericana', cuando:'primer lunes del mes'},
+  {id:'imss',   nombre:'Seguro social (IMSS)', corto:'IMSS',    cada:'semana', monto:()=>1000, desde:'2026-10-01', cat:'servicios', prov:'IMSS', cuando:'cada lunes'},
+  {id:'banamex',nombre:'Mueble (Banamex)',     corto:'Banamex', cada:'mes',    monto:()=>3000, desde:'2026-10-01', hasta:'2027-03-31', cat:'varios', prov:'Banamex', cuando:'día 29'},
+  {id:'ahorro', nombre:'Fondo de ahorro (lo que pone el negocio)', corto:'ahorro', cada:'semana', monto:ahorroNegocio, desde:'2026-08-03', cuando:'cada semana'},
+];
+function fijosDetalle(dias){
+  const td=today(), habPorMes={}, nSem=DIAS_OPERACION.length||5, out={total:0};
+  for(const c of COSTOS_FIJOS) out[c.id]=0;
   for(const f of (dias||[])){
     if(!f||f>td||esDiaDescanso(f)) continue;
     const m=f.slice(0,7);
     if(habPorMes[m]==null) habPorMes[m]=diasDelMes(m).filter(d=>!esDiaDescanso(d)).length||1;
-    tot+=rentaMensual()/habPorMes[m];
+    for(const c of COSTOS_FIJOS){
+      if((c.desde&&f<c.desde)||(c.hasta&&f>c.hasta)) continue;
+      out[c.id]+=c.monto(f)/(c.cada==='mes'?habPorMes[m]:nSem);
+    }
   }
-  return r2(tot);
+  for(const c of COSTOS_FIJOS){ out[c.id]=r2(out[c.id]); out.total+=out[c.id]; }
+  out.total=r2(out.total);
+  return out;
 }
-const sinRenta=g=>({...g,opex:r2(g.opex-(g.renta||0)),sinNomina:r2(g.sinNomina-(g.renta||0))});
+const fijosDevengados=dias=>fijosDetalle(dias).total;
+const fijosTxt=det=>COSTOS_FIJOS.filter(c=>det[c.id]>0).map(c=>`${c.corto} ${fmt(det[c.id])}`).join(' · ');
+// Renglones del estado de resultados, uno por costo fijo
+const fijosFilas=det=>COSTOS_FIJOS.filter(c=>det[c.id]>0)
+  .map(c=>`<div class="sr"><span style="font-size:12px;">${c.nombre} <span style="color:var(--text3);font-size:10px;">fijo</span></span><span class="mono ar">−${fmt(det[c.id])}</span></div>`).join('');
+// Lo que cuesta al mes y a la semana, con lo que está vigente hoy
+function fijosResumen(f=today()){
+  const vig=COSTOS_FIJOS.filter(c=>!(c.desde&&f<c.desde)&&!(c.hasta&&f>c.hasta));
+  const sem=vig.filter(c=>c.cada==='semana').reduce((a,c)=>a+c.monto(f),0);
+  const mes=vig.filter(c=>c.cada==='mes').reduce((a,c)=>a+c.monto(f),0);
+  return {vig,sem,mes,alMes:r2(mes+sem*52/12),aLaSemana:r2(sem+mes*12/52)};
+}
 function getRecentWeeks(n=8){const weeks=[];const now=new Date();for(let i=n-1;i>=0;i--){const d=new Date(now);d.setDate(now.getDate()-i*7);weeks.push(getMonday(localDate(d)));}return[...new Set(weeks)];}
 function closeModal(id,e){if(e.target===$(id))$(id).style.display='none';}
 window.closeModal=closeModal;
@@ -12913,7 +12986,7 @@ function utilidadPeriodo(R){
   const td=today();
   const ventas=D.ventas.filter(v=>!v.anulada&&R.vent.includes(v.fecha));
   const ing=r2(ventas.reduce((s,v)=>s+v.total,0));
-  const gd=sinRenta(desgloseGastos(D.gastos.filter(g=>R.gast.includes(g.fecha))));
+  const gd=sinFijos(desgloseGastos(D.gastos.filter(g=>R.gast.includes(g.fecha))));
   const base=gastoBasePeriodo(R.p,R.p==='mes'?{_mes:curM()}:{_sem:td});
   const estimado=Math.max(0,r2(base-gd.sinNomina));
   const gasto=r2(gd.sinNomina+estimado);
@@ -12947,7 +13020,7 @@ function utilidadPeriodo(R){
   let gastoDev,opexDev;
   if(R.p==='hoy'){
     const ref=hoyOperativo(), diasSem=getWDays(ref).length||5;
-    const gSem=sinRenta(desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha))));
+    const gSem=sinFijos(desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha))));
     const baseSem=gastoBasePeriodo('semana',{_sem:td});
     const extraSem=Math.max(0,r2(baseSem-gSem.sinNomina));
     gastoDev=r2((gSem.sinNomina+extraSem)/diasSem);
@@ -12963,7 +13036,7 @@ function utilidadPeriodo(R){
   // que cada venta guardó por receta — y las compras se enseñan como
   // lo que son: salida de caja, no costo.
   const comision=sumaComision(ventas);
-  const rentaDev=rentaDevengada(R.p==='hoy'?[td]:R.vent);
+  const rentaDev=fijosDevengados(R.p==='hoy'?[td]:R.vent);
   const completasV=ventas.filter(v=>v.foodCost!=null&&v.foodCostCompleto!==false);
   const ventaCubV=completasV.reduce((a,v)=>a+v.total,0);
   const pctCostoV=ventaCubV>0?completasV.reduce((a,v)=>a+(v.foodCost||0),0)/ventaCubV:0;
@@ -12972,7 +13045,7 @@ function utilidadPeriodo(R){
   let opexReal, insumosDev, baseDev;
   if(R.p==='hoy'){
     const ref=hoyOperativo(), diasSem=getWDays(ref).length||5;
-    const gSem=sinRenta(desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha))));
+    const gSem=sinFijos(desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha))));
     opexReal=r2(gSem.opex/diasSem); insumosDev=r2(gSem.insumos/diasSem);
     baseDev=r2(gastoBasePeriodo('semana',{_sem:td})/diasSem);
   } else {
@@ -13011,7 +13084,7 @@ function renderDbPeriodo(){
       comision>0?nota(`comisión terminal ${pctComisionTxt()} −${fmt(comision)} · te quedan ${fmt(r2(ing-comision))}`):'')+
     kc('Costo de lo vendido',fmt(cogsV),`insumos por receta · ${Math.round(pctCostoV*100)}% de la venta${coberturaV<95?` · costeado ${coberturaV}%`:''}`,'var(--red)',
       nota(`compras ${dePeriodo}: ${fmt(gasto)}${estimado>0?` (${fmt(estimado)} est.)`:''} — salida de caja, no costo`))+
-    kc('Nómina y operación',fmt(r2(nom+operacion)),`nómina ${fmt(nom)} · renta ${fmt(rentaDev)}${opexReal+opexNoCap>0?` · otros ${fmt(r2(opexReal+opexNoCap))}`:''}`,'var(--gold)')+
+    kc('Nómina y operación',fmt(r2(nom+operacion)),`nómina ${fmt(nom)} · fijos ${fmt(rentaDev)}${opexReal+opexNoCap>0?` · otros ${fmt(r2(opexReal+opexNoCap))}`:''}`,'var(--gold)')+
     kc('Utilidad',fmt(util),`Margen ${margen}%`,util>=0?'var(--teal)':'var(--red)',
       nota(enCurso?`lo vendido menos lo que corre ${dePeriodo} a hoy · igual que KPIs y Reportes`:'igual que KPIs y Reportes'));
 
@@ -14248,6 +14321,8 @@ window.prellenaGasto=(provEnc,monto)=>{
 };
 
 function renderPorPagar(){
+  programarPagosFijos();
+  renderCostosFijos();
   const caja=$('g-porpagar'); if(!caja) return;
   const deb=D.gastos.filter(g=>g.pendientePago)
     .sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
@@ -14267,6 +14342,111 @@ function renderPorPagar(){
     </div>`).join('')}
   </div>`;
 }
+// ══ PAGOS DE LOS COSTOS FIJOS ═══════════════════════════════
+// El costo ya corre devengado (fijosDevengados); aquí se programa la
+// SALIDA de dinero para que aparezca en "Lo que debes" la semana que
+// toca: la renta el primer lunes del mes, el IMSS cada lunes y la cuota
+// de Banamex el día 29 (o la fecha acordada). Se crean solo los de la
+// semana operativa en curso; el ticket es la marca para no repetir.
+let _programandoFijos=false;
+async function programarPagosFijos(){
+  if(_programandoFijos||SESSION?.tipo!=='admin'||!READY) return;
+  _programandoFijos=true;
+  try{
+    const sem=getWDays7(hoyOperativo()), lun=sem[0], nuevos=[];
+    const fijo=id=>COSTOS_FIJOS.find(c=>c.id===id);
+    const primerLunes=sem.find(f=>new Date(f+'T12:00:00').getDay()===1&&Number(f.slice(8))<=7);
+    if(primerLunes) nuevos.push({c:fijo('renta'),fecha:primerLunes,ticket:`RENTA-${primerLunes.slice(0,7)}`,
+      notas:`Renta de ${primerLunes.slice(0,7)} · se paga el primer lunes del mes.`});
+    if(lun>='2026-11-02') nuevos.push({c:fijo('imss'),fecha:lun,ticket:`IMSS-${lun}`,
+      notas:'Lo que se aparta cada semana para el seguro social.'});
+    for(const q of BANAMEX_CUOTAS){
+      const f=q.fecha||q.vence; if(!sem.includes(f)) continue;
+      nuevos.push({c:fijo('banamex'),fecha:f,fechaTicket:q.vence,ticket:`BANAMEX-${q.n}de${BANAMEX_CUOTAS.length}`,cuota:q.n,
+        notas:`Mueble · cuota ${q.n} de ${BANAMEX_CUOTAS.length} · vence el ${q.vence}${q.fecha&&q.fecha!==q.vence?`, se paga el ${q.fecha}`:''}.`});
+    }
+    let id=Date.now();
+    for(const n of nuevos){
+      if(D.gastos.some(g=>g.ticket===n.ticket)) continue;
+      const monto=n.c.monto(n.fecha);
+      const g={id:++id,fecha:n.fecha,fechaTicket:n.fechaTicket||n.fecha,ticket:n.ticket,prov:n.c.prov,cat:n.c.cat,
+        tipoEstrategico:'operacion',metodo:n.c.id==='banamex'?'transferencia':'efectivo',monto,
+        pendientePago:true,fijo:n.c.id,...(n.cuota?{cuota:n.cuota}:{}),
+        partidas:[{c:n.c.nombre,q:1,u:'pago',i:monto}],notas:n.notas};
+      // El oyente puede traerlo antes de que termine la escritura
+      if(await fsSet('gastos',g)){ if(!D.gastos.some(x=>x.id===g.id)) D.gastos.push(g); logAudit('pago_fijo_programado',{ticket:g.ticket,monto,fecha:g.fecha}); }
+    }
+  }finally{_programandoFijos=false;}
+}
+function renderCostosFijos(){
+  const caja=$('g-fijos'); if(!caja) return;
+  const r=fijosResumen(hoyOperativo());
+  const pagadas=D.gastos.filter(g=>g.fijo==='banamex'&&!g.pendientePago).length;
+  const desc=c=>c.id==='ahorro'
+    ?FONDO_AHORRO.filter(x=>!x.hasta).map(x=>`${esc(x.nombre)} ${fmt(x.sem)}`).join(' + ')
+    :c.id==='banamex'?`${c.cuando} · ${BANAMEX_CUOTAS.length-pagadas} de ${BANAMEX_CUOTAS.length} cuotas por pagar, la última en marzo 2027`
+    :c.cuando;
+  caja.innerHTML=`<div class="card" style="margin-top:10px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Costos fijos</span>
+      <span class="mono" style="font-size:13px;color:var(--text2);">${fmt(r.aLaSemana)}/sem · ${fmt(r.alMes)}/mes</span></div>
+    <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">Corren solos en la utilidad, el KPI y el punto de equilibrio, se paguen o no ese día. Cuando toca pagar, aparecen arriba en "Lo que debes".</p>
+    ${r.vig.map(c=>`<div class="sr" style="align-items:center;">
+      <div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:600;">${c.nombre}</div>
+        <div style="font-size:11px;color:var(--text3);">${desc(c)}</div></div>
+      <span class="mono fw7">${fmt(c.monto(hoyOperativo()))}<span style="font-size:10px;color:var(--text3);font-weight:400;">/${c.cada}</span></span>
+    </div>`).join('')}
+  </div>`;
+}
+// ══ FONDO DE AHORRO (Iván, 31-oct) ══════════════════════════
+// Cada semana ella deposita el 10% de su sueldo y el negocio pone lo
+// mismo. Cada depósito es un movimiento en `fondoAhorro` (solo admin):
+// el saldo es la suma, sin números guardados aparte que se desfasen.
+const ahorroMovs=empId=>(D.fondoAhorro||[]).filter(m=>m.empId===empId);
+const ahorroSaldo=empId=>r2(ahorroMovs(empId).reduce((a,m)=>a+(m.tipo==='retiro'?-1:1)*(m.monto||0),0));
+function renderFondoAhorro(mon){
+  const caja=$('nom-ahorro'); if(!caja) return;
+  const activas=FONDO_AHORRO.filter(x=>getMonday(x.desde)<=mon&&(!x.hasta||x.hasta>=mon));
+  if(!activas.length){caja.innerHTML='';return;}
+  const chip=(x,tipo,quien)=>{
+    const m=ahorroMovs(x.empId).find(m=>m.semana===mon&&m.tipo===tipo);
+    return m
+      ?`<span style="font-size:12px;color:var(--teal);font-weight:600;">✓ ${quien} ${fmt(m.monto)}</span>
+         <button class="btn bs bxs" style="flex:none;" onclick="quitarAhorro(${Number(m.id)})">Deshacer</button>`
+      :`<button class="btn bp bxs" style="flex:none;" onclick="registrarAhorro(${x.empId},'${tipo}','${mon}')">${quien} depositó ${fmt(x.sem)}</button>`;
+  };
+  const total=r2(activas.reduce((a,x)=>a+ahorroSaldo(x.empId),0));
+  caja.innerHTML=`<div class="card">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Fondo de ahorro</span>
+      <span class="mono" style="font-size:15px;font-weight:700;color:var(--teal);">${fmt(total)}</span></div>
+    <p style="font-size:12px;color:var(--text2);margin:0 0 10px;">10% del sueldo semanal: lo pone ella y lo mismo el negocio. La parte del negocio ya cuenta en los costos fijos.</p>
+    ${activas.map(x=>`<div style="padding:8px 0;border-top:1px solid var(--border);">
+      <div class="sr" style="border:none;padding:0 0 6px;"><span style="font-size:13px;font-weight:700;">${esc(x.nombre)}</span>
+        <span class="mono fw7">${fmt(ahorroSaldo(x.empId))}</span></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+        ${chip(x,'negocio','El negocio')} ${chip(x,'empleada',esc(x.nombre))}
+      </div>
+    </div>`).join('')}
+  </div>`;
+}
+window.registrarAhorro=async(empId,tipo,mon)=>{
+  const x=FONDO_AHORRO.find(f=>f.empId===Number(empId)); if(!x) return;
+  const quien=tipo==='negocio'?'El negocio':x.nombre;
+  if(!confirm(`¿${quien} depositó ${fmt(x.sem)} al fondo de ahorro de ${x.nombre}?\nSemana del ${mon}`)) return;
+  const m={id:Date.now(),empId:x.empId,nombre:x.nombre,tipo,semana:mon,monto:x.sem,fecha:today()};
+  if(!await fsSet('fondoAhorro',m)) return;
+  if(!D.fondoAhorro.some(z=>z.id===m.id)) D.fondoAhorro.push(m);
+  logAudit('ahorro_deposito',{empleada:x.nombre,quien:tipo,semana:mon,monto:x.sem,saldo:ahorroSaldo(x.empId)});
+  toast(`✓ Fondo de ${x.nombre}: ${fmt(ahorroSaldo(x.empId))}`,3000);
+  renderFondoAhorro(mon);
+};
+window.quitarAhorro=async id=>{
+  const m=(D.fondoAhorro||[]).find(z=>z.id===id); if(!m) return;
+  if(!confirm(`¿Quitar el depósito de ${fmt(m.monto)} (${m.tipo==='negocio'?'el negocio':m.nombre}, semana del ${m.semana})?`)) return;
+  await fsDel('fondoAhorro',id);
+  D.fondoAhorro=D.fondoAhorro.filter(z=>z.id!==id);
+  logAudit('ahorro_deposito_quitado',{empleada:m.nombre,quien:m.tipo,semana:m.semana,monto:m.monto});
+  renderFondoAhorro(m.semana);
+};
 window.marcarPagado=async id=>{
   const g=D.gastos.find(x=>x.id===id); if(!g) return;
   if(!confirm(`¿Marcar como pagado?\n${g.prov||''} · ${fmt(g.monto)}`)) return;
@@ -14524,6 +14704,7 @@ function renderNomina(){
   populateWeekSel();
   const mon=$('nom-sem')?.value||getMonday(today());
   renderPropinasNomina(mon);
+  renderFondoAhorro(mon);
   const nom=getNominaSemanal(mon);
   const totSem=nom.reduce((s,e)=>s+e.totalSem,0);
   const pagada=D.nomPagos.find(p=>p.semana===mon);
@@ -17271,12 +17452,12 @@ function renderKpiFinancieros(fechas){
   const habilesK=habiles.length||1;
   const corridos=Math.max(1,habiles.filter(f=>f<=tdK).length);
   const enCurso=corridos<habilesK, avance=corridos/habilesK;
-  const gdK=sinRenta(desgloseGastos(D.gastos.filter(g=>fechas.includes(g.fecha))));
+  const gdK=sinFijos(desgloseGastos(D.gastos.filter(g=>fechas.includes(g.fecha))));
   let opexReal, insumosDev;
   if(fechas.length===1){
     // "Hoy": el día que se surte cae la compra de la semana entera.
     const ref=hoyOperativo(), diasSem=getWDays(ref).length||5;
-    const gSem=sinRenta(desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha))));
+    const gSem=sinFijos(desgloseGastos(D.gastos.filter(g=>getWDays7(ref).includes(g.fecha))));
     opexReal=r2(gSem.opex/diasSem); insumosDev=r2(gSem.insumos/diasSem);
   } else {
     opexReal=enCurso?r2(gdK.opex*avance):gdK.opex;
@@ -17284,7 +17465,7 @@ function renderKpiFinancieros(fechas){
   }
   // Piso del promedio semanal declarado, sin cobrar dos veces el insumo
   const baseK=r2(gastoSemBase()/DIAS_OPERACION.length*(fechas.length===1?1:corridos));
-  const rentaK=rentaDevengada(fechas);
+  const rentaK=fijosDevengados(fechas);
   const opexNoCap=Math.max(0,r2(baseK-Math.max(insumosDev,costoProductos)-opexReal-rentaK));
   const opexK=r2(opexReal+opexNoCap+rentaK);
   const nomK=nominaDevengada(fechas);
@@ -17319,10 +17500,10 @@ function renderKpiFinancieros(fechas){
   let html=`<div class="kpi-grid">
     ${kpiCard({titulo:'Margen Bruto',valor:margenBruto,valorFmt:margenBruto.toFixed(1)+'%',target:T.margenBrutoMin,targetFmt:T.margenBrutoMin+'%',mejor:'mayor',info:`${fmt(totalVentas)} ventas − ${fmt(costoProductos)} insumos (receta) · costeado ${cobertura}%${cobertura<80?' ⚠ dato incompleto':''}`})}
     ${kpiCard({titulo:'Total Ventas',valor:totalVentas,valorFmt:fmt(totalVentas),target:null,info:`${ventas.length} tickets${enCurso&&fechas.length>1?` · día ${corridos} de ${habilesK}`:''}`})}
-    ${kpiCard({titulo:'Costos del período',valor:r2(fijos+comisionK),valorFmt:fmt(r2(fijos+comisionK)),target:null,info:`nómina ${fmt(nomK)} · operación ${fmt(opexK)}${rentaK>0?` (renta ${fmt(rentaK)})`:''}${opexNoCap>0?' (incl. est.)':''} · terminal ${fmt(comisionK)}${fechas.length===1?' · la parte del día':enCurso?' · lo que corre a hoy':''}`})}
+    ${kpiCard({titulo:'Costos del período',valor:r2(fijos+comisionK),valorFmt:fmt(r2(fijos+comisionK)),target:null,info:`nómina ${fmt(nomK)} · operación ${fmt(opexK)}${rentaK>0?` (fijos ${fmt(rentaK)})`:''}${opexNoCap>0?' (incl. est.)':''} · terminal ${fmt(comisionK)}${fechas.length===1?' · la parte del día':enCurso?' · lo que corre a hoy':''}`})}
     ${kpiCard({titulo:'Utilidad Bruta',valor:utilBruta,valorFmt:fmt(utilBruta),target:null,info:'ventas − insumos que se consumieron'})}
     ${kpiCard({titulo:'Utilidad Operativa',valor:utilOper,valorFmt:fmt(utilOper),target:null,info:`margen ${margenOper}% · ${utilOper>=0?'✓ Positivo':'⚠ En pérdida'}`})}
-    ${kpiCard({titulo:'Punto de Equilibrio',valor:puntoEquilibrio,valorFmt:puntoEquilibrio==null?'—':fmt(puntoEquilibrio)+'/día',target:null,info:'Venta diaria que cubre nómina, renta, operación y terminal'})}
+    ${kpiCard({titulo:'Punto de Equilibrio',valor:puntoEquilibrio,valorFmt:puntoEquilibrio==null?'—':fmt(puntoEquilibrio)+'/día',target:null,info:'Venta diaria que cubre nómina, costos fijos (renta, IMSS, Banamex, ahorro), operación y terminal'})}
     ${kpiCard({titulo:'Crecimiento MoM',valor:crecimientoMoM,valorFmt:crecimientoMoM==null?'—':((crecimientoMoM>=0?'+':'')+crecimientoMoM.toFixed(1)+'%'),target:15,targetFmt:'≥15%',mejor:'mayor',info:`del 1 al ${diaHoy}: ${fmt(ventasMesActual)} vs ${fmt(ventasMesAnterior)} en ${mesAnterior}${proyeccionMes!=null&&habCorridos<habMes.length?` · al ritmo de hoy cierra en ~${fmt(proyeccionMes)} (${mesAnterior} cerró en ${fmt(ventasMesAntTotal)})`:''}`})}
   </div>`;
 
@@ -18799,7 +18980,7 @@ function renderDashboard(){
   const ingT=ingCajaMes+ingSubs;
   // Gasto operativo del mes: sin nómina (se cuenta aparte, si no se
   // cobraba dos veces) y con piso en el promedio semanal declarado.
-  const gdMes=sinRenta(desgloseGastos(D.gastos.filter(g=>mOf(g.fecha)===cm)));
+  const gdMes=sinFijos(desgloseGastos(D.gastos.filter(g=>mOf(g.fecha)===cm)));
   const baseMes=gastoBasePeriodo('mes',{_mes:cm});
   const gasNoCapMes=Math.max(0,r2(baseMes-gdMes.sinNomina));
   const gasT=r2(gdMes.sinNomina+gasNoCapMes);
@@ -18812,7 +18993,7 @@ function renderDashboard(){
   const nomSemDev=nomDevengadaSemana(monSem);
   const nomEst=nominaDevengada(diasDelMes(cm));
   const comMes=sumaComision(D.ventas.filter(v=>mOf(v.fecha)===cm&&!v.anulada));
-  const rentaMes=rentaDevengada(diasDelMes(cm));
+  const fijosMesDet=fijosDetalle(diasDelMes(cm)), rentaMes=fijosMesDet.total;
   // Un solo número de utilidad: el costo de lo VENDIDO (receta), no las
   // compras del mes, que se enseñan aparte como salida de caja.
   // La MISMA cuenta que el Panel en "Mes" (utilidadPeriodo), más las
@@ -18840,7 +19021,7 @@ function renderDashboard(){
     <div class="card db-kpi">
       <div class="ct">Gastos + Nómina Mes</div>
       <div class="kv red">${fmt(r2(cogsMes+opexMes+nomEst+comMes+rentaMes))}</div>
-      <div class="ks">Insumos vendidos: ${fmt(cogsMes)} · Nóm: ${fmt(nomEst)}${nomEst>nomPagadaMes?' (devengada)':''} · Renta: ${fmt(rentaMes)}${comMes>0?` · Terminal: ${fmt(comMes)}`:''}${opexMes>0?` · Otros: ${fmt(opexMes)}`:''}</div>
+      <div class="ks">Insumos vendidos: ${fmt(cogsMes)} · Nóm: ${fmt(nomEst)}${nomEst>nomPagadaMes?' (devengada)':''} · Fijos: ${fmt(rentaMes)}${comMes>0?` · Terminal: ${fmt(comMes)}`:''}${opexMes>0?` · Otros: ${fmt(opexMes)}`:''}</div>
     </div>
     <div class="card db-kpi">
       <div class="ct">Utilidad Neta</div>
@@ -18877,7 +19058,7 @@ function renderDashboard(){
     ${comMes>0?`<div class="sr"><span style="font-size:12px;">Comisión terminal Mercado Pago (${pctComisionTxt()} de tarjeta)</span><span class="mono ar">−${fmt(comMes)}</span></div>`:''}
     <div class="sr"><span style="font-size:12px;">Costo de lo vendido (insumos por receta)</span><span class="mono ar">−${fmt(cogsMes)}</span></div>
     ${opexMes>0?`<div class="sr"><span style="font-size:12px;">Otros gastos de operación${opexMesNoCap>0?' (incl. estimado)':''}</span><span class="mono ar">−${fmt(opexMes)}</span></div>`:''}
-    ${rentaMes>0?`<div class="sr"><span style="font-size:12px;">Renta (${fmt(rentaMensual())}/mes, lo que corre a hoy)</span><span class="mono ar">−${fmt(rentaMes)}</span></div>`:''}
+    ${fijosFilas(fijosMesDet)}
     <div class="sr"><span style="font-size:11px;color:var(--text3);padding-left:14px;">↳ compras del mes (salida de caja, no costo): ${fmt(gasT)}</span><span></span></div>
     <div class="sr"><span style="font-size:12px;">Nómina pagada</span><span class="mono ay">−${fmt(nomPagadaMes)}</span></div>
     ${nomPendienteMes>0?`<div class="sr"><span style="font-size:12px;">Nómina devengada sin pagar</span><span class="mono ao">−${fmt(nomPendienteMes)}</span></div>`:''}
@@ -19138,14 +19319,14 @@ window.pdfDashboard=()=>{
   const cm=curM();
   // Mismo criterio que Reportes: gasto sin nómina con piso en el promedio
   // semanal, y nómina devengada (no solo las semanas marcadas pagadas).
-  const gd=sinRenta(desgloseGastos(gastos));
+  const gd=sinFijos(desgloseGastos(gastos));
   const baseP=gastoBasePeriodo(p,fechas);
   const gasNoCap=Math.max(0,r2(baseP-gd.sinNomina));
   const gasT=r2(gd.sinNomina+gasNoCap);
   const diasP=p==='hoy'?[today()]:p==='semana'?getWDays(fechas._sem||today()):diasDelMes(fechas._mes||cm);
   const nomEst=nominaDevengada(diasP);
   const comT=sumaComision(ventas);
-  const rentaT=rentaDevengada(diasP);
+  const rentaT=fijosDevengados(diasP);
   const util=r2(ingT-comT-gasT-rentaT-nomEst);
   const margen=ingT>0?Math.round(util/ingT*100):0;
   const dow=calcVentasPorDia(8);
@@ -19167,7 +19348,7 @@ window.pdfDashboard=()=>{
   y+=50;
   // Estado de resultados
   doc.setTextColor(126,200,80); doc.setFontSize(11); doc.setFont('helvetica','bold'); doc.text('Estado de Resultados',14,y); y+=4;
-  doc.autoTable({startY:y,head:[['Concepto','Monto']],body:[['🛒 Ventas POS',fmt(ingT)],...(comT>0?[[`💳 Comisión terminal (${pctComisionTxt()} de tarjeta)`,'−'+fmt(comT)]]:[]),['📉 Gastos operativos','−'+fmt(gasT)],...(rentaT>0?[['🏠 Renta (fija)','−'+fmt(rentaT)]]:[]),...(gasNoCap>0?[['    ↳ estimado sin capturar','−'+fmt(gasNoCap)]]:[]),...(nomEst>0?[['👩 Nómina devengada','−'+fmt(nomEst)]]:[]),['UTILIDAD NETA',fmt(util)],['Margen',margen+'%']],theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},bodyStyles:{fontSize:9,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},columnStyles:{0:{cellWidth:120},1:{cellWidth:45,halign:'right'}},margin:{left:14,right:14},didParseCell:(d)=>{if(d.row.index>=d.table.body.length-2){d.cell.styles.fillColor=[11,30,9];d.cell.styles.textColor=[232,201,106];d.cell.styles.fontStyle='bold';}}});
+  doc.autoTable({startY:y,head:[['Concepto','Monto']],body:[['🛒 Ventas POS',fmt(ingT)],...(comT>0?[[`💳 Comisión terminal (${pctComisionTxt()} de tarjeta)`,'−'+fmt(comT)]]:[]),['📉 Gastos operativos','−'+fmt(gasT)],...(rentaT>0?[['🏠 Costos fijos ('+fijosTxt(fijosDetalle(diasP))+')','−'+fmt(rentaT)]]:[]),...(gasNoCap>0?[['    ↳ estimado sin capturar','−'+fmt(gasNoCap)]]:[]),...(nomEst>0?[['👩 Nómina devengada','−'+fmt(nomEst)]]:[]),['UTILIDAD NETA',fmt(util)],['Margen',margen+'%']],theme:'grid',headStyles:{fillColor:[11,20,9],textColor:[126,200,80],fontStyle:'bold',fontSize:9},bodyStyles:{fontSize:9,textColor:[220,220,220],fillColor:[18,32,16]},alternateRowStyles:{fillColor:[24,40,22]},columnStyles:{0:{cellWidth:120},1:{cellWidth:45,halign:'right'}},margin:{left:14,right:14},didParseCell:(d)=>{if(d.row.index>=d.table.body.length-2){d.cell.styles.fillColor=[11,30,9];d.cell.styles.textColor=[232,201,106];d.cell.styles.fontStyle='bold';}}});
   y=doc.lastAutoTable.finalY+10;
   // Ventas por día de la semana — dónde meter promoción
   if(dow.flojo){
@@ -19285,10 +19466,10 @@ window.plPDF=()=>{
   const cogs=Math.round(conCosto.reduce((s,v)=>s+v.foodCost,0)*100)/100;
   const cobert=ventas.length?Math.round(conCosto.length/ventas.length*100):0;
   const bruta=ing-cogs;
-  const gcat=c=>gastos.filter(g=>g.cat===c).reduce((s,g)=>s+g.monto,0);
-  const gd=sinRenta(desgloseGastos(gastos));
+  const gcat=c=>gastos.filter(g=>g.cat===c&&!esPagoFijo(g)).reduce((s,g)=>s+g.monto,0);
+  const gd=sinFijos(desgloseGastos(gastos));
   const diasP=p==='hoy'?[today()]:p==='semana'?getWDays(fechas._sem||today()):diasDelMes(fechas._mes||curM());
-  const renta=rentaDevengada(diasP), serv=gcat('servicios'), insumosCash=gd.insumos;
+  const renta=fijosDevengados(diasP), serv=gcat('servicios'), insumosCash=gd.insumos;
   const otros=r2(gd.opex-serv);
   const nomPagada=gd.nomina;
   const nom=nominaDevengada(diasP);
@@ -19323,7 +19504,7 @@ window.plPDF=()=>{
       [{content:'= UTILIDAD BRUTA',styles:{fontStyle:'bold'}},{content:fmt(bruta),styles:{fontStyle:'bold'}},{content:pc(bruta),styles:{fontStyle:'bold'}}],
       ...(com>0?[[`(−) Comisión terminal Mercado Pago (${pctComisionTxt()} de tarjeta)`,'−'+fmt(com),pc(com)]]:[]),
       ['(−) Nómina'+(nomPend>0?' (incluye pendiente estimada)':''),'−'+fmt(nom),pc(nom)],
-      ...(renta>0?[[`(−) Renta (fija, ${fmt(rentaMensual())}/mes)`,'−'+fmt(renta),pc(renta)]]:[]),
+      ...COSTOS_FIJOS.map(c=>[c,fijosDetalle(diasP)[c.id]]).filter(([,v])=>v>0).map(([c,v])=>[`(−) ${c.nombre} (fijo)`,'−'+fmt(v),pc(v)]),
       ...(serv>0?[['(−) Servicios','−'+fmt(serv),pc(serv)]]:[]),
       ...(otros>0?[['(−) Mantenimiento, marketing y varios','−'+fmt(otros),pc(otros)]]:[]),
       ...(opexNoCap>0?[['(−) Gasto promedio no capturado (estimado)','−'+fmt(opexNoCap),pc(opexNoCap)]]:[]),
@@ -19959,11 +20140,11 @@ function renderReportes(){
   // con cat 'nomina', así que restar gasT + nomEst la cobraba dos veces
   // y hundía el margen del mes; (2) las semanas sin capturar mostraban
   // gasto casi en cero. Ahora: gasto operativo = max(capturado, promedio).
-  const gd=sinRenta(desgloseGastos(gastos));
+  const gd=sinFijos(desgloseGastos(gastos));
   const baseP=gastoBasePeriodo(p,fechas);
   const gasNoCap=Math.max(0,r2(baseP-gd.sinNomina));
   const gasOper=r2(gd.sinNomina+gasNoCap);
-  const rentaP=rentaDevengada(diasPeriodo);
+  const rentaP=fijosDevengados(diasPeriodo);
   const comP=sumaComision(ventas);
   // La nómina corre aunque no se haya pagado todavía: si la semana ya se
   // pagó vive en gastos (gd.nomina), si no, se devenga de getNominaSemanal.
@@ -19975,7 +20156,7 @@ function renderReportes(){
   if($('rp-gas')){$('rp-gas').textContent=fmt(gasOper);$('rp-gas').className='kv red';}
   if($('rp-gas-sub'))$('rp-gas-sub').textContent=gastos.length+' registros'+(gasNoCap>0?` · +${fmt(gasNoCap)} est.`:'');
   if($('rp-util')){$('rp-util').textContent=fmt(util);$('rp-util').className='kv '+(util>=0?'at':'ar');}
-  if($('rp-util-sub'))$('rp-util-sub').textContent=`nóm. ${fmt(nomPeriodo)} · renta ${fmt(rentaP)} · terminal ${fmt(comP)}`;
+  if($('rp-util-sub'))$('rp-util-sub').textContent=`nóm. ${fmt(nomPeriodo)} · fijos ${fmt(rentaP)} · terminal ${fmt(comP)}`;
   if($('rp-margen')){$('rp-margen').textContent=margen+'%';$('rp-margen').className='kv '+(margen>=0?'gold':'red');}
   if($('rp-label'))$('rp-label').textContent=label;
   renderUpsell(ventas,label);
@@ -19993,7 +20174,7 @@ function renderReportes(){
   const _cogs=Math.round(_conCosto.reduce((s,v)=>s+v.foodCost,0)*100)/100;
   const _cobert=ventas.length?Math.round(_conCosto.length/ventas.length*100):0;
   const _bruta=_ing-_cogs;
-  const _gcat=c=>gastos.filter(g=>g.cat===c).reduce((s,g)=>s+g.monto,0);
+  const _gcat=c=>gastos.filter(g=>g.cat===c&&!esPagoFijo(g)).reduce((s,g)=>s+g.monto,0);
   const _renta=rentaP, _serv=_gcat('servicios');
   const _insumosCash=gd.insumos;
   const _nomPagada=gd.nomina;
@@ -20015,7 +20196,7 @@ function renderReportes(){
   const _oper=r2(_bruta-_com-_nom-_opex);
   // Un solo número: la tarjeta de arriba dice lo mismo que el estado de resultados
   if($('rp-util')){$('rp-util').textContent=fmt(_oper);$('rp-util').className='kv '+(_oper>=0?'at':'ar');}
-  if($('rp-util-sub'))$('rp-util-sub').textContent=`operativa · insumos ${fmt(_cogs)} · nóm. ${fmt(_nom)} · renta ${fmt(_renta)} · terminal ${fmt(_com)}`;
+  if($('rp-util-sub'))$('rp-util-sub').textContent=`operativa · insumos ${fmt(_cogs)} · nóm. ${fmt(_nom)} · fijos ${fmt(_renta)} · terminal ${fmt(_com)}`;
   const _mBruta=_ing>0?Math.round(_bruta/_ing*100):0;
   const _mOper=_ing>0?Math.round(_oper/_ing*100):0;
   const _flujo=r2(_ing-_com-gasOper-_nomPend);
@@ -20031,7 +20212,7 @@ function renderReportes(){
     <div class="div"></div>
     ${_com>0?`<div class="sr"><span style="font-size:12px;">Comisión terminal Mercado Pago (${pctComisionTxt()} de tarjeta)</span><span class="mono ar">−${fmt(_com)} <span style="color:var(--text3);font-size:10px;">${_pct(_com)}</span></span></div>`:''}
     <div class="sr"><span style="font-size:12px;">Nómina${_nomPend>0?' (incl. pendiente est.)':''}</span><span class="mono ay">−${fmt(_nom)} <span style="color:var(--text3);font-size:10px;">${_pct(_nom)}</span></span></div>
-    ${_renta>0?`<div class="sr"><span style="font-size:12px;">Renta (fija, ${fmt(rentaMensual())}/mes)</span><span class="mono ar">−${fmt(_renta)}</span></div>`:''}
+    ${fijosFilas(fijosDetalle(diasPeriodo))}
     ${_serv>0?`<div class="sr"><span style="font-size:12px;">Servicios</span><span class="mono ar">−${fmt(_serv)}</span></div>`:''}
     ${_otros>0?`<div class="sr"><span style="font-size:12px;">Mant., marketing y varios</span><span class="mono ar">−${fmt(_otros)}</span></div>`:''}
     ${_opexNoCap>0?`<div class="sr"><span style="font-size:12px;" title="Promedio de ${fmt(gastoSemBase())}/semana menos lo capturado">Gasto promedio no capturado <span style="font-size:9.5px;color:var(--text3);">(est.)</span></span><span class="mono ao">−${fmt(_opexNoCap)}</span></div>`:''}
