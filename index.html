@@ -3235,6 +3235,7 @@ async function completeInit(){
   await migEsperadosInflados27Oct();
   await migSurtido26Oct();
   await migFruta26Oct();
+  await migFabulosoYKinder31Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6197,10 +6198,9 @@ const SURTIDO_26OCT=[
       ['Tenedor sopero Jessy','Tenedores',150,'pz',42.00],
       ['Contenedor papel 12 oz Inix','Contenedor papel 12 oz',100,'pz',170.00]]},
   {ticket:'LACOMER-26OCT26-LIMPIEZA',prov:'La Comer',cat:'varios',metodo:'tarjeta',fecha:'2026-10-26',llegada:'2026-10-26',yaContado:true,
-   notas:'Lomas Anáhuac · 26-oct 14:33 · tarjeta. Limpieza y una cuchilla; el Fabuloso no dice cuántos litros, entra al gasto y el conteo lo afina.',
-   p:[['Limpiador Fabuloso',null,1,'pz',56.00],
+   notas:'Lomas Anáhuac · 26-oct 14:33 · tarjeta. Limpieza y una cuchilla. El Fabuloso es de 1.5 L; el pastelito Kinder ($19) era personal y no cuenta (Iván, 31-oct).',
+   p:[['Limpiador Fabuloso 1.5 L','Fabuloso',1.5,'L',56.00],
       ['Detergente Salvo','Salvo (lavatrastes)',1,'bote',67.50],
-      ['Pastelito Kinder',null,1,'pz',19.00],
       ['Cuchilla Rosan',null,1,'pz',114.00]]},
   {ticket:'SIGMA-25OCT26',prov:'Sigma Alimentos',cat:'proveedor',metodo:'efectivo',fecha:'2026-10-26',fechaTicket:'2026-10-25',llegada:'2026-10-25',yaContado:true,
    notas:'Central de Abasto, bodega G-49 · 25-oct.',
@@ -6292,6 +6292,32 @@ const FRUTA_26OCT=[
       ['Jitomate cherry 1 kg × $65','Tomate cherry',1000,'g',65.00],
       ['Jitomate 2 kg × $22','Jitomate',2000,'g',44.00]]},
 ];
+// 31-oct — Iván: el Fabuloso es de 1.5 L y el pastelito Kinder era
+// personal. Sale del gasto de La Comer ($256.50 → $237.50) y el
+// Fabuloso entra al inventario con su precio por litro.
+async function migFabulosoYKinder31Oct(){
+  const migKey='h5fabuloso_kinder_31oct26';
+  if(await migDone(migKey)) return;
+  const tk='LACOMER-26OCT26-LIMPIEZA';
+  const g=D.gastos.find(x=>x.ticket===tk);
+  const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Fabuloso'));
+  let via=null;
+  if(inv){
+    const qi=qtyToInvUnit(1.5,'L',inv.unit);
+    if(qi){ inv.precio=Math.round(56/qi*1000000)/1000000; await fsSet('inventario',inv);
+      via=await entrarMercancia(inv,qi,'2026-10-26',tk,false); }
+  }
+  if(g){
+    const partidas=(g.partidas||[]).filter(p=>!/kinder/i.test(p.c||'')).map(p=>/fabuloso/i.test(p.c||'')
+      ?{c:'Limpiador Fabuloso 1.5 L',q:1.5,u:'L',i:56.00,...(inv?{art:inv.nombre}:{}),...(via?{entro:via==='ya'?'conteo':via}:{})}:p);
+    const monto=r2(partidas.reduce((a,x)=>a+(x.i||0),0));
+    await fsSet('gastos',{...g,partidas,monto,
+      notas:'Lomas Anáhuac · 26-oct 14:33 · tarjeta. Limpieza y una cuchilla. El Fabuloso es de 1.5 L; el pastelito Kinder ($19) era personal y no cuenta (Iván, 31-oct).'});
+    logAudit('gasto_corregido',{ticket:tk,antes:g.monto,despues:monto,
+      motivo:'Pastelito Kinder personal fuera del gasto; Fabuloso 1.5 L al inventario'});
+  }
+  await markMig(migKey);
+}
 async function migFruta26Oct(){
   const migKey='h5fruta_26oct26';
   if(await migDone(migKey)) return;

@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.56'; // La fruta del 25-oct (lo que faltaba de los $7,000)
+const CACHE_NAME = 'el-huerto-v15.57'; // Fabuloso 1.5 L y sin el pastelito Kinder
 const ASSETS = [
   '/',
   '/index.html',
