@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.60'; // Costos fijos (IMSS, Banamex, renta, ahorro) y fondo de ahorro
+const CACHE_NAME = 'el-huerto-v15.61'; // IMSS desde agosto
 const ASSETS = [
   '/',
   '/index.html',
