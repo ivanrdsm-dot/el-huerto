@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.58'; // Factura del Costco del 26-oct
+const CACHE_NAME = 'el-huerto-v15.59'; // Nota de la fruta: con los dos Costco no sobró
 const ASSETS = [
   '/',
   '/index.html',

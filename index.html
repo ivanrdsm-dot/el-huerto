@@ -3237,6 +3237,7 @@ async function completeInit(){
   await migFruta26Oct();
   await migFabulosoYKinder31Oct();
   await migFacturaCostco26Oct();
+  await migNotaFruta26Oct();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6274,13 +6275,13 @@ async function registrarLote(lote){
 // LA FRUTA DEL 25-OCT — lo que faltaba de los $7,000
 //
 // Sin ticket: Iván pasó precio y cantidad de cada cosa (31-oct). Con
-// esto el surtido suma $6,681.88 y sobran $318.12 de los $7,000. Va a
+// los dos Costco de la semana el mandado suma $7,875.73. Va a
 // Reyes Ramiro como toda la fruta. Se compró el domingo con lo demás:
 // cuenta el lunes 26 y el conteo de ese día ya la tenía.
 // ═══════════════════════════════════════════════════════════
 const FRUTA_26OCT=[
   {ticket:'MERCADO-25OCT26',prov:'Reyes Ramiro',cat:'proveedor',metodo:'efectivo',fecha:'2026-10-26',fechaTicket:'2026-10-25',llegada:'2026-10-26',yaContado:true,
-   notas:'Sin ticket: lo que faltaba de los $7,000 del surtido (sobraron $318.12). Varios puestos, englobado con Reyes Ramiro. Precios y cantidades de Iván (31-oct).',
+   notas:'Sin ticket: lo que faltaba de los $7,000 del surtido. Varios puestos, englobado con Reyes Ramiro. Precios y cantidades de Iván (31-oct). Con los dos Costco (26 y 29-oct) el mandado de la semana fue $7,875.73: $875.73 arriba de los $7,000.',
    p:[['Plátano 8 kg × $15','Plátano',8000,'g',120.00],
       ['Fresa 1 kg × $60','Fresa',1000,'g',60.00],
       ['Manzana 1 kg × $50','Manzana',1000,'g',50.00],
@@ -6337,6 +6338,14 @@ async function migFacturaCostco26Oct(){
   // Lechuga: promedio de la semana con el importe de la factura
   const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Lechuga'));
   if(inv&&inv.unit==='g'){ inv.precio=Math.round((179.70+59.90)/(2724+908)*1000000)/1000000; await fsSet('inventario',inv); }
+  await markMig(migKey);
+}
+// La nota decía "sobraron $318.12": no contaba el Costco del jueves 29.
+async function migNotaFruta26Oct(){
+  const migKey='h5nota_fruta_26oct26';
+  if(await migDone(migKey)) return;
+  const g=D.gastos.find(x=>x.ticket==='MERCADO-25OCT26');
+  if(g) await fsSet('gastos',{...g,notas:'Sin ticket: lo que faltaba de los $7,000 del surtido. Varios puestos, englobado con Reyes Ramiro. Precios y cantidades de Iván (31-oct). Con los dos Costco (26 y 29-oct) el mandado de la semana fue $7,875.73: $875.73 arriba de los $7,000.'});
   await markMig(migKey);
 }
 async function migFruta26Oct(){
