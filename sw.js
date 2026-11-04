@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.61'; // IMSS desde agosto
+const CACHE_NAME = 'el-huerto-v15.62'; // Surtido del martes 3-nov
 const ASSETS = [
   '/',
   '/index.html',

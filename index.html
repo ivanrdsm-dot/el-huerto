@@ -3242,6 +3242,7 @@ async function completeInit(){
   await migFacturaCostco26Oct();
   await migNotaFruta26Oct();
   await migFondoAhorro31Oct();
+  await migSurtido3Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -4322,6 +4323,7 @@ const PROVEEDORES=[
   {n:'La Comer',                    cat:'proveedor', alias:['lacomer','lacomerbosquereal']},
   {n:'Chilapita',                   cat:'proveedor', alias:['chilapita','chilapitaazcapotzalco']},
   {n:'Saavedra Market',             cat:'proveedor', alias:['saavedramarket','saavedra']},
+  {n:'Cremería La Suiza',           cat:'proveedor', alias:['lasuiza','cremerialasuiza','suiza']},
   {n:'Sigma Alimentos',             cat:'proveedor', alias:['sigmaalimentos','sigma','sigmaalimentoscomercial','yoplait']},
   {n:'Universidad Panamericana',    cat:'renta',     alias:['panamericana','universidadpanamericana','up','ciudadup']},
   {n:'IMSS',                        cat:'servicios', alias:['imss','segurosocial']},
@@ -6371,6 +6373,67 @@ async function migFondoAhorro31Oct(){
     if(!D.fondoAhorro.some(z=>z.id===m.id)) D.fondoAhorro.push(m);
   }
   logAudit('ahorro_saldo_inicial',{Claudia:7750,Erandy:4560,motivo:'Saldos que dio Iván el 31-oct; falta el depósito de ellas de la semana del 26-oct'});
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// SURTIDO DEL MARTES 3-NOV
+//
+// Se compró en la mañana y el conteo de la tarde (4 a 5 pm) ya traía la
+// mercancía: vasos 132 → 225, perlas 1000 → 3000, serrano 20 → 2400. Por
+// eso entra a lo que ESE conteo esperaba, no a existencias.
+//
+// Los desechables no traen ticket (Iván lo tiró; "los costos fueron los
+// mismos"): precios del último ticket de La Nueva, que es de donde salen
+// esas marcas. El playo, $54, lo dio él. La fruta llega aparte.
+// Dip chipotle: artículo nuevo, todavía sin entrar a ninguna receta.
+// ═══════════════════════════════════════════════════════════
+const NUEVOS_3NOV=[{nombre:'Dip chipotle Chili Killers',cat:'salsas',catOf:'abarrotes',unit:'g',unidadOf:'g'}];
+const BASE_3NOV={cat:'proveedor',metodo:'efectivo',fecha:'2026-11-03',llegada:'2026-11-03',yaContado:true};
+const SURTIDO_3NOV=[
+  {...BASE_3NOV,ticket:'HM-1000224',prov:'HM Central de Alimentos',
+   notas:'Ticket 1000224 · 3-nov 08:42 · efectivo.',
+   p:[['Queso panela menonita 1.085 kg × $94','Queso panela',1085,'g',101.99],
+      ['Queso mozzarella cubicado Billy 5 kg','Queso mozzarella',5000,'g',361.00],
+      ['Chorizo Wunsch pamplona 1 pz','Chorizo pamplona',1000,'g',295.00],
+      ['Pechuga de pavo San Ángel 2 kg × $120','Pechuga de pavo',2000,'g',240.00]]},
+  {...BASE_3NOV,ticket:'LASUIZA-105602',prov:'Cremería La Suiza',
+   notas:'Ticket 105602 · 3-nov 08:47 · efectivo.',
+   p:[['Jamón serrano español 1.995 kg × $575','Jamón serrano',1995,'g',1147.13]]},
+  {...BASE_3NOV,ticket:'LASUIZA-105610',prov:'Cremería La Suiza',
+   notas:'Ticket 105610 · 3-nov 08:57 · efectivo.',
+   p:[['Dip chipotle Chili Killers 3.8 kg','Dip chipotle Chili Killers',3800,'g',281.00]]},
+  {...BASE_3NOV,ticket:'COFFEESHOP2-A5678',prov:'Coffee Shop 2',
+   notas:'Ticket A5678 · 3-nov.',
+   p:[['Perlas de tapioca brown sugar 2 kg','Perlas de tapioca brown sugar',2000,'g',229.99]]},
+  {...BASE_3NOV,ticket:'MOLINERA-28893',prov:'La Molinera de Abastos',
+   notas:'Ticket 208713 · folio 28893 · 3-nov 08:25.',
+   p:[['Aderezo César Clemente Jacques 1.9 kg','Aderezo César',1,'pz',142.00],
+      ['Jugo Maggi 800 ml','Salsa Maggi',1,'bote',170.00]]},
+  {...BASE_3NOV,ticket:'PLASTIDORO-39196',prov:'Plastidoro',
+   notas:'Nota AG-39196 · 3-nov.',
+   p:[['Bolsa semikraft No. 4 blanca','Bolsa semikraft #4',100,'pz',54.00]]},
+  {...BASE_3NOV,ticket:'SIGMA-03NOV26',prov:'Sigma Alimentos',
+   notas:'Central de Abasto, bodega G-49. Nota a mano, sin fecha legible.',
+   p:[['Yogurt natural Yoplait 1 L','Yogurth natural',1,'L',49.00]]},
+  {...BASE_3NOV,ticket:'LANUEVA-03NOV26',prov:'Materias Primas La Nueva',
+   notas:'Sin ticket (se tiró). Cantidades de Iván; precios del último ticket de La Nueva. Playo $54, dato de Iván. Proveedor supuesto por las marcas.',
+   p:[['Reyma vaso 16 largo','Vaso smoothie 16 oz',100,'pz',108.00],
+      ['Classy tenedor sopero','Tenedores',100,'pz',36.00],
+      ['Classy cuchara sopera','Cucharas',100,'pz',36.00],
+      ['Goplas TD95 tapa domo','Tapa Smoothie',100,'pz',94.00],
+      ['Verde servilleta 2 paquetes','Servilleta',2,'paq',40.00,{sinPrecio:true}],
+      ['Playo plástico','Playo (film plástico)',1,'rollo',54.00]]},
+];
+async function migSurtido3Nov(){
+  const migKey='h5surtido_3nov26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  for(const a of NUEVOS_3NOV) if(!D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(a.nombre))){
+    const nuevo={id:++nid,qty:0,min:0,precio:0,...a}; await fsSet('inventario',nuevo); D.inventario.push(nuevo); }
+  const {precios,hechos}=await registrarLote(SURTIDO_3NOV);
+  logAudit('compras_registradas',{lote:'surtido del 3-nov',precios,inventario:hechos,
+    motivo:'Tickets del martes 3-nov y desechables sin ticket; falta la fruta'});
+  toast(`✓ Surtido del 3-nov: ${SURTIDO_3NOV.length} gastos registrados · ${precios.length} precios al día`,6000);
   await markMig(migKey);
 }
 async function migFruta26Oct(){
