@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.63'; // Costco y fruta del 3-nov; solo queda el dip chipotle
+const CACHE_NAME = 'el-huerto-v15.64'; // Fondos, seguro social y por pagar siempre a la vista
 const ASSETS = [
   '/',
   '/index.html',

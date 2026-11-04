@@ -191,6 +191,7 @@ main{padding:12px;max-width:1600px;margin:0 auto;}
 .g4{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;}
 .g5{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
 @media(max-width:700px){.g2{grid-template-columns:1fr 1fr;}.g3,.g4,.g5{grid-template-columns:1fr 1fr;}}
+@media(max-width:700px){#db-fijos{grid-template-columns:1fr;}}
 @media(max-width:380px){.g2{grid-template-columns:1fr;}}
 
 /* CARDS */
@@ -1163,6 +1164,8 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <main>
+  <!-- Costos fijos y fondos: una línea siempre a la vista para el dueño -->
+  <div id="fijos-barra" style="display:none;"></div>
 
 <!-- ══ DASHBOARD ══ -->
 <div id="page-dashboard" class="page">
@@ -1181,6 +1184,8 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
   </div>
   <div id="db-rango" style="font-size:12.5px;color:var(--text2);margin:-6px 0 12px;"></div>
+  <!-- Fondos y costos fijos: no dependen del período, siempre a la vista -->
+  <div class="g3" style="margin-bottom:10px;" id="db-fijos"></div>
   <!-- El dinero del período: lo que entró, lo que salió y lo que quedó -->
   <div class="g4" style="margin-bottom:10px;" id="db-dinero"></div>
   <!-- Salud del negocio: los números que dicen si el modelo aguanta -->
@@ -3245,6 +3250,7 @@ async function completeInit(){
   await migSurtido3Nov();
   await migSurtido3NovB();
   await migChipotleNuevo3Nov();
+  await migFondoYFruta3Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6512,6 +6518,37 @@ async function migChipotleNuevo3Nov(){
   }
   logAudit('inventario_fusion',{de:viejos.map(v=>`${v.nombre} (${v.qty} ${v.unit})`),a:dip.nombre,recetas:prods,
     motivo:'El dip chipotle de 3.8 kg sustituye al McCormick (Iván, 3-nov)'});
+  await markMig(migKey);
+}
+// 3-nov — Iván: las chicas sí depositaron lo de la semana del 26-oct, y
+// la fruta era jícama 9 kg, pepino 9 kg y plátano 10 kg. El conteo de la
+// tarde se corrige a eso; a la existencia se le sigue restando lo que se
+// vendió después de ese conteo. Valores fijos: si corre dos veces, igual.
+const CONTEO_FRUTA_3NOV=[['Jícama',9000],['Pepino',9000],['Plátano',10000]];
+async function migFondoYFruta3Nov(){
+  const migKey='h5fondo_fruta_3nov26';
+  if(await migDone(migKey)) return;
+  const movs=[
+    {id:3110005,empId:2002,nombre:'Claudia',tipo:'empleada',semana:'2026-10-26',monto:310,fecha:'2026-11-03'},
+    {id:3110006,empId:2005,nombre:'Erandy', tipo:'empleada',semana:'2026-10-26',monto:240,fecha:'2026-11-03'},
+  ];
+  for(const m of movs){
+    if(!await fsSet('fondoAhorro',m)) return;
+    if(!D.fondoAhorro.some(z=>z.id===m.id)) D.fondoAhorro.push(m);
+  }
+  const hechos=[];
+  for(const [n,valor] of CONTEO_FRUTA_3NOV){
+    const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
+    const c=inv&&D.invDiario.find(x=>x.productoId===inv.id&&x.fecha==='2026-11-03');
+    if(!c) continue;
+    const vendido=Math.max(0,r2((c.qty||0)-(inv.qty||0)));
+    const upd={...c,qty:valor,diferencia:r2(valor-(c.esperado||0))};
+    await fsSet('invDiario',upd);
+    const ix=D.invDiario.findIndex(x=>x.id===c.id); if(ix>=0) D.invDiario[ix]=upd;
+    inv.qty=r2(valor-vendido); await fsSet('inventario',inv);
+    hechos.push(`${n}: conteo ${c.qty} → ${valor}, existencia ${inv.qty}`);
+  }
+  logAudit('inventario_correccion',{fruta:hechos,fondo:'Claudia $310 y Erandy $240 de la semana del 26-oct',motivo:'Datos de Iván, 3-nov'});
   await markMig(migKey);
 }
 async function migFruta26Oct(){
@@ -14569,6 +14606,95 @@ function renderFondoAhorro(mon){
     </div>`).join('')}
   </div>`;
 }
+// ══ SIEMPRE A LA VISTA (Iván, 3-nov) ═════════════════════════
+// "Necesito tener visible todo el tiempo esta información": el fondo de
+// cada una, el seguro social y lo que falta pagar. Tres tarjetas arriba
+// del Panel, que no dependen del período, y una línea en las demás
+// pantallas. Solo el dueño: fondoAhorro y gastos son suyos.
+const AHORRO_CONTROL_DESDE='2026-10-26';   // antes de esto va en el saldo inicial
+// Lo que Iván dijo que ya pagó sin registro: de la semana del 3-ago a la del 26-oct
+const IMSS_PREVIO={semanas:13,desde:'agosto'};
+function ahorroPendientes(x){
+  const out=[], hoyMon=getMonday(today());
+  const d=new Date(AHORRO_CONTROL_DESDE+'T12:00:00');
+  for(let mon=localDate(d);mon<=hoyMon;d.setDate(d.getDate()+7),mon=localDate(d)){
+    if(mon<getMonday(x.desde)||(x.hasta&&mon>x.hasta)) continue;
+    for(const tipo of ['negocio','empleada'])
+      if(!ahorroMovs(x.empId).some(m=>m.semana===mon&&m.tipo===tipo)) out.push({semana:mon,tipo});
+  }
+  return out;
+}
+function fijosEstado(){
+  const debe=D.gastos.filter(g=>g.pendientePago).sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+  const fondos=FONDO_AHORRO.filter(x=>!x.hasta).map(x=>({...x,saldo:ahorroSaldo(x.empId),pend:ahorroPendientes(x)}));
+  const imss=D.gastos.filter(g=>g.fijo==='imss');
+  const semImss=getMonday(hoyOperativo());
+  return {debe,totalDebe:r2(debe.reduce((a,g)=>a+(g.monto||0),0)),fondos,
+    totalFondos:r2(fondos.reduce((a,x)=>a+x.saldo,0)),nDepositos:fondos.reduce((a,x)=>a+x.pend.length,0),
+    imssSem:imss.find(g=>g.ticket===`IMSS-${semImss}`)||null,
+    imssPagadas:imss.filter(g=>!g.pendientePago).length,
+    cuotasPagadas:D.gastos.filter(g=>g.fijo==='banamex'&&!g.pendientePago).length};
+}
+function renderFijosPanel(){
+  const caja=$('db-fijos'); if(!caja) return;
+  if(SESSION?.tipo!=='admin'){caja.innerHTML='';caja.style.display='none';return;}
+  caja.style.display='';
+  programarPagosFijos();
+  const e=fijosEstado();
+  const fechaCorta=f=>{const d=new Date(f+'T12:00:00');return `${d.getDate()} ${['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()]}`;};
+  const btnAhorro=(x,p)=>`<button class="btn ${p.tipo==='negocio'?'bs':'bp'} bxs" style="flex:none;" onclick="registrarAhorro(${x.empId},'${p.tipo}','${p.semana}')">${p.tipo==='negocio'?'Negocio':esc(x.nombre)} ${fmt(x.sem)} · sem ${fechaCorta(p.semana)}</button>`;
+  const semanasImss=IMSS_PREVIO.semanas+e.imssPagadas;
+  const cuotasFalta=BANAMEX_CUOTAS.length-e.cuotasPagadas;
+  const fila=g=>`<div class="sr" style="align-items:center;gap:8px;">
+      <div style="flex:1;min-width:0;"><div style="font-size:12.5px;font-weight:600;">${esc(g.fijo==='renta'?'Renta':g.fijo==='imss'?'Seguro social':g.fijo==='banamex'?`Banamex, cuota ${g.cuota||''}`:g.prov)||'Sin proveedor'}</div>
+        <div style="font-size:11px;color:var(--text3);">${fechaCorta(g.fecha)}</div></div>
+      <span class="mono fw7" style="font-size:12.5px;">${fmt(g.monto)}</span>
+      <button class="btn bp bxs" style="flex:none;" onclick="marcarPagado(${Number(g.id)})">Pagado</button>
+    </div>`;
+  caja.innerHTML=`
+    <div class="card">
+      <div class="sh"><span class="ct" style="margin-bottom:0;">Fondo de ahorro</span>
+        <span class="mono fw7" style="font-size:15px;color:var(--teal);">${fmt(e.totalFondos)}</span></div>
+      ${e.fondos.map(x=>`<div class="sr"><span style="font-size:13px;font-weight:600;">${esc(x.nombre)}</span><span class="mono fw7">${fmt(x.saldo)}</span></div>`).join('')}
+      ${e.nDepositos
+        ?`<div style="font-size:11px;color:var(--text3);margin:8px 0 6px;">Falta registrar. Pícale cuando se haya depositado:</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${e.fondos.map(x=>x.pend.map(p=>btnAhorro(x,p)).join('')).join('')}</div>`
+        :`<div style="font-size:11.5px;color:var(--teal);margin-top:8px;">✓ Depósitos al corriente</div>`}
+    </div>
+    <div class="card">
+      <div class="sh"><span class="ct" style="margin-bottom:0;">Seguro social</span>
+        <span class="mono fw7" style="font-size:15px;">${fmt(1000)}<span style="font-size:10px;color:var(--text3);font-weight:400;">/sem</span></span></div>
+      <div class="sr" style="align-items:center;gap:8px;"><span style="font-size:13px;flex:1;">Esta semana</span>
+        ${e.imssSem?(e.imssSem.pendientePago
+          ?`<span style="font-size:12px;color:var(--gold);font-weight:600;">Pendiente</span><button class="btn bp bxs" style="flex:none;" onclick="marcarPagado(${Number(e.imssSem.id)})">Pagado</button>`
+          :`<span style="font-size:12px;color:var(--teal);font-weight:600;">✓ Pagado</span>`)
+          :`<span style="font-size:12px;color:var(--text3);">Sin programar</span>`}
+      </div>
+      <div class="sr"><span style="font-size:13px;">Desde ${IMSS_PREVIO.desde}</span><span class="mono fw7">${fmt(semanasImss*1000)}</span></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;">${semanasImss} semanas</div>
+    </div>
+    <div class="card">
+      <div class="sh"><span class="ct" style="margin-bottom:0;">Por pagar</span>
+        <span class="mono fw7" style="font-size:15px;color:${e.totalDebe>0?'var(--gold)':'var(--teal)'};">${fmt(e.totalDebe)}</span></div>
+      ${e.debe.map(fila).join('')||'<div style="font-size:11.5px;color:var(--teal);">✓ Nada pendiente</div>'}
+      <div style="font-size:11px;color:var(--text3);margin-top:8px;">Banamex: ${cuotasFalta} de ${BANAMEX_CUOTAS.length} cuotas por pagar, ${fmt(cuotasFalta*3000)}, termina en marzo 2027</div>
+    </div>`;
+}
+function renderFijosBarra(){
+  const b=$('fijos-barra'); if(!b) return;
+  // La caja y las órdenes usan toda la pantalla, y el Panel ya trae el detalle
+  if(SESSION?.tipo!=='admin'||['pos','ordenes','dashboard'].includes(currentPage)){b.style.display='none';return;}
+  const e=fijosEstado();
+  const trozo=(k,v,c)=>`<span style="white-space:nowrap;">${k} <b class="mono" style="color:${c||'var(--text)'};font-weight:600;">${v}</b></span>`;
+  b.style.cssText='display:flex;flex-wrap:wrap;gap:4px 16px;align-items:center;font-size:12px;color:var(--text2);background:var(--surface);border:1px solid var(--border);border-radius:var(--rsm);padding:7px 12px;margin-bottom:10px;cursor:pointer;';
+  b.setAttribute('onclick',"go('dashboard')");
+  b.innerHTML=[
+    ...e.fondos.map(x=>trozo(esc(x.nombre),fmt(x.saldo),'var(--teal)')),
+    trozo('Seguro social',!e.imssSem?'—':e.imssSem.pendientePago?'pendiente':'pagado',e.imssSem&&!e.imssSem.pendientePago?'var(--teal)':'var(--gold)'),
+    trozo('Por pagar',fmt(e.totalDebe),e.totalDebe>0?'var(--gold)':'var(--teal)'),
+    ...(e.nDepositos?[trozo('Depósitos por registrar',e.nDepositos,'var(--gold)')]:[]),
+  ].join('');
+}
 window.registrarAhorro=async(empId,tipo,mon)=>{
   const x=FONDO_AHORRO.find(f=>f.empId===Number(empId)); if(!x) return;
   const quien=tipo==='negocio'?'El negocio':x.nombre;
@@ -19002,6 +19128,7 @@ function dbRango(){
     label:`Semana ${fmtFecha(wd[0])} → ${fmtFecha(wd[4])}${enFinDeSemana()?' · empieza el lunes':''}`};
 }
 function renderDashboard(){
+  try{renderFijosPanel();}catch(e){console.warn('fijos:',e);}
   renderEventosAtencion();
   renderDbPeriodo();
   const td=today(); const cm=curM();
@@ -20995,6 +21122,7 @@ function updateGlobalBadges(){
       else nb.style.display='none';
     }
     // Contador de órdenes activas en la pestaña 🔔 Órdenes
+    renderFijosBarra();
     const oc=$('ord-nav-cnt');
     if(oc&&typeof ordActivas==='function'){
       const n=ordActivas().length;
