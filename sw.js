@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.62'; // Surtido del martes 3-nov
+const CACHE_NAME = 'el-huerto-v15.63'; // Costco y fruta del 3-nov; solo queda el dip chipotle
 const ASSETS = [
   '/',
   '/index.html',

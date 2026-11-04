@@ -3243,6 +3243,8 @@ async function completeInit(){
   await migNotaFruta26Oct();
   await migFondoAhorro31Oct();
   await migSurtido3Nov();
+  await migSurtido3NovB();
+  await migChipotleNuevo3Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6385,7 +6387,6 @@ async function migFondoAhorro31Oct(){
 // Los desechables no traen ticket (Iván lo tiró; "los costos fueron los
 // mismos"): precios del último ticket de La Nueva, que es de donde salen
 // esas marcas. El playo, $54, lo dio él. La fruta llega aparte.
-// Dip chipotle: artículo nuevo, todavía sin entrar a ninguna receta.
 // ═══════════════════════════════════════════════════════════
 const NUEVOS_3NOV=[{nombre:'Dip chipotle Chili Killers',cat:'salsas',catOf:'abarrotes',unit:'g',unidadOf:'g'}];
 const BASE_3NOV={cat:'proveedor',metodo:'efectivo',fecha:'2026-11-03',llegada:'2026-11-03',yaContado:true};
@@ -6434,6 +6435,83 @@ async function migSurtido3Nov(){
   logAudit('compras_registradas',{lote:'surtido del 3-nov',precios,inventario:hechos,
     motivo:'Tickets del martes 3-nov y desechables sin ticket; falta la fruta'});
   toast(`✓ Surtido del 3-nov: ${SURTIDO_3NOV.length} gastos registrados · ${precios.length} precios al día`,6000);
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// 3-NOV, LO QUE FALTABA: EL COSTCO Y LA FRUTA, Y EL CHIPOTLE NUEVO
+//
+// Costco salió a las 12:33 y el conteo de la tarde ya lo traía, como la
+// fruta. La fruta: precio y cantidad de Iván, a nombre de Reyes Ramiro.
+//
+// Chipotle (Iván): el dip de 3.8 kg sustituye al McCormick y en
+// inventario debe quedar solo el nuevo. Salen los dos artículos viejos:
+// "Salsa chipotle", en cero y en las recetas, y "Mayonesa chipotle", que
+// es la que se ha ido gastando (7 → 3) sin estar en ninguna receta.
+// Dosis de panini: 0.06 del squeeze de 310 g = 18.6 g.
+// ═══════════════════════════════════════════════════════════
+const SURTIDO_3NOV_B=[
+  {...BASE_3NOV,ticket:'COSTCO-ARG5953455',cat:'costco',prov:'Costco',
+   notas:'CFDI ARG 5953455 · Interlomas · 3-nov 12:33 · efectivo. Subtotal $2,117.63 − descuento $46.93. Importes netos.',
+   p:[['KS bebida de almendra 6 pz','Leche de almendra',6,'pz',159.00],
+      ['Ensalada italiana 908 g ×2','Lechuga',1816,'g',119.80],
+      ['Espinaca 454 g','Espinaca',454,'g',92.90],
+      ['Tiras de pechuga de pollo 1.36 kg','Tiras de pollo',1360,'g',359.00],
+      ['KS leche deslactosada light 12 L','Leche deslactosada',12,'L',265.00],
+      ['Susalitas 20 × 50 g','Susalias',20,'pz',299.00],
+      ['Queso parmesano rallado 908 g','Queso parmesano',908,'g',219.00],
+      ['Moras azules 1.36 kg','Blueberry',1360,'g',199.00],
+      ['Crema de almendras 765 g ×2','Crema de almendras',2,'pz',358.00]]},
+  {...BASE_3NOV,ticket:'MERCADO-03NOV26',prov:'Reyes Ramiro',
+   notas:'Sin ticket: varios puestos, englobado con Reyes Ramiro. Precios y cantidades de Iván (3-nov).',
+   p:[['Piña 2 pz × $30','Piña',2,'pz',60.00],
+      ['Pepino 9 kg × $20','Pepino',9000,'g',180.00],
+      ['Zanahoria 4 kg × $8','Zanahoria',4000,'g',32.00],
+      ['Jícama 9 kg × $17','Jícama',9000,'g',153.00],
+      ['Fresa 2 kg × $65','Fresa',2000,'g',130.00],
+      ['Mango 4 kg × $60','Mango verde',4000,'g',240.00],
+      ['Plátano 10 kg × $15','Plátano',10000,'g',150.00],
+      ['Sandía 1 pz × $75','Sandía',1,'pz',75.00],
+      ['Jitomate 3 kg × $28','Jitomate',3000,'g',84.00],
+      ['Manzana 1 kg × $35','Manzana',1000,'g',35.00]]},
+];
+async function migSurtido3NovB(){
+  const migKey='h5surtido_3nov26_b';
+  if(await migDone(migKey)) return;
+  const {precios,hechos}=await registrarLote(SURTIDO_3NOV_B);
+  logAudit('compras_registradas',{lote:'Costco y fruta del 3-nov',precios,inventario:hechos,
+    motivo:'CFDI ARG 5953455 y la lista de fruta de Iván'});
+  // Los desechables sí fueron de La Nueva (Iván lo confirmó)
+  const gn=D.gastos.find(x=>x.ticket==='LANUEVA-03NOV26');
+  if(gn) await fsSet('gastos',{...gn,notas:'Sin ticket (se tiró). Cantidades de Iván; precios del último ticket de La Nueva. Playo $54, dato de Iván.'});
+  toast(`✓ Costco y fruta del 3-nov registrados · ${precios.length} precios al día`,6000);
+  await markMig(migKey);
+}
+async function migChipotleNuevo3Nov(){
+  const migKey='h5chipotle_nuevo_3nov26';
+  if(await migDone(migKey)) return;
+  const dip=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre('Dip chipotle Chili Killers'));
+  if(!dip) return;   // sin el artículo nuevo no se toca nada: vuelve a intentar
+  const viejos=D.inventario.filter(i=>['Salsa chipotle','Mayonesa chipotle'].some(n=>normInvNombre(i.nombre)===normInvNombre(n)));
+  const idsV=viejos.map(i=>i.id);
+  const prods=[];
+  for(const r of D.recetas){
+    let toco=false;
+    const ings=(r.ings||[]).map(x=>{
+      if(!idsV.includes(x.invId)) return x;
+      toco=true; return {...x,invId:dip.id,nombre:dip.nombre,qty:'18.6',unit:'g'};
+    });
+    if(!toco) continue;
+    const upd={...r,ings};
+    await fsSet('recetas',upd);
+    const ix=D.recetas.findIndex(x=>x.id===r.id); if(ix>=0) D.recetas[ix]=upd;
+    const pr=D.productos.find(x=>x.id===r.prodId); if(pr) prods.push(pr.nombre);
+  }
+  for(const v of viejos){
+    await fsDel('inventario',v.id);
+    D.inventario=D.inventario.filter(i=>i.id!==v.id);
+  }
+  logAudit('inventario_fusion',{de:viejos.map(v=>`${v.nombre} (${v.qty} ${v.unit})`),a:dip.nombre,recetas:prods,
+    motivo:'El dip chipotle de 3.8 kg sustituye al McCormick (Iván, 3-nov)'});
   await markMig(migKey);
 }
 async function migFruta26Oct(){
@@ -8495,7 +8573,7 @@ const ALIAS_INV = {
   'tajin':'Chilito Tojín','chilitotojin':'Chilito Tojín','chiletajin':'Chilito Tojín','chileenpolvotajin':'Chilito Tojín',
   'chamoy':'Chamoy','chamoymega':'Chamoy',
   'valentina':'Valentina','salsavalentina':'Valentina','salsavalentinaroja':'Valentina',
-  'salsachipotle':'Salsa chipotle','salsadechipotle':'Salsa chipotle','aderezochipotle':'Salsa chipotle','salsazaaschilachipotle':'Salsa chipotle',
+  'salsachipotle':'Dip chipotle Chili Killers','salsadechipotle':'Dip chipotle Chili Killers','aderezochipotle':'Dip chipotle Chili Killers','salsazaaschilachipotle':'Dip chipotle Chili Killers','mayonesachipotle':'Dip chipotle Chili Killers','dipchipotle':'Dip chipotle Chili Killers',
   'aderezos':'Aderezos cremosos','aderezoscremosos':'Aderezos cremosos','salsabotanera':'Aderezos cremosos','salsabotaneraclasica':'Aderezos cremosos',
   'salsamaggi':'Salsa Maggi','salsamag':'Salsa Maggi','jugosazonadormaggi':'Salsa Maggi','salsaclementejacq':'Salsa Maggi',
   'pinol':'Pinol','lavatrastesliquido':'Pinol','lavatrasteslivido':'Pinol','jabondetrastes':'Pinol',
