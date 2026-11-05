@@ -1121,6 +1121,7 @@ nav{padding-top:env(safe-area-inset-top);}
       <div class="nav-drop">
         <button class="ntab" onclick="go('miperfil')"><svg class="ic"><use href="#i-user"/></svg> Mi Perfil</button>
         <button class="ntab" onclick="go('reloj')"><svg class="ic"><use href="#i-clock"/></svg> Reloj</button>
+        <button class="ntab" onclick="go('cierre')"><svg class="ic"><use href="#i-coins"/></svg> Cierre</button>
         <button class="ntab" onclick="go('clientes')"><svg class="ic"><use href="#i-people"/></svg> Clientes</button>
         <button class="ntab" onclick="go('vendedores')"><svg class="ic"><use href="#i-trophy"/></svg> Vendedores</button>
         <button class="ntab" onclick="go('suscriptores')"><svg class="ic"><use href="#i-leaf"/></svg> Suscriptores</button>
@@ -1158,6 +1159,7 @@ nav{padding-top:env(safe-area-inset-top);}
   <button class="mnbtn" onclick="go('inventario')"><span class="mni"><svg class="ic"><use href="#i-box"/></svg></span>Inventario</button>
   <button class="mnbtn" onclick="go('dashboard')"><span class="mni"><svg class="ic"><use href="#i-home"/></svg></span>Inicio</button>
   <button class="mnbtn" onclick="go('reloj')"><span class="mni"><svg class="ic"><use href="#i-clock"/></svg></span>Reloj</button>
+  <button class="mnbtn" onclick="go('cierre')"><span class="mni"><svg class="ic"><use href="#i-coins"/></svg></span>Cierre</button>
   <button class="mnbtn" onclick="go('miperfil')"><span class="mni"><svg class="ic"><use href="#i-user"/></svg></span>Perfil</button>
   <button class="mnbtn" onclick="go('nomina')"><span class="mni"><svg class="ic"><use href="#i-people"/></svg></span>Nómina</button>
   <button class="mnbtn" onclick="go('ajustes')"><span class="mni"><svg class="ic"><use href="#i-wrench"/></svg></span>Ajustes</button>
@@ -1545,6 +1547,23 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- ══ CAJA ══ -->
+<!-- Cierre a ciegas: la cajera cuenta y no ve lo que se esperaba -->
+<div id="page-cierre" class="page">
+  <div class="sh"><span class="st"><svg class="ic"><use href="#i-coins"/></svg> Cierre de caja</span></div>
+  <div class="card" style="max-width:520px;margin:0 auto;">
+    <div id="cierre-estado"></div>
+    <p style="font-size:13px;color:var(--text2);margin:0 0 12px;">Cuenta todo el efectivo del cajón, billete por billete.</p>
+    <div class="corte-bills"><div class="cb"><label>$1000</label><input type="number" class="cierre-bill" data-val="1000" placeholder="0" inputmode="numeric" min="0" oninput="cierreSuma()"></div><div class="cb"><label>$500</label><input type="number" class="cierre-bill" data-val="500" placeholder="0" inputmode="numeric" min="0" oninput="cierreSuma()"></div><div class="cb"><label>$200</label><input type="number" class="cierre-bill" data-val="200" placeholder="0" inputmode="numeric" min="0" oninput="cierreSuma()"></div><div class="cb"><label>$100</label><input type="number" class="cierre-bill" data-val="100" placeholder="0" inputmode="numeric" min="0" oninput="cierreSuma()"></div><div class="cb"><label>$50</label><input type="number" class="cierre-bill" data-val="50" placeholder="0" inputmode="numeric" min="0" oninput="cierreSuma()"></div><div class="cb"><label>$20</label><input type="number" class="cierre-bill" data-val="20" placeholder="0" inputmode="numeric" min="0" oninput="cierreSuma()"></div><div class="cb"><label>Monedas $</label><input type="number" id="cierre-monedas" placeholder="0" step="0.5" min="0" inputmode="decimal" oninput="cierreSuma()"></div></div>
+    <div class="sr" style="margin-bottom:12px;"><span style="font-size:13px;font-weight:600;">Efectivo contado</span><span class="mono fw7" id="cierre-total" style="font-size:18px;">$0.00</span></div>
+    <div class="ii">
+      <div class="fg"><label>Total de la terminal</label><input type="number" id="cierre-terminal" placeholder="$0.00" step="0.01" inputmode="decimal"></div>
+      <div class="fg"><label>De eso, propinas</label><input type="number" id="cierre-propinas" placeholder="$0.00" step="0.01" inputmode="decimal"></div>
+    </div>
+    <div class="fg"><label>Nota (si pasó algo con el efectivo)</label><input type="text" id="cierre-nota" placeholder="Opcional"></div>
+    <button class="btn bp bfull" onclick="guardarCierre()" style="padding:15px;font-size:15px;font-weight:800;">Guardar cierre</button>
+  </div>
+</div>
+
 <div id="page-caja" class="page">
   <div class="sh"><span class="st"><svg class="ic"><use href="#i-coins"/></svg> Caja del Día</span>
     <span style="font-size:11px;color:var(--text3);font-family:var(--ui);font-variant-numeric:tabular-nums;" id="corte-fecha-label"></span>
@@ -1557,6 +1576,9 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="card" style="text-align:center;"><div class="ct">Tarjeta</div><div class="kv gold" id="k-htc">$0.00</div></div>
     <div class="card" style="text-align:center;border:2px solid var(--accent);"><div class="ct">En Caja</div><div class="kv teal" id="k-encaja">$0.00</div><div style="font-size:10px;color:var(--text3);margin-top:3px;">Fondo + Efvo − Retiros</div></div>
   </div>
+
+  <!-- Lo que debe haber en el cajón, billete por billete -->
+  <div id="caja-denom" class="card" style="margin-bottom:12px;"></div>
 
   <!-- Semana -->
   <div id="caja-wstrip" class="card" style="margin-bottom:12px;"></div>
@@ -1684,6 +1706,8 @@ nav{padding-top:env(safe-area-inset-top);}
             </select>
           </div>
         </div>
+        <div style="font-size:11px;color:var(--text3);margin:2px 0 4px;">Qué billetes son (para que el cajón siga cuadrando por denominación)</div>
+        <div class="corte-bills"><div class="cb"><label>$1000</label><input type="number" class="ret-bill" data-val="1000" placeholder="0" inputmode="numeric" min="0" oninput="retiroSuma()"></div><div class="cb"><label>$500</label><input type="number" class="ret-bill" data-val="500" placeholder="0" inputmode="numeric" min="0" oninput="retiroSuma()"></div><div class="cb"><label>$200</label><input type="number" class="ret-bill" data-val="200" placeholder="0" inputmode="numeric" min="0" oninput="retiroSuma()"></div><div class="cb"><label>$100</label><input type="number" class="ret-bill" data-val="100" placeholder="0" inputmode="numeric" min="0" oninput="retiroSuma()"></div><div class="cb"><label>$50</label><input type="number" class="ret-bill" data-val="50" placeholder="0" inputmode="numeric" min="0" oninput="retiroSuma()"></div><div class="cb"><label>$20</label><input type="number" class="ret-bill" data-val="20" placeholder="0" inputmode="numeric" min="0" oninput="retiroSuma()"></div><div class="cb"><label>Monedas $</label><input type="number" id="ret-monedas" placeholder="0" step="0.5" min="0" inputmode="decimal" oninput="retiroSuma()"></div></div>
         <button class="btn bp bfull bsm" onclick="addRetiro()">+ Registrar Movimiento</button>
         <div id="retiros-resumen" style="margin-top:10px;"></div>
         <div id="retiros-lista" style="margin-top:8px;"></div>
@@ -1725,8 +1749,9 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="modal-head"><span class="modal-title"><svg class="ic"><use href="#i-coins"/></svg> Apertura de Caja</span></div>
     <p style="font-size:12.5px;color:var(--text2);margin-bottom:6px;">Cuenta el efectivo del cajón y regístralo.</p>
     <p style="font-size:11px;color:var(--text3);margin-bottom:14px;">Se captura <b>una sola vez al día</b> — con este monto el corte de la noche cuadra solo.</p>
-    <div class="fg"><label>¿Con cuánto efectivo inicia la caja hoy?</label>
-      <input type="number" id="apertura-monto" placeholder="$0.00" step="0.01" inputmode="decimal" style="font-size:20px;font-weight:800;text-align:center;padding:12px;">
+    <div class="fg"><label>¿Cuántos billetes de cada uno hay?</label>
+      <div class="corte-bills"><div class="cb"><label>$1000</label><input type="number" class="apertura-bill" data-val="1000" placeholder="0" inputmode="numeric" min="0" oninput="aperturaSuma()"></div><div class="cb"><label>$500</label><input type="number" class="apertura-bill" data-val="500" placeholder="0" inputmode="numeric" min="0" oninput="aperturaSuma()"></div><div class="cb"><label>$200</label><input type="number" class="apertura-bill" data-val="200" placeholder="0" inputmode="numeric" min="0" oninput="aperturaSuma()"></div><div class="cb"><label>$100</label><input type="number" class="apertura-bill" data-val="100" placeholder="0" inputmode="numeric" min="0" oninput="aperturaSuma()"></div><div class="cb"><label>$50</label><input type="number" class="apertura-bill" data-val="50" placeholder="0" inputmode="numeric" min="0" oninput="aperturaSuma()"></div><div class="cb"><label>$20</label><input type="number" class="apertura-bill" data-val="20" placeholder="0" inputmode="numeric" min="0" oninput="aperturaSuma()"></div><div class="cb"><label>Monedas $</label><input type="number" id="apertura-monedas" placeholder="0" step="0.5" min="0" inputmode="decimal" oninput="aperturaSuma()"></div></div>
+      <input type="text" id="apertura-monto" readonly placeholder="$0.00" style="font-size:20px;font-weight:800;text-align:center;padding:12px;">
     </div>
     <div style="display:flex;gap:8px;">
       <button class="btn bp bfull" onclick="confirmarApertura()" style="min-height:50px;font-size:14.5px;"><svg class="ic"><use href="#i-coins"/></svg> Registrar apertura</button>
@@ -2659,21 +2684,14 @@ nav{padding-top:env(safe-area-inset-top);}
         style="font-size:19px;text-align:center;font-weight:800;padding:12px;"
         oninput="if($('op-cliente'))$('op-cliente').value=this.value">
     </div>
-    <div class="fg"><label>Con cuánto paga el cliente</label>
-      <input type="number" id="cobro-recibido" placeholder="0.00" oninput="calcCambio()" style="font-size:20px;text-align:center;font-family:var(--ui);font-variant-numeric:tabular-nums;" autofocus>
+    <div class="fg" style="margin-bottom:6px;"><label>Toca cada billete que te dio el cliente</label>
+      <input type="text" id="cobro-recibido" readonly placeholder="$0.00" style="font-size:20px;text-align:center;font-family:var(--ui);font-variant-numeric:tabular-nums;">
     </div>
-    <!-- Botones rápidos de billetes -->
-    <div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:12px;">
-      <button class="btn bs bsm" onclick="setBillete(20)">$20</button>
-      <button class="btn bs bsm" onclick="setBillete(50)">$50</button>
-      <button class="btn bs bsm" onclick="setBillete(100)">$100</button>
-      <button class="btn bs bsm" onclick="setBillete(200)">$200</button>
-      <button class="btn bs bsm" onclick="setBillete(500)">$500</button>
-      <button class="btn bs bsm" onclick="setBillete(1000)">$1000</button>
-    </div>
+    <div id="cobro-billetes" style="margin-bottom:12px;"></div>
     <div id="cobro-cambio-box" style="background:var(--surface2);border-radius:var(--rsm);padding:12px;text-align:center;margin-bottom:14px;display:none;">
       <div style="font-size:11px;color:var(--text3);margin-bottom:3px;">CAMBIO</div>
       <div id="cobro-cambio" style="font-family:var(--ui);font-variant-numeric:tabular-nums;letter-spacing:-.025em;font-size:32px;font-weight:600;color:var(--teal);">$0.00</div>
+      <div id="cobro-cambio-det" style="margin-top:6px;"></div>
     </div>
     <div id="cobro-alerta" style="display:none;text-align:center;" class="astrip"></div>
     <button class="btn bp bfull" id="cobro-btn" onclick="cobrarEfectivo()" disabled style="opacity:.4;">✓ Confirmar Cobro</button>
@@ -3343,7 +3361,7 @@ function listenAll(){
       // regla haciendo su trabajo. Avisar de eso entrena a ignorar la
       // barra, y entonces el día que falle algo de verdad tampoco se
       // ve. Solo se avisa de lo que ese rol SÍ debería poder leer.
-      const porRol=['gastos','nomPagos','usuarios','auditLog','fondoAhorro'];
+      const porRol=['gastos','nomPagos','usuarios','auditLog','fondoAhorro','cortes','extras','kpiCaptura','provDir','ordenesCompra'];
       if(!(err.code==='permission-denied' && porRol.includes(col))) marcaColeccionCaida(col,err.code||err.message);
       if(!READY){
         loaded.add(col);
@@ -9666,6 +9684,8 @@ const esGerente=()=>SESSION?.tipo==='emp'&&SESSION?.rol==='gerente';
 
 function canAccess(page){
   if(!SESSION) return false;
+  // El dueño hace el corte en Caja, donde ve lo esperado; la gerente también
+  if(page==='cierre') return SESSION.tipo==='emp'&&!esGerente();
   if(SESSION.tipo==='admin') return true;
   if(SESSION.tipo==='emp'){
     if(esGerente() && GERENTE_PAGES.includes(page)) return true;
@@ -11996,15 +12016,12 @@ window.abrirCobro=()=>{
   publicarPantalla('cobro');
   const {total}=getDescuento();
   $('cobro-total').textContent=fmt(total);
-  $('cobro-recibido').value='';
-  $('cobro-cambio-box').style.display='none';
-  $('cobro-alerta').style.display='none';
-  $('cobro-btn').disabled=true;$('cobro-btn').style.opacity='.4';
+  cobroReiniciar(total,null);
   // Nombre del cliente: precargado desde la orden; si falta, el foco va ahí
   const cc=$('cobro-cliente');
   if(cc) cc.value=$('op-cliente')?.value?.trim()||'';
   $('cobro-modal').style.display='flex';
-  setTimeout(()=>{(cc&&!cc.value?cc:$('cobro-recibido')).focus();},120);
+  if(cc&&!cc.value) setTimeout(()=>cc.focus(),120);
 };
 // Tarjeta: antes cobraba directo sin pedir nada — ahora, si no hay nombre,
 // se pide GRANDE primero (es lo que canta la cocina al entregar).
@@ -12543,32 +12560,92 @@ function mpCorteAuto(){
     .then(r=>{mpPrecargarCorte();mpRenderCorte(r);})
     .catch(e=>{el.textContent='⚠ '+ptMsgError(e);mpPropinasPOS();});
 }
-window.setBillete=v=>{
-  $('cobro-recibido').value=v; calcCambio();
+// ══ QUÉ BILLETES ENTRAN Y CUÁLES SALEN (Iván, 4-nov) ═════════
+// "No quiero que las chicas estén cambiando dinero ajeno." Se toca cada
+// billete que da el cliente y el sistema dice con cuáles dar el cambio.
+// Así el cajón tiene un esperado POR DENOMINACIÓN: cambiar un billete de
+// $500 por cinco de $100 cuadra en el total, pero aquí se ve.
+let _cobro={total:0,pagos:null,rec:{},cam:{},camManual:false,camEdit:false};
+function cobroReiniciar(total,pagos){
+  _cobro={total,pagos,rec:{},cam:{},camManual:false,camEdit:false};
+  calcCambio();
+}
+window.cobroSumar=(k,monto)=>{
+  if(k==='m') _cobro.rec.m=r2((_cobro.rec.m||0)+monto);
+  else _cobro.rec[k]=(_cobro.rec[k]||0)+1;
+  _cobro.camManual=false;_cobro.camEdit=false;
+  calcCambio();
+};
+window.cobroBorrar=()=>{_cobro.rec={};_cobro.cam={};_cobro.camManual=false;_cobro.camEdit=false;calcCambio();};
+window.cobroCamEditar=()=>{_cobro.camEdit=!_cobro.camEdit;calcCambio();};
+window.cobroCamMover=(k,paso)=>{
+  const v=(_cobro.cam[k]||0)+paso;
+  if(v>0) _cobro.cam[k]=r2(v); else delete _cobro.cam[k];
+  _cobro.camManual=true;
+  calcCambio();
 };
 window.calcCambio=()=>{
-  const {total}=getDescuento();
-  const rec=parseFloat($('cobro-recibido').value)||0;
-  const cambio=rec-total;
-  if(rec<=0){$('cobro-cambio-box').style.display='none';$('cobro-alerta').style.display='none';$('cobro-btn').disabled=true;$('cobro-btn').style.opacity='.4';return;}
+  const total=_cobro.total;
+  const rec=denomSuma(_cobro.rec);
+  const cambio=r2(rec-total);
+  const btnsB=DENOMS.map(d=>{const n=_cobro.rec[d]||0;
+    return `<button class="btn ${n?'bp':'bs'} bsm" style="flex:1 1 30%;" onclick="cobroSumar(${d})">$${d}${n?` × ${n}`:''}</button>`;}).join('');
+  const btnsM=[10,5,2,1,0.5].map(m=>`<button class="btn bs bxs" style="flex:1;" onclick="cobroSumar('m',${m})">+$${m}</button>`).join('');
+  if($('cobro-billetes')) $('cobro-billetes').innerHTML=
+    `<div style="display:flex;gap:5px;flex-wrap:wrap;margin-bottom:6px;">${btnsB}</div>
+     <div style="display:flex;gap:5px;align-items:center;flex-wrap:wrap;">
+       <span style="font-size:11px;color:var(--text3);flex:none;">Monedas${_cobro.rec.m?` <b class="mono">${fmt(_cobro.rec.m)}</b>`:''}</span>${btnsM}
+       ${rec>0?`<button class="btn bd bxs" style="flex:none;" onclick="cobroBorrar()">Borrar</button>`:''}
+     </div>`;
+  $('cobro-recibido').value=rec>0?fmt(rec):'';
+  const bloquear=b=>{$('cobro-btn').disabled=b;$('cobro-btn').style.opacity=b?'.4':'1';};
+  if(rec<=0){$('cobro-cambio-box').style.display='none';$('cobro-alerta').style.display='none';bloquear(true);return;}
   if(cambio<0){
     $('cobro-cambio-box').style.display='none';
     $('cobro-alerta').style.display='block';
     $('cobro-alerta').innerHTML=`⚠ Faltan <strong>${fmt(Math.abs(cambio))}</strong> para completar`;
-    $('cobro-btn').disabled=true;$('cobro-btn').style.opacity='.4';
-  } else {
-    $('cobro-alerta').style.display='none';
-    $('cobro-cambio-box').style.display='block';
-    $('cobro-cambio').textContent=fmt(cambio);
-    $('cobro-btn').disabled=false;$('cobro-btn').style.opacity='1';
+    bloquear(true);
+    return;
   }
+  $('cobro-alerta').style.display='none';
+  $('cobro-cambio-box').style.display='block';
+  $('cobro-cambio').textContent=fmt(cambio);
+  if(!_cobro.camManual) _cobro.cam=cambioSugerido(cambio,_cobro.rec);
+  const dif=r2(denomSuma(_cobro.cam)-cambio);
+  const editar=_cobro.camEdit?`<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:5px;margin-top:8px;">
+      ${[...DENOMS,'m'].map(k=>{const paso=k==='m'&&cambio%1?0.5:1, n=_cobro.cam[k]||0;
+        return `<div style="background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px;">
+          <div style="font-size:10.5px;color:var(--text3);">${k==='m'?'Monedas':'$'+k}</div>
+          <div class="mono fw7" style="font-size:13px;">${k==='m'?fmt(n):n}</div>
+          <div style="display:flex;gap:3px;justify-content:center;margin-top:2px;">
+            <button class="btn bs bxs" onclick="cobroCamMover('${k}',-${paso})">−</button>
+            <button class="btn bs bxs" onclick="cobroCamMover('${k}',${paso})">+</button></div>
+        </div>`;}).join('')}
+    </div>`:'';
+  $('cobro-cambio-det').innerHTML=cambio>0
+    ?`<div style="font-size:13px;font-weight:600;">Entrega: ${denomTxt(_cobro.cam)||'—'}</div>
+      ${dif?`<div style="font-size:12px;color:var(--red);font-weight:600;margin-top:3px;">${dif>0?'Sobran':'Faltan'} ${fmt(Math.abs(dif))} en lo que vas a entregar</div>`:''}
+      <button class="btn bs bxs" style="margin-top:6px;" onclick="cobroCamEditar()">${_cobro.camEdit?'Listo':'Lo di con otros billetes'}</button>${editar}`
+    :'<div style="font-size:12px;color:var(--text3);">Pago exacto</div>';
+  bloquear(dif!==0);
 };
 window.cobrarEfectivo=async()=>{
   if(cobrandoEnProceso) return;
-  const rec=parseFloat($('cobro-recibido').value)||0;
+  const rec=denomSuma(_cobro.rec);
+  const extra={billetes:denomLimpio(_cobro.rec),cambioDenom:denomLimpio(_cobro.cam)};
   const btn=$('cobro-btn'); if(btn){btn.classList.add('loading');btn.disabled=true;}
   $('cobro-modal').style.display='none';
-  await cobrar('efectivo',rec);
+  if(_cobro.pagos){
+    // Cuenta dividida: el cambio se anota en la primera parte en efectivo
+    const cambio=r2(rec-_cobro.total); let puesto=false;
+    const pagos=_cobro.pagos.map(p=>{
+      if(p.metodo!=='efectivo') return p;
+      const q={...p,recibido:puesto?p.monto:r2(p.monto+cambio)}; puesto=true; return q;
+    });
+    const nombre=$('op-cliente')?.value?.trim()||'';
+    await cobrar(_cobro.dominante||'efectivo',0,pagos,extra);
+    if(nombre&&$('op-cliente'))$('op-cliente').value='';
+  } else await cobrar('efectivo',rec,null,extra);
   if(btn){btn.classList.remove('loading');btn.disabled=false;}
 };
 
@@ -12729,7 +12806,8 @@ async function cobrar(metodo,recibido=0,pagos=null,extra=null){
       lealtadCodigo:lealtadActual?.codigo||null,
       premioCanjeado:canjeActivo||false,
       recibido:recTotal||total,
-      cambio
+      cambio,
+      ...(extra?.billetes?{billetes:extra.billetes,cambioDenom:extra.cambioDenom||{}}:{})
     };
     // Point: el dinero de la venta es la cuenta; la propina va aparte (no
     // es venta, pero el corte la necesita) y queda el rastro de la orden.
@@ -13718,13 +13796,21 @@ window.addRetiro=async()=>{
   const fecha=$('ret-fecha').value||today();
   const monto=parseFloat($('ret-monto').value);
   if(!monto||monto<=0){toast('⚠ Ingresa un monto');return;}
+  const denom=leerDenom('.ret-bill','ret-monedas');
+  const conDenom=denomSuma(denom)>0;
+  if(conDenom&&Math.abs(denomSuma(denom)-monto)>0.01){toast(`⚠ Los billetes suman ${fmt(denomSuma(denom))} y el monto es ${fmt(monto)}`,4000,'warn');return;}
+  const limpiarBilletes=()=>{document.querySelectorAll('.ret-bill').forEach(el=>el.value='');if($('ret-monedas'))$('ret-monedas').value='';};
   const tipo=$('ret-tipo').value;
   const concepto=$('ret-concepto').value.trim()||'Sin concepto';
   // Modo edición
   const editId=$('ret-monto').dataset.editId;
   const existe=editId?D.retiros.find(x=>x.id==editId):null;
   if(existe){
-    await fsSet('retiros',{...existe,fecha,monto,tipo,concepto});
+    // Si cambió el monto, el desglose viejo ya no vale
+    const {denom:denomViejo,...sinDenom}=existe;
+    const denomFinal=conDenom?denom:(denomViejo&&Math.abs(denomSuma(denomViejo)-monto)<0.01?denomViejo:null);
+    await fsSet('retiros',{...sinDenom,fecha,monto,tipo,concepto,...(denomFinal?{denom:denomFinal}:{})});
+    limpiarBilletes();
     $('ret-monto').value='';$('ret-concepto').value='';
     delete $('ret-monto').dataset.editId;
     const btn=document.querySelector('button[onclick="addRetiro()"]');
@@ -13741,16 +13827,18 @@ window.addRetiro=async()=>{
       if(!confirm(`Ya existe un fondo del ${fecha} por ${fmt(fondoExistente.monto)}.\n\n¿Reemplazarlo por ${fmt(monto)}?`)){
         return;
       }
-      await fsSet('retiros',{...fondoExistente,monto,concepto:concepto||'Fondo de apertura'});
+      await fsSet('retiros',{...fondoExistente,monto,concepto:concepto||'Fondo de apertura',...(conDenom?{denom}:{})});
+      limpiarBilletes();
       $('ret-monto').value='';$('ret-concepto').value='';
       toast(`💰 Fondo actualizado: ${fmt(monto)}`,3000);
       return;
     }
   }
   // A4: firma del movimiento + bitácora
-  const r={id:Date.now(),fecha,monto,tipo,concepto,registradoPor:SESSION?.id||0,registradoPorNombre:SESSION?.nombre||activeVend?.nombre||'—'};
+  const r={id:Date.now(),fecha,monto,tipo,concepto,...(conDenom?{denom}:{}),registradoPor:SESSION?.id||0,registradoPorNombre:SESSION?.nombre||activeVend?.nombre||'—'};
   await fsSet('retiros',r);
   logAudit('movimiento_efectivo',{tipo,monto,concepto,fecha});
+  limpiarBilletes();
   $('ret-monto').value='';$('ret-concepto').value='';
   toast(`✓ ${tipo==='retiro'?'💸 Retiro':tipo==='fondo'?'💰 Fondo inicial':'📥 Depósito'}: ${fmt(monto)}`);
 };
@@ -13791,6 +13879,164 @@ window.delRetiro=async id=>{
   toast('✓ Eliminado');
 };
 
+// ══ EL CAJÓN POR DENOMINACIÓN ══════════════════════════════
+// Billetes por pieza; las monedas ('m') van juntas, en pesos.
+const DENOMS=[1000,500,200,100,50,20];
+const denomLimpio=o=>{const r={};for(const k of [...DENOMS,'m']){const v=Number(o?.[k])||0;if(v>0)r[k]=k==='m'?r2(v):Math.round(v);}return r;};
+const denomSuma=o=>r2(DENOMS.reduce((a,d)=>a+d*(Number(o?.[d])||0),0)+(Number(o?.m)||0));
+const denomTxt=o=>[...DENOMS.filter(d=>o?.[d]).map(d=>`${o[d]} de $${d}`),...(o?.m?[`${fmt(o.m)} en monedas`]:[])].join(' · ');
+function leerDenom(selector,monedasId){
+  const r={};
+  document.querySelectorAll(selector).forEach(el=>{const n=parseInt(el.value)||0;if(n>0)r[el.dataset.val]=n;});
+  const m=parseFloat($(monedasId)?.value)||0; if(m>0)r.m=m;
+  return denomLimpio(r);
+}
+// Lo que debe haber en el cajón, pieza por pieza. `sinDesglose` es el
+// efectivo que se movió sin decir con qué billetes: ventas de antes de
+// esto o un retiro capturado solo por monto. Mientras exista, el total
+// sigue valiendo pero las piezas son aproximadas.
+function cajaDenom(fecha){
+  const col=()=>Object.fromEntries([...DENOMS,'m'].map(k=>[k,0]));
+  const ini=col(),ent=col(),cam=col(),mov=col();
+  let sinDesglose=0;
+  const sumar=(dst,o,signo=1)=>{for(const k of [...DENOMS,'m']) dst[k]=r2(dst[k]+signo*(Number(o?.[k])||0));};
+  for(const r of D.retiros.filter(x=>x.fecha===fecha)){
+    const signo=r.tipo==='retiro'?-1:1;
+    if(r.denom&&denomSuma(r.denom)>0) sumar(r.tipo==='fondo'?ini:mov,r.denom,signo);
+    else sinDesglose=r2(sinDesglose+signo*(r.monto||0));
+  }
+  for(const v of D.ventas.filter(x=>x.fecha===fecha&&!x.anulada)){
+    const ef=ventaEf(v); if(ef<=0) continue;
+    if(v.billetes){sumar(ent,v.billetes);sumar(cam,v.cambioDenom);}
+    else sinDesglose=r2(sinDesglose+ef);
+  }
+  const esp=col();
+  for(const k of [...DENOMS,'m']) esp[k]=r2(ini[k]+ent[k]-cam[k]+mov[k]);
+  return {ini,ent,cam,mov,esp,sinDesglose};
+}
+// Con qué dar el cambio: el billete más grande que quepa y que SÍ esté en
+// el cajón (contando lo que acaba de dar el cliente). Lo demás, monedas.
+function cambioSugerido(cambio,recibidos){
+  const c=cajaDenom(fechaVentaPOS());
+  const conocido=c.sinDesglose===0;
+  let resto=r2(cambio); const out={};
+  for(const d of DENOMS){
+    if(resto<d) continue;
+    const hay=conocido?Math.max(0,(c.esp[d]||0)+(recibidos?.[d]||0)):Infinity;
+    const n=Math.min(Math.floor(resto/d),hay);
+    if(n>0){out[d]=n;resto=r2(resto-n*d);}
+  }
+  if(resto>0) out.m=resto;
+  return out;
+}
+// Lo que se guarda en el corte: esperado, contado y diferencia por pieza
+function denomCorte(td,denomContado){
+  const c=cajaDenom(td);
+  const base={denomEsperado:denomLimpioConNeg(c.esp),denomSinDesglose:c.sinDesglose};
+  if(!denomContado||!denomSuma(denomContado)) return base;
+  const dif={};
+  for(const k of [...DENOMS,'m']){
+    const d=r2((denomContado[k]||0)-(c.esp[k]||0));
+    if(d) dif[k]=d;
+  }
+  return {...base,denomContado,denomDif:dif};
+}
+const denomLimpioConNeg=o=>Object.fromEntries(Object.entries(o).filter(([,v])=>v));
+const denomDifTxt=dif=>{
+  const pz=(k,v)=>k==='m'?`${fmt(Math.abs(v))} en monedas`:`${Math.abs(v)} de $${k}`;
+  const orden=[...DENOMS,'m'].filter(k=>dif?.[k]);
+  const f=orden.filter(k=>dif[k]<0).map(k=>pz(k,dif[k])), s=orden.filter(k=>dif[k]>0).map(k=>pz(k,dif[k]));
+  return [f.length?`faltan ${f.join(', ')}`:'',s.length?`sobran ${s.join(', ')}`:''].filter(Boolean).join(' · ');
+};
+// El total cuadra pero las piezas no: alguien cambió billetes
+const billetesCambiados=c=>!!c&&!!c.denomDif&&DENOMS.some(d=>c.denomDif[d])&&!c.denomSinDesglose&&Math.abs(c.diferencia||0)<=5;
+// Lo que quedó ayer tiene que ser lo que abre hoy
+function aperturaContraAyer(td){
+  const fondo=D.retiros.find(r=>r.fecha===td&&r.tipo==='fondo');
+  const prev=[...D.cortes].filter(c=>c.fecha<td).sort((a,b)=>b.id-a.id)[0];
+  if(!fondo||!prev) return null;
+  const despues=D.retiros.filter(r=>r.tipo!=='fondo'&&r.fecha<td&&(r.fecha>prev.fecha||(r.fecha===prev.fecha&&r.id>prev.id)));
+  const debia=r2(despues.reduce((a,r)=>a+(r.tipo==='retiro'?-1:1)*(r.monto||0),prev.contado||0));
+  return {debia,abrio:fondo.monto,dif:r2(fondo.monto-debia),prevFecha:prev.fecha};
+}
+function renderDenomCaja(){
+  const caja=$('caja-denom'); if(!caja) return;
+  const td=today(), c=cajaDenom(td);
+  const tecleado=leerDenom('.corte-bill','corte-monedas');
+  const ultimo=[...D.cortes].filter(x=>x.fecha===td).sort((a,b)=>b.id-a.id)[0];
+  const contado=denomSuma(tecleado)>0?tecleado:(ultimo?.denomContado||null);
+  const n=(k,v)=>!v?'<span style="color:var(--text3);">·</span>':(k==='m'?fmt(v):String(v));
+  const filas=[...DENOMS,'m'].filter(k=>c.ini[k]||c.ent[k]||c.cam[k]||c.mov[k]||c.esp[k]||contado?.[k]).map(k=>{
+    const dif=contado?r2((contado[k]||0)-(c.esp[k]||0)):0;
+    return `<tr><td class="fw7">${k==='m'?'Monedas':'$'+k}</td>
+      <td class="mono" style="text-align:right;">${n(k,c.ini[k])}</td>
+      <td class="mono" style="text-align:right;">${n(k,c.ent[k])}</td>
+      <td class="mono" style="text-align:right;">${n(k,c.cam[k])}</td>
+      <td class="mono" style="text-align:right;">${n(k,c.mov[k])}</td>
+      <td class="mono fw7" style="text-align:right;">${n(k,c.esp[k])}</td>
+      ${contado?`<td class="mono" style="text-align:right;">${n(k,contado[k]||0)}</td>
+      <td class="mono fw7" style="text-align:right;color:${dif<0?'var(--red)':dif>0?'var(--gold)':'var(--teal)'};">${dif?(dif>0?'+':'−')+(k==='m'?fmt(Math.abs(dif)):Math.abs(dif)):'✓'}</td>`:''}
+    </tr>`;}).join('');
+  const av=[];
+  if(c.sinDesglose) av.push(`${fmt(Math.abs(c.sinDesglose))} se movieron hoy sin decir con qué billetes (ventas de antes de esto o movimientos solo por monto). El total sigue valiendo; las piezas son aproximadas.`);
+  const ap=aperturaContraAyer(td);
+  if(ap&&Math.abs(ap.dif)>1) av.push(`La caja abrió con ${fmt(ap.abrio)} y debía abrir con ${fmt(ap.debia)} (lo que quedó el ${ap.prevFecha}). Diferencia: ${ap.dif>0?'+':'−'}${fmt(Math.abs(ap.dif))}.`);
+  if(billetesCambiados(ultimo)) av.push(`El total cuadra, pero cambiaron billetes: ${denomDifTxt(ultimo.denomDif)}.`);
+  // Robo hormiga: un faltante chico no dice nada, muchos juntos sí
+  const hace30=localDate(new Date(Date.now()-30*864e5));
+  const porQuien={};
+  for(const x of D.cortes.filter(x=>x.fecha>=hace30)){
+    const q=x.cerroNombres?.[0]||x.realizadoPor||'—';
+    const y=(porQuien[q]??={n:0,falta:0,sobra:0,veces:0});
+    y.n++;
+    if((x.diferencia||0)<-5){y.falta=r2(y.falta-x.diferencia);y.veces++;}
+    if((x.diferencia||0)>5) y.sobra=r2(y.sobra+x.diferencia);
+  }
+  caja.innerHTML=`<div class="sh"><span class="ct" style="margin-bottom:0;">Billetes en caja</span>
+      <span class="mono fw7" style="font-size:15px;">${fmt(r2(denomSuma(c.esp)+c.sinDesglose))}</span></div>
+    ${filas?`<div class="tw"><table class="tbl"><thead><tr><th>Denominación</th><th style="text-align:right;">Abrió</th><th style="text-align:right;">Entró</th><th style="text-align:right;">Cambio</th><th style="text-align:right;">Retiros y depósitos</th><th style="text-align:right;">Debe haber</th>${contado?'<th style="text-align:right;">Contaron</th><th style="text-align:right;">Dif.</th>':''}</tr></thead><tbody>${filas}</tbody></table></div>`
+      :'<p style="font-size:12px;color:var(--text3);margin:0;">Todavía no hay billetes registrados hoy.</p>'}
+    ${av.map(t=>`<div style="font-size:12px;color:var(--gold);font-weight:600;margin-top:8px;">${t}</div>`).join('')}
+    ${Object.keys(porQuien).length?`<div style="margin-top:10px;padding-top:8px;border-top:1px solid var(--border);">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Descuadres en 30 días, por quién cerró</div>
+      ${Object.entries(porQuien).sort((a,b)=>b[1].falta-a[1].falta).map(([q,y])=>`<div class="sr" style="font-size:12px;"><span>${esc(q)} <span style="color:var(--text3);">· ${y.n} cierres</span></span>
+        <span class="mono"><span class="ar">−${fmt(y.falta)} en ${y.veces}</span> · +${fmt(y.sobra)}</span></div>`).join('')}
+    </div>`:''}`;
+}
+// ══ CIERRE A CIEGAS ════════════════════════════════════════
+// La cajera cuenta sin ver cuánto debería haber ni cuánto se vendió: si
+// lo ve, puede hacer que cuadre. El resultado lo ve solo el dueño.
+function renderCierre(){
+  const hoy=D.caja.find(c=>c.fecha===today());
+  if($('cierre-estado')) $('cierre-estado').innerHTML=hoy?.corteHora
+    ?`<div style="font-size:13px;color:var(--teal);font-weight:600;margin-bottom:10px;">✓ Último cierre guardado a las ${esc(hoy.corteHora)}</div>`:'';
+}
+window.cierreSuma=()=>{
+  const t=denomSuma(leerDenom('.cierre-bill','cierre-monedas'));
+  if($('cierre-total')) $('cierre-total').textContent=fmt(t);
+};
+window.guardarCierre=async()=>{
+  if(SESSION?.tipo!=='emp') return;
+  const denom=leerDenom('.cierre-bill','cierre-monedas');
+  const contado=denomSuma(denom);
+  const tcReal=parseFloat($('cierre-terminal')?.value)||0;
+  const propinas=parseFloat($('cierre-propinas')?.value)||0;
+  if(!confirm(`Vas a guardar el cierre:\n\nEfectivo contado: ${fmt(contado)}\n${denomTxt(denom)||'Sin billetes'}\nTerminal: ${fmt(tcReal)}\n\n¿Lo contaste bien?`)) return;
+  const {corte,cajaData}=armarCorte({td:today(),contado,tcReal,propinas,denomContado:denom,
+    nota:$('cierre-nota')?.value?.trim()||'',cerroNombres:[SESSION.nombre],cerroE1:false,cerroE2:false,realizadoPor:SESSION.nombre,ciego:true});
+  await fsSetCritical('cortes',corte);
+  await fsSet('caja',cajaData);
+  logAudit('corte_realizado',{ciego:true,contado,cerro:SESSION.nombre});
+  document.querySelectorAll('.cierre-bill').forEach(el=>el.value='');
+  ['cierre-monedas','cierre-terminal','cierre-propinas','cierre-nota'].forEach(id=>{if($(id))$(id).value='';});
+  cierreSuma();
+  toast('✓ Cierre guardado',3000);
+  renderCierre();
+};
+window.retiroSuma=()=>{
+  const t=denomSuma(leerDenom('.ret-bill','ret-monedas'));
+  if(t>0&&$('ret-monto')) $('ret-monto').value=t;
+};
 function getEnCaja(fecha){
   // Fuente de verdad: colección caja (registro diario), fallback a ventas POS
   const cj=D.caja.find(c=>c.fecha===fecha);
@@ -13895,6 +14141,7 @@ function renderCaja(){
     </div>`).join('');
 
   renderCorteInfo();
+  renderDenomCaja();
 }
 
 // ─── CORTE DE CAJA FORMAL ───
@@ -13950,7 +14197,10 @@ function renderCorteInfo(){
         <div class="sr" style="font-size:11px;"><span>Ventas: ${fmt(c.ventasTotal)}</span><span>Esperado: ${fmt(c.esperado)}</span><span>Contado: ${fmt(c.contado)}</span></div>
         ${c.tcReal>0?`<div class="sr" style="font-size:11px;color:var(--text2);"><span>TC sistema: ${fmt(c.ventasTc)}</span><span>TC terminal: ${fmt(c.tcReal)}</span><span class="${c.tcDiff>=0?'ag':'ar'}">${c.tcDiff>=0?'+':''}${fmt(c.tcDiff)}</span></div>`:''}
         ${c.realizadoPor?`<div style="font-size:10px;color:var(--text3);margin-top:3px;">Por: ${c.realizadoPor}</div>`:''}
-        ${c.nota?`<div style="font-size:10px;color:var(--text3);">Nota: ${c.nota}</div>`:''}
+        ${c.nota?`<div style="font-size:10px;color:var(--text3);">Nota: ${esc(c.nota)}</div>`:''}
+        ${c.ciego?`<div style="font-size:10px;color:var(--text3);">Conteo a ciegas</div>`:''}
+        ${c.denomContado?`<div style="font-size:11px;margin-top:3px;">Contaron: ${denomTxt(c.denomContado)}</div>`:''}
+        ${c.denomDif&&Object.keys(c.denomDif).length?`<div style="font-size:11px;font-weight:600;color:var(--gold);margin-top:2px;">${denomDifTxt(c.denomDif)}${c.denomSinDesglose?' (aproximado)':''}</div>`:''}
       </div>`;
     }).join('');
 }
@@ -14056,6 +14306,7 @@ window.calcBilletes=()=>{
   total+=parseFloat($('corte-monedas')?.value)||0;
   if($('corte-contado'))$('corte-contado').value=total;
   calcCorte();
+  renderDenomCaja();
 };
 
 window.calcCorteTC=()=>{
@@ -14091,6 +14342,69 @@ window.actualizarProgresoCorte=()=>{
   set('cp-1',p1);set('cpl-1',p1);set('cp-2',p2);set('cpl-2',p2);set('cp-3',p3);
 };
 
+// Una sola forma de armar el corte, lo capture el dueño o la cajera a ciegas
+function armarCorte({td,contado,tcReal,propinas,nota,denomContado,cerroNombres,cerroE1,cerroE2,realizadoPor,ciego}){
+  const ventasHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  const vEf=sumaEf(ventasHoy);
+  const vTc=sumaTc(ventasHoy);
+  const rets=D.retiros.filter(r=>r.fecha===td);
+  const fondos=rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0);
+  const deps=rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0);
+  const retiros=rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0);
+  const esperado=fondos+vEf+deps-retiros;
+  const diferencia=contado-esperado;
+  // Ventas efectivo REAL = lo que quedó en caja descontando lo que no es venta
+  const ventasEfReal=Math.max(0,contado-fondos-deps+retiros);
+  // Ventas tarjeta REAL = terminal MENOS propinas (Mercado Pago las suma)
+  const ventasTcReal=tcReal>0?Math.max(0,tcReal-propinas):vTc;
+  const tcDiff=tcReal>0?ventasTcReal-vTc:0;
+  const ventasTotalReal=ventasEfReal+ventasTcReal;
+  const ventaTarjetaHoy=Math.round(ventasHoy.reduce((s,v)=>s+ventaTarjeta(v),0)*100)/100;
+  const corte={
+    id:Date.now(),
+    fecha:td,
+    hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
+    // Totales POS (del sistema)
+    ventasEf:vEf, ventasTc:vTc, ventasTotal:vEf+vTc,
+    // Totales REALES (ingresados/calculados del corte)
+    ventasEfReal, ventasTcReal, ventasTotalReal,
+    // Movimientos efectivo
+    fondoInicial:fondos, depositos:deps, retiros,
+    esperado, contado, diferencia,
+    // Tarjeta (tcReal = total terminal; propinas se desglosan aparte)
+    tcReal, tcDiff, propinas,
+    // Lo que Mercado Pago se queda y lo que de verdad deposita. La
+    // comisión se cobra sobre TODO lo que pasa por la terminal —propinas
+    // incluidas—; si no se tecleó el total, sobre lo cobrado con tarjeta.
+    comisionTc:r2((tcReal>0?tcReal:ventaTarjetaHoy)*pctComision()),
+    depositoMp:r2((tcReal>0?tcReal:ventaTarjetaHoy)*(1-pctComision())),
+    // ¿El total de la terminal lo trajo Mercado Pago o se tecleó?
+    tcFuente:(!ciego&&$('corte-tc-real')?.dataset.mpAuto&&$('corte-tc-real').value===$('corte-tc-real').dataset.mpAuto)?'mercadopago':'manual',
+    mpConc:(!ciego&&_mpUltimo&&_mpUltimo.fecha===td)?{cobros:_mpUltimo.cobros,verificadas:_mpUltimo.verificadas,
+      sinCobro:_mpUltimo.sinCobro,sinVenta:_mpUltimo.sinVenta,propinas:_mpUltimo.propinas}:null,
+    numVentas:ventasHoy.length,
+    cerroE1, cerroE2, cerroNombres,
+    nota:nota||'',
+    realizadoPor,
+    ...(ciego?{ciego:true}:{}),
+    ...denomCorte(td,denomContado)
+  };
+  const cajaHoy=D.caja.find(c=>c.fecha===td);
+  const cajaData={
+    id:cajaHoy?.id||Date.now()+1,
+    fecha:td,
+    ef:ventasEfReal,
+    tc:ventasTcReal,
+    total:ventasTotalReal,
+    nota:'Ajustado por corte de caja',
+    dC:cajaHoy?.dC||false,
+    cC:cajaHoy?.cC||false,
+    subId:cajaHoy?.subId||null,
+    corteId:corte.id,
+    corteHora:corte.hora
+  };
+  return {corte,cajaData,ventasTotalReal,vEf,vTc};
+}
 window.realizarCorte=async()=>{
   const contado=parseFloat($('corte-contado')?.value);
   if(!contado&&contado!==0){toast('⚠ Ingresa el efectivo contado',2400,'warn');return;}
@@ -14117,47 +14431,12 @@ window.realizarCorte=async()=>{
   const veredicto=Math.abs(diferencia)<=5?'✅ Caja cuadrada':(diferencia>0?`⚠ SOBRAN ${fmt(diferencia)}`:`🚨 FALTAN ${fmt(Math.abs(diferencia))}`);
   if(!confirm(`${veredicto}\n\nEsperado en caja: ${fmt(esperado)}\nContado: ${fmt(contado)}\nDiferencia: ${(diferencia>=0?'+':'')+fmt(diferencia)}\n\n¿Confirmar corte de caja?`)) return;
 
-  // ══ CÁLCULO DE VENTAS REALES DEL DÍA ══
-  // Ventas efectivo REAL = Efectivo en caja al cierre - Fondo inicial - Depósitos + Retiros
-  // (lo que quedó en caja descontando lo que no es venta)
-  const ventasEfReal = Math.max(0, contado - fondos - deps + retiros);
-  // Ventas tarjeta REAL = terminal MENOS propinas (Mercado Pago las suma)
-  const tcReal=parseFloat($('corte-tc-real')?.value)||0;
-  const propinas=parseFloat($('corte-tc-propina')?.value)||0;
-  const ventasTcReal = tcReal>0 ? Math.max(0,tcReal-propinas) : vTc;
-  const tcDiff = tcReal>0 ? ventasTcReal-vTc : 0;
-  const ventasTotalReal = ventasEfReal + ventasTcReal;
-  const ventaTarjetaHoy = Math.round(ventasHoy.reduce((s,v)=>s+ventaTarjeta(v),0)*100)/100;
-
-  const corte={
-    id:Date.now(),
-    fecha:td,
-    hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
-    // Totales POS (del sistema)
-    ventasEf:vEf, ventasTc:vTc, ventasTotal:vEf+vTc,
-    // Totales REALES (ingresados/calculados del corte)
-    ventasEfReal, ventasTcReal, ventasTotalReal,
-    // Movimientos efectivo
-    fondoInicial:fondos, depositos:deps, retiros,
-    esperado, contado, diferencia,
-    // Tarjeta (tcReal = total terminal; propinas se desglosan aparte)
-    tcReal, tcDiff, propinas,
-    // Lo que Mercado Pago se queda y lo que de verdad deposita. La
-    // comisión se cobra sobre TODO lo que pasa por la terminal —propinas
-    // incluidas—; si no se tecleó el total, sobre lo cobrado con tarjeta.
-    comisionTc:r2((tcReal>0?tcReal:ventaTarjetaHoy)*pctComision()),
-    depositoMp:r2((tcReal>0?tcReal:ventaTarjetaHoy)*(1-pctComision())),
-    // ¿El total de la terminal lo trajo Mercado Pago o se tecleó?
-    tcFuente:($('corte-tc-real')?.dataset.mpAuto&&$('corte-tc-real').value===$('corte-tc-real').dataset.mpAuto)?'mercadopago':'manual',
-    mpConc:(_mpUltimo&&_mpUltimo.fecha===td)?{cobros:_mpUltimo.cobros,verificadas:_mpUltimo.verificadas,
-      sinCobro:_mpUltimo.sinCobro,sinVenta:_mpUltimo.sinVenta,propinas:_mpUltimo.propinas}:null,
-    numVentas:ventasHoy.length,
-    cerroE1:$('cdc')?.checked||false,
-    cerroE2:$('ccc')?.checked||false,
-    cerroNombres:[$('cdc')?.checked?($('lbl-e1')?.textContent||null):null,$('ccc')?.checked?($('lbl-e2')?.textContent||null):null].filter(Boolean),
-    nota:$('corte-nota')?.value?.trim()||'',
-    realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'
-  };
+  const tcRealV=parseFloat($('corte-tc-real')?.value)||0;
+  const propinasV=parseFloat($('corte-tc-propina')?.value)||0;
+  const nombresCerro=[$('cdc')?.checked?($('lbl-e1')?.textContent||null):null,$('ccc')?.checked?($('lbl-e2')?.textContent||null):null].filter(Boolean);
+  const {corte,cajaData,ventasTotalReal}=armarCorte({td,contado,tcReal:tcRealV,propinas:propinasV,nota:notaCorte,
+    denomContado:leerDenom('.corte-bill','corte-monedas'),cerroNombres:nombresCerro,
+    cerroE1:$('cdc')?.checked||false,cerroE2:$('ccc')?.checked||false,realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'});
   await fsSet('cortes',corte);
   // A4: bitácora inmutable del corte
   logAudit('corte_realizado',{esperado:corte.esperado,contado:corte.contado,diferencia:corte.diferencia,motivo:corte.nota||'—',cerro:corte.cerroNombres?.join(' y ')||corte.realizadoPor,tcReal:corte.tcReal||0,tcDiff:corte.tcDiff||0,ventasTotalReal:corte.ventasTotalReal||corte.ventasTotal});
@@ -14177,22 +14456,7 @@ window.realizarCorte=async()=>{
     if($('corte-mermas'))$('corte-mermas').value='';
   }
 
-  // ══ Actualizar registro de caja del día con VENTAS REALES ══
-  // Estos montos son los que aparecerán en strip semanal, KPIs y reportes.
-  const cajaHoy = D.caja.find(c=>c.fecha===td);
-  const cajaData = {
-    id: cajaHoy?.id || Date.now()+1,
-    fecha: td,
-    ef: ventasEfReal,
-    tc: ventasTcReal,
-    total: ventasTotalReal,
-    nota: 'Ajustado por corte de caja',
-    dC: cajaHoy?.dC || false,
-    cC: cajaHoy?.cC || false,
-    subId: cajaHoy?.subId || null,
-    corteId: corte.id,
-    corteHora: corte.hora
-  };
+  // ══ Registro de caja del día con VENTAS REALES: strip semanal, KPIs y reportes ══
   await fsSet('caja', cajaData);
 
   if($('corte-contado'))$('corte-contado').value='';
@@ -14242,7 +14506,8 @@ window.enviarResumenCorteWA=corte=>{
     return s;
   })();
   const msg=`🧾 *CORTE DE CAJA — El Huerto*\n📅 ${corte.fecha} · ${corte.hora}\n👤 Cerró: ${corte.cerroNombres?.join(' y ')||corte.realizadoPor}\n\n💰 *Ventas reales: ${fmt(corte.ventasTotalReal)}*\n  💵 Efectivo: ${fmt(corte.ventasEfReal)}\n  💳 Tarjeta: ${fmt(corte.ventasTcReal)}\n  🧾 Tickets: ${corte.numVentas}\n\n📊 ${sem}\n  Esperado: ${fmt(corte.esperado)} · Contado: ${fmt(corte.contado)}${(corte.propinas||0)>0?`\n  💁 Propinas tarjeta: ${fmt(corte.propinas)} (aparte de ventas)`:''}${(corte.comisionTc||0)>0?`\n  💳 Comisión MP: −${fmt(corte.comisionTc)} · deposita ${fmt(corte.depositoMp)}`:''}${corte.nota?`\n  📝 Motivo: ${corte.nota}`:''}${cocina}\n\n🏆 Top del día:\n${top||'  —'}`;
-  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`,'_blank');
+  const msgBilletes=corte.denomDif&&Object.keys(corte.denomDif).length?`\n\n💵 *Billetes:* ${denomDifTxt(corte.denomDif)}`:'';
+  window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg+msgBilletes)}`,'_blank');
   toast('📲 Resumen del corte listo en WhatsApp — solo toca enviar',3500);
 };
 
@@ -14271,19 +14536,24 @@ window.omitirApertura=()=>{
   const m=$('apertura-modal'); if(m) m.style.display='none';
   toast('⚠ Caja sin apertura — podrás registrarla desde Ventas',3500,'warn');
 };
+window.aperturaSuma=()=>{
+  const t=denomSuma(leerDenom('.apertura-bill','apertura-monedas'));
+  if($('apertura-monto'))$('apertura-monto').value=t>0?fmt(t):'';
+};
 window.confirmarApertura=async()=>{
-  const monto=parseFloat($('apertura-monto')?.value);
-  if(!monto||monto<=0){toast('⚠ Ingresa un monto');return;}
+  const denom=leerDenom('.apertura-bill','apertura-monedas');
+  const monto=denomSuma(denom);
+  if(!monto||monto<=0){toast('⚠ Captura los billetes del cajón');return;}
   const td=today();
   // Si ya hay fondo del día, reemplazar (no duplicar)
   const fondoExistente=D.retiros.find(r=>r.fecha===td && r.tipo==='fondo');
   if(fondoExistente){
-    await fsSet('retiros',{...fondoExistente,monto,concepto:'Fondo de apertura (actualizado)'});
+    await fsSet('retiros',{...fondoExistente,monto,denom,concepto:'Fondo de apertura (actualizado)'});
     $('apertura-modal').style.display='none';
     toast(`💰 Fondo actualizado: ${fmt(monto)}`,3000);
     return;
   }
-  const r={id:Date.now(),fecha:td,monto,tipo:'fondo',concepto:'Fondo de apertura',
+  const r={id:Date.now(),fecha:td,monto,denom,tipo:'fondo',concepto:'Fondo de apertura',
     por:SESSION?.nombre||'—',hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false})};
   await fsSet('retiros',r);
   logAudit('apertura_caja',{monto,por:r.por,hora:r.hora});
@@ -14299,7 +14569,6 @@ function checkApertura(){
   // inicial UNA sola vez al día — con eso el corte de la noche cuadra.
   if(!fondoHoy && SESSION){
     $('apertura-modal').style.display='flex';
-    setTimeout(()=>$('apertura-monto')?.focus(),150);
   }
 }
 
@@ -20137,7 +20406,10 @@ function calcEventosAtencion(){
     det:desc.map(v=>`${v.ticket} −${fmt(v.descuento)} de ${fmt(v.subtotal)} (${v.vendedorNombre||'—'})`),
     ir:'historial'});
   // 3. Corte que no cuadra
-  const corte=D.cortes.find(c=>c.fecha===td);
+  const corte=[...D.cortes].filter(c=>c.fecha===td).sort((a,b)=>b.id-a.id)[0];
+  if(billetesCambiados(corte)) ev.push({t:'billetes',icon:'💵',sev:'alta',
+    txt:'El total del corte cuadra, pero cambiaron billetes',
+    det:[denomDifTxt(corte.denomDif)],ir:'caja'});
   if(corte&&Math.abs(corte.diferencia||0)>=CORTE_ALERTA) ev.push({t:'corte',icon:'⚖️',sev:'alta',
     txt:`El efectivo del corte de hoy ${(corte.diferencia||0)<0?'FALTA':'SOBRA'} ${fmt(Math.abs(corte.diferencia))}`,
     det:[`Contado ${fmt(corte.contado||0)} contra esperado ${fmt(corte.esperado||0)}`+(corte.nota?` · "${corte.nota}"`:' · sin nota')],
@@ -20240,14 +20512,6 @@ function renderDividir(soloResumen){
           <button class="btn ${p.metodo==='tarjeta'?'bp':'bs'} bsm" onclick="divSetMetodo(${i},'tarjeta')"><svg class="ic"><use href="#i-card"/></svg> </button>
           ${DIV.length>1?`<button class="btn bd bxs" onclick="divQuitarParte(${i})" title="Quitar">✕</button>`:''}
         </div>
-        ${p.metodo==='efectivo'?`<div style="display:flex;gap:7px;align-items:center;margin-top:6px;">
-          <span style="font-size:10.5px;color:var(--text3);min-width:52px;">Paga con</span>
-          <input type="number" value="${p.recibido??''}" placeholder="exacto" step="0.01" inputmode="decimal"
-            onchange="divSetRecibido(${i},this.value)"
-            style="flex:1;padding:5px 8px;font-family:var(--ui);font-variant-numeric:tabular-nums;font-size:13px;text-align:right;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);">
-          <span style="font-size:11.5px;min-width:92px;text-align:right;" class="mono ${(p.recibido??p.monto)-p.monto>0?'at':''}">
-            ${(p.recibido??p.monto)-p.monto>0?'cambio '+fmt((p.recibido??p.monto)-p.monto):''}</span>
-        </div>`:''}
       </div>`).join('');
   }
   const suma=Math.round(DIV.reduce((s,p)=>s+p.monto,0)*100)/100;
@@ -20276,7 +20540,18 @@ window.cobrarDividido=async()=>{
   const nombre=$('op-cliente')?.value?.trim()||'';
   $('div-modal').style.display='none';
   const dominante=DIV.filter(p=>p.metodo==='efectivo').reduce((s,p)=>s+p.monto,0)>=t/2?'efectivo':'tarjeta';
-  await cobrar(dominante,0,DIV.map(p=>({metodo:p.metodo,monto:p.monto,recibido:p.metodo==='efectivo'?(p.recibido??p.monto):undefined})));
+  const partes=DIV.map(p=>({metodo:p.metodo,monto:p.monto}));
+  const efTotal=r2(partes.filter(p=>p.metodo==='efectivo').reduce((s2,p)=>s2+p.monto,0));
+  // Lo que se paga en efectivo también pasa por los billetes
+  if(efTotal>0){
+    $('cobro-total').textContent=fmt(efTotal);
+    cobroReiniciar(efTotal,partes);
+    _cobro.dominante=dominante;
+    if($('cobro-cliente'))$('cobro-cliente').value=nombre;
+    $('cobro-modal').style.display='flex';
+    return;
+  }
+  await cobrar(dominante,0,partes);
   if(nombre&&$('op-cliente'))$('op-cliente').value='';
 };
 
@@ -21155,6 +21430,7 @@ const PAGE_RENDERERS={
   mercado: ()=>renderMercado(),
   historial: ()=>renderHistorial(),
   caja: ()=>renderCaja(),
+  cierre: ()=>renderCierre(),
   gastos: ()=>renderGastos(),
   nomina: ()=>renderNomina(),
   vendedores: ()=>renderVendedores(),
@@ -21224,14 +21500,18 @@ window.scheduleRender=scheduleRender;
 // Render COMPLETO — solo para la carga inicial (initD)
 function renderAll(){
   if(!READY) return;
-  renderDashboard();
+  // Lo que no le toca a esta sesión ni se arma: el dinero no queda
+  // escondido en la página, simplemente no está.
+  const si=(p,fn)=>{if(canAccess(p))fn();};
+  si('dashboard',renderDashboard);
   renderPOS(); renderOrder();
-  renderHistorial();
-  renderCaja(); renderGastos();
-  renderNomina(); renderVendedores();
-  renderProv(); renderSubs(); renderInv();
-  renderRecetas(); renderReportes(); renderConfig();
-  renderAjustes(); renderReloj(); renderMiPerfil(); renderKPIs(); loadClaudeKey();
+  si('historial',renderHistorial);
+  si('caja',renderCaja); si('gastos',renderGastos);
+  si('nomina',renderNomina); si('vendedores',renderVendedores);
+  si('proveedores',renderProv); si('suscriptores',renderSubs); si('inventario',renderInv);
+  si('recetas',renderRecetas); si('reportes',renderReportes); si('config',renderConfig);
+  si('ajustes',renderAjustes); si('reloj',renderReloj); si('miperfil',renderMiPerfil); si('kpis',renderKPIs);
+  if(SESSION?.tipo==='admin') loadClaudeKey();
   if(typeof renderLock==='function') renderLock();
 }
 

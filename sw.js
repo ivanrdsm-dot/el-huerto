@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.65'; // Costco del 4-nov, desechables $540 y pagos fijos sin duplicar
+const CACHE_NAME = 'el-huerto-v15.66'; // Caja por denominación y cierre a ciegas
 const ASSETS = [
   '/',
   '/index.html',

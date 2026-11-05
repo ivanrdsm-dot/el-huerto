@@ -68,6 +68,16 @@ service cloud.firestore {
     match /nomPagos/{id}  { allow read, write: if esAdmin(); }
     // Fondo de ahorro de las chicas: saldo de cada una, solo el dueño (31-oct)
     match /fondoAhorro/{id} { allow read, write: if esAdmin(); }
+    // Cortes: la cajera guarda su cierre pero no lee ninguno (conteo a
+    // ciegas). Lo de abajo no lo usa ninguna pantalla del personal.
+    match /cortes/{id} {
+      allow create: if esStaff();
+      allow read, update, delete: if esAdmin() || rol() == 'gerente';
+    }
+    match /extras/{id}        { allow read, write: if esAdmin() || rol() == 'gerente'; }
+    match /kpiCaptura/{id}    { allow read, write: if esAdmin() || rol() == 'gerente'; }
+    match /provDir/{id}       { allow read, write: if esAdmin() || rol() == 'gerente'; }
+    match /ordenesCompra/{id} { allow read, write: if esAdmin() || rol() == 'gerente'; }
     match /gastos/{id}    { allow read, write: if esAdmin(); }
     match /empleados/{id} { allow read: if esStaff(); allow write: if esAdmin(); }
     match /usuarios/{id} {
@@ -92,9 +102,9 @@ service cloud.firestore {
     // unión permisiva volvería a conceder lo que arriba se restringió.
     match /{col}/{docId} {
       allow read: if esStaff()
-        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro']);
+        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','cortes','extras','kpiCaptura','provDir','ordenesCompra']);
       allow write: if esStaff()
-        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','empleados','productos']);
+        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','cortes','extras','kpiCaptura','provDir','ordenesCompra','empleados','productos']);
     }
   }
 }
