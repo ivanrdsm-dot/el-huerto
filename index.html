@@ -2865,7 +2865,7 @@ nav{padding-top:env(safe-area-inset-top);}
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
@@ -3251,6 +3251,8 @@ async function completeInit(){
   await migSurtido3NovB();
   await migChipotleNuevo3Nov();
   await migFondoYFruta3Nov();
+  await migFijosDedup4Nov();
+  await migCostco4Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6268,12 +6270,12 @@ async function registrarLote(lote){
   let gid=Date.now()+7000;
   for(const g of lote){
     const partidas=[];
-    for(const [c,art,q,u,imp] of g.p){
+    for(const [c,art,q,u,imp,o] of g.p){
       const pt={c,q,u,i:imp,...(art?{art}:{})};
       const inv=art&&buscar(art);
       if(inv){
         const qi=qtyToInvUnit(q,u,inv.unit);
-        if(qi!=null){ const via=await entrarMercancia(inv,qi,g.llegada,g.ticket,g.yaContado);
+        if(qi!=null){ const via=await entrarMercancia(inv,qi,g.llegada,g.ticket,g.yaContado&&!o?.noContado);
           pt.entro=via==='ya'?'conteo':via; hechos.push(`${inv.nombre}: ${q} ${u} → ${via}`); }
       }
       partidas.push(pt);
@@ -6549,6 +6551,55 @@ async function migFondoYFruta3Nov(){
     hechos.push(`${n}: conteo ${c.qty} → ${valor}, existencia ${inv.qty}`);
   }
   logAudit('inventario_correccion',{fruta:hechos,fondo:'Claudia $310 y Erandy $240 de la semana del 26-oct',motivo:'Datos de Iván, 3-nov'});
+  await markMig(migKey);
+}
+// 4-nov — Costco del día (CFDI ARG 5954796, tarjeta). El conteo de la
+// tarde ya traía la proteína y la lechuga, no el açaí: contaron 100 g.
+// Proteína: $1,899 con su IVA, que es lo que se pagó. Y los desechables
+// del 3-nov costaron $540 (Iván), no los $368 que armé con el último
+// ticket: sin desglose, los $172 van como diferencia y los precios por
+// pieza no se tocan.
+const COSTCO_4NOV=[
+  {ticket:'COSTCO-ARG5954796',prov:'Costco',cat:'costco',metodo:'tarjeta',fecha:'2026-11-04',llegada:'2026-11-04',yaContado:true,
+   notas:'CFDI ARG 5954796 · Interlomas · 4-nov 13:50 · tarjeta de débito. Subtotal $1,980.35 − descuento $44.49 + IVA $261.94 (proteína).',
+   p:[['Proteína vainilla ON Gold Standard 2.48 kg (con IVA)','Proteína',2480,'g',1899.00],
+      ['Ensalada italiana 908 g ×2','Lechuga',1816,'g',119.80],
+      ['Açaí orgánico Vero Amore 8 × 100 g','Açaí pulpa',800,'g',179.00,{noContado:true}]]},
+];
+async function migCostco4Nov(){
+  const migKey='h5costco_4nov26';
+  if(await migDone(migKey)) return;
+  if(!D.gastos.length) return;   // sin gastos en memoria no se sabe qué ya existe
+  const {precios,hechos}=await registrarLote(COSTCO_4NOV);
+  const gn=D.gastos.find(x=>x.ticket==='LANUEVA-03NOV26');
+  if(gn){
+    const partidas=[...(gn.partidas||[]).filter(p=>!/^Diferencia/.test(p.c||'')),
+      {c:'Diferencia contra los $540 que dio Iván, sin desglose',q:1,u:'—',i:172.00}];
+    await fsSet('gastos',{...gn,partidas,monto:540.00,
+      notas:'Sin ticket (se tiró). Total $540, dato de Iván (4-nov). Cantidades de Iván; el desglose por pieza es con precios del último ticket de La Nueva, la diferencia no tiene detalle.'});
+  }
+  logAudit('compras_registradas',{lote:'Costco del 4-nov',precios,inventario:hechos,
+    motivo:'CFDI ARG 5954796; desechables del 3-nov ajustados a $540'});
+  toast(`✓ Costco del 4-nov registrado · ${precios.length} precios al día`,6000);
+  await markMig(migKey);
+}
+// Deja un solo registro por pago programado, ya con su id definitivo.
+// Si alguna copia ya se pagó, esa es la que se queda.
+async function migFijosDedup4Nov(){
+  const migKey='h5fijos_dedup_4nov26';
+  if(await migDone(migKey)) return;
+  if(SESSION?.tipo!=='admin'||!D.gastos.length) return;
+  const porTicket={};
+  for(const g of D.gastos) if(g.fijo&&g.ticket) (porTicket[g.ticket]??=[]).push(g);
+  let quitados=0;
+  for(const [ticket,copias] of Object.entries(porTicket)){
+    const id=idPagoFijo(ticket);
+    const queda=copias.find(g=>!g.pendientePago)||[...copias].sort((a,b)=>a.id-b.id)[0];
+    await fsSet('gastos',{...queda,id});
+    for(const g of copias) if(g.id!==id){ await fsDel('gastos',g.id); if(copias.length>1&&g.id!==queda.id) quitados++; }
+    D.gastos=[...D.gastos.filter(g=>g.ticket!==ticket),{...queda,id}];
+  }
+  logAudit('gasto_corregido',{motivo:'Pagos fijos duplicados al abrir la app',quitados});
   await markMig(migKey);
 }
 async function migFruta26Oct(){
@@ -14526,9 +14577,15 @@ function renderPorPagar(){
 // toca: la renta el primer lunes del mes, el IMSS cada lunes y la cuota
 // de Banamex el día 29 (o la fecha acordada). Se crean solo los de la
 // semana operativa en curso; el ticket es la marca para no repetir.
+// El 4-nov se duplicaron: al abrir la app el Panel pintaba antes de que
+// llegaran los gastos, y "no existe ese ticket" era falso. Por eso cada
+// pago tiene un id que sale de su ticket y se pregunta al servidor, no a
+// lo que haya en memoria. Sin red no se programa: se reintenta después.
+const idPagoFijo=ticket=>{let h=0;for(const ch of ticket)h=(h*131+ch.charCodeAt(0))%9e12;return 5e12+h;};
 let _programandoFijos=false;
 async function programarPagosFijos(){
   if(_programandoFijos||SESSION?.tipo!=='admin'||!READY) return;
+  if(!await migDone('h5fijos_dedup_4nov26')) return;
   _programandoFijos=true;
   try{
     const sem=getWDays7(hoyOperativo()), lun=sem[0], nuevos=[];
@@ -14543,17 +14600,19 @@ async function programarPagosFijos(){
       nuevos.push({c:fijo('banamex'),fecha:f,fechaTicket:q.vence,ticket:`BANAMEX-${q.n}de${BANAMEX_CUOTAS.length}`,cuota:q.n,
         notas:`Mueble · cuota ${q.n} de ${BANAMEX_CUOTAS.length} · vence el ${q.vence}${q.fecha&&q.fecha!==q.vence?`, se paga el ${q.fecha}`:''}.`});
     }
-    let id=Date.now();
     for(const n of nuevos){
       if(D.gastos.some(g=>g.ticket===n.ticket)) continue;
+      const id=idPagoFijo(n.ticket);
+      if((await getDocFromServer(docRef('gastos',id))).exists()) continue;
       const monto=n.c.monto(n.fecha);
-      const g={id:++id,fecha:n.fecha,fechaTicket:n.fechaTicket||n.fecha,ticket:n.ticket,prov:n.c.prov,cat:n.c.cat,
+      const g={id,fecha:n.fecha,fechaTicket:n.fechaTicket||n.fecha,ticket:n.ticket,prov:n.c.prov,cat:n.c.cat,
         tipoEstrategico:'operacion',metodo:n.c.id==='banamex'?'transferencia':'efectivo',monto,
         pendientePago:true,fijo:n.c.id,...(n.cuota?{cuota:n.cuota}:{}),
         partidas:[{c:n.c.nombre,q:1,u:'pago',i:monto}],notas:n.notas};
       // El oyente puede traerlo antes de que termine la escritura
       if(await fsSet('gastos',g)){ if(!D.gastos.some(x=>x.id===g.id)) D.gastos.push(g); logAudit('pago_fijo_programado',{ticket:g.ticket,monto,fecha:g.fecha}); }
     }
+  }catch(e){console.warn('pagos fijos:',e.code||e.message);
   }finally{_programandoFijos=false;}
 }
 function renderCostosFijos(){

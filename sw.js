@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.64'; // Fondos, seguro social y por pagar siempre a la vista
+const CACHE_NAME = 'el-huerto-v15.65'; // Costco del 4-nov, desechables $540 y pagos fijos sin duplicar
 const ASSETS = [
   '/',
   '/index.html',
