@@ -2883,7 +2883,7 @@ nav{padding-top:env(safe-area-inset-top);}
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, query, where } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
@@ -3096,6 +3096,8 @@ async function loadMigrations(){
 // Guarda UNA llave, sin tocar las demás
 const guardaMig=key=>escrituraOk(setDoc(doc(db,'sistema','migrations'),{[key]:true},{merge:true}));
 async function migDone(key){
+  // Un aparato con historia recortada nunca migra: trabajaría con datos a medias
+  if(sesionDePersonal()) return true;
   // Si no se pudo leer el registro, se da todo por hecho. Volver a correr
   // una migración destruye datos; no correrla solo aplaza el cambio.
   if(!MIG_LEIDO) return true;
@@ -3333,6 +3335,21 @@ async function completeInit(){
 }
 
 let _unsubs=[];
+// ══ CUÁNTA HISTORIA BAJA CADA APARATO (5-nov) ═══════════════
+// Abrir la app leía ~25 mil documentos, en cualquier aparato. La caja, el
+// reloj y el conteo no ocupan años de historia: la cajera baja lo
+// reciente y nada más. Nada se borra y la sesión del dueño baja TODO,
+// porque de ahí salen los reportes. Ante cualquier duda, se baja completo:
+// solo se recorta cuando la sesión es, con certeza, de una empleada.
+// Ventas 35 días: los favoritos de la caja miran 21. Conteos 21: "ayer".
+const VENTANA_PERSONAL={ventas:35,invDiario:21};
+const GERENTES_CON_HISTORIA=[2006];   // Vale: sus KPIs sí ocupan la historia
+const sesionDePersonal=()=>typeof AUTH_PERFIL?.quien==='number'&&!GERENTES_CON_HISTORIA.includes(AUTH_PERFIL.quien);
+function refEscucha(col){
+  const dias=sesionDePersonal()?VENTANA_PERSONAL[col]:null;
+  if(!dias) return colRef(col);
+  return query(colRef(col),where('fecha','>=',localDate(new Date(Date.now()-dias*864e5))));
+}
 function listenAll(){
   // ══════════════════════════════════════════════════════════════
   // QUÉ SE DESCARGA, Y EN QUÉ DISPOSITIVO
@@ -3355,7 +3372,7 @@ function listenAll(){
   const loaded=new Set();
 
   cols.forEach(col=>{
-    _unsubs.push(onSnapshot(colRef(col), async snap=>{
+    _unsubs.push(onSnapshot(refEscucha(col), async snap=>{
       D[col]=snap.docs.map(d=>d.data());
       if(col==='empleados'||col==='sueldos') fundirSueldos();
       marcaColeccionViva(col);

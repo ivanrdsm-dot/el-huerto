@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.67'; // Sueldos en colección privada
+const CACHE_NAME = 'el-huerto-v15.68'; // El personal baja solo historia reciente
 const ASSETS = [
   '/',
   '/index.html',
