@@ -68,6 +68,8 @@ service cloud.firestore {
     match /nomPagos/{id}  { allow read, write: if esAdmin(); }
     // Fondo de ahorro de las chicas: saldo de cada una, solo el dueño (31-oct)
     match /fondoAhorro/{id} { allow read, write: if esAdmin(); }
+    // Lo que gana cada quien: solo el dueño (5-nov)
+    match /sueldos/{id}     { allow read, write: if esAdmin(); }
     // Cortes: la cajera guarda su cierre pero no lee ninguno (conteo a
     // ciegas). Lo de abajo no lo usa ninguna pantalla del personal.
     match /cortes/{id} {
@@ -102,9 +104,9 @@ service cloud.firestore {
     // unión permisiva volvería a conceder lo que arriba se restringió.
     match /{col}/{docId} {
       allow read: if esStaff()
-        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','cortes','extras','kpiCaptura','provDir','ordenesCompra']);
+        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','sueldos','cortes','extras','kpiCaptura','provDir','ordenesCompra']);
       allow write: if esStaff()
-        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','cortes','extras','kpiCaptura','provDir','ordenesCompra','empleados','productos']);
+        && !(col in ['nomPagos','gastos','usuarios','auditLog','fondoAhorro','sueldos','cortes','extras','kpiCaptura','provDir','ordenesCompra','empleados','productos']);
     }
   }
 }

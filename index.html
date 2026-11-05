@@ -2938,7 +2938,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[],usuarios:[],fondoAhorro:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[],usuarios:[],fondoAhorro:[],sueldos:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
@@ -3015,7 +3015,32 @@ const escrituraOk=async p=>{
   if(r==='encolada') p.catch(e=>console.warn('escritura encolada:',e?.code||e));
   return r;
 };
+// ══ LOS SUELDOS SON PRIVADOS (Iván, 5-nov) ══════════════════
+// `empleados` lo lee todo el personal: lo necesitan la caja y el reloj.
+// Lo que gana cada quien vive en `sueldos`, que solo lee el dueño. En su
+// sesión las dos partes se juntan en D.empleados, así la nómina y los
+// reportes no cambian; al guardar, fsSet las vuelve a separar. Ningún
+// sitio del código tiene que acordarse.
+const SUELDO_CAMPOS=['base','bonoCierre','cierresFijos'];
+function fundirSueldos(){
+  const priv=new Map((D.sueldos||[]).map(x=>[x.id,x]));
+  D.empleados=(D.empleados||[]).map(e=>{
+    const x=priv.get(e.id); if(!x) return e;
+    const r={...e};
+    for(const k of SUELDO_CAMPOS) if(x[k]!=null) r[k]=x[k];
+    return r;
+  });
+}
 const fsSet=async(c,item)=>{
+  if(c==='empleados'&&SUELDO_CAMPOS.some(k=>k in item)){
+    const pub={...item}, priv={...(D.sueldos||[]).find(x=>x.id===item.id),id:item.id};
+    for(const k of SUELDO_CAMPOS) if(k in pub){priv[k]=pub[k];delete pub[k];}
+    // Primero lo privado: si no se pudo, el sueldo no se pierde
+    if(!await fsSet('sueldos',priv)) return false;
+    const ix=(D.sueldos||[]).findIndex(x=>x.id===priv.id);
+    if(ix>=0) D.sueldos[ix]=priv; else D.sueldos.push(priv);
+    item=pub;
+  }
   if(c==='invDiario') _conteosVer++;   // el índice de conteos se rehace
   try{ await escrituraOk(setDoc(docRef(c,item.id),item)); return true; }
   catch(e){
@@ -3271,6 +3296,7 @@ async function completeInit(){
   await migFondoYFruta3Nov();
   await migFijosDedup4Nov();
   await migCostco4Nov();
+  await migSueldosPrivados5Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -3318,7 +3344,7 @@ function listenAll(){
   // Con el menú QR repartido en toda la universidad eso dejaba de ser
   // teórico. Cada modo baja solo lo suyo y ninguno migra nada.
   // ══════════════════════════════════════════════════════════════
-  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos','usuarios','fondoAhorro'];
+  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos','usuarios','fondoAhorro','sueldos'];
   const publico = MODO_MENU || MODO_PANTALLA || !!_tarjetaCode;
   const cols = MODO_PANTALLA ? []
     : MODO_MENU ? ['productos']
@@ -3331,6 +3357,7 @@ function listenAll(){
   cols.forEach(col=>{
     _unsubs.push(onSnapshot(colRef(col), async snap=>{
       D[col]=snap.docs.map(d=>d.data());
+      if(col==='empleados'||col==='sueldos') fundirSueldos();
       marcaColeccionViva(col);
 
       if(!READY){
@@ -3361,7 +3388,7 @@ function listenAll(){
       // regla haciendo su trabajo. Avisar de eso entrena a ignorar la
       // barra, y entonces el día que falle algo de verdad tampoco se
       // ve. Solo se avisa de lo que ese rol SÍ debería poder leer.
-      const porRol=['gastos','nomPagos','usuarios','auditLog','fondoAhorro','cortes','extras','kpiCaptura','provDir','ordenesCompra'];
+      const porRol=['gastos','nomPagos','usuarios','auditLog','fondoAhorro','sueldos','cortes','extras','kpiCaptura','provDir','ordenesCompra'];
       if(!(err.code==='permission-denied' && porRol.includes(col))) marcaColeccionCaida(col,err.code||err.message);
       if(!READY){
         loaded.add(col);
@@ -6620,6 +6647,23 @@ async function migFijosDedup4Nov(){
   logAudit('gasto_corregido',{motivo:'Pagos fijos duplicados al abrir la app',quitados});
   await markMig(migKey);
 }
+// 5-nov — Saca los sueldos de `empleados`. Cada uno se comprueba contra el
+// servidor antes de borrarlo del documento público.
+async function migSueldosPrivados5Nov(){
+  const migKey='h5sueldos_privados_5nov26';
+  if(await migDone(migKey)) return;
+  if(SESSION?.tipo!=='admin'||!D.empleados.length) return;
+  const movidos=[];
+  for(const e of [...D.empleados]){
+    if(!SUELDO_CAMPOS.some(k=>e[k]!=null)) continue;
+    if(!await fsSet('empleados',e)) return;   // se reintenta en el próximo arranque
+    const sn=await getDocFromServer(docRef('sueldos',e.id));
+    if(!sn.exists()||SUELDO_CAMPOS.some(k=>(sn.data()[k]??null)!==(e[k]??null))) return;
+    movidos.push(e.nombre);
+  }
+  logAudit('sueldos_privados',{movidos,campos:SUELDO_CAMPOS});
+  await markMig(migKey);
+}
 async function migFruta26Oct(){
   const migKey='h5fruta_26oct26';
   if(await migDone(migKey)) return;
@@ -9436,11 +9480,6 @@ async function fixEmpleadosTipo(){
   // Corregir nombre: Diana → Adilene (id 2001)
   const emp1=D.empleados.find(e=>e.id===2001&&e.nombre==='Diana');
   if(emp1){ await fsSet('empleados',{...emp1,nombre:'Adilene'}); }
-  // Actualizar sueldos base: Adilene $11,700/mes ($2,925/sem), Clau $12,400/mes ($3,100/sem)
-  const adi=D.empleados.find(e=>e.id===2001);
-  if(adi&&adi.base!==11700){adi.base=11700;await fsSet('empleados',adi);}
-  const cla=D.empleados.find(e=>e.id===2002);
-  if(cla&&cla.base!==12400){cla.base=12400;await fsSet('empleados',cla);}
 }
 
 // Migrar registros con fecha UTC incorrecta
