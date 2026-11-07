@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.68'; // El personal baja solo historia reciente
+const CACHE_NAME = 'el-huerto-v15.69'; // Salidas y cambios del personal; avisos al teléfono
 const ASSETS = [
   '/',
   '/index.html',
@@ -68,4 +68,20 @@ self.addEventListener('fetch', e => {
 // Mensaje del cliente (para forzar update)
 self.addEventListener('message', e => {
   if (e.data === 'skipWaiting') self.skipWaiting();
+});
+
+// ── Avisos al dueño (Web Push): cierre de caja, salidas y cambios ──
+self.addEventListener('push', e => {
+  let d = {};
+  try { d = e.data ? e.data.json() : {}; } catch (_) { d = { body: e.data ? e.data.text() : '' }; }
+  e.waitUntil(self.registration.showNotification(d.title || 'El Huerto', {
+    body: d.body || '', tag: d.tag || 'huerto', renotify: true
+  }));
+});
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(cs => {
+    for (const c of cs) { if ('focus' in c) return c.focus(); }
+    return self.clients.openWindow('/');
+  }));
 });

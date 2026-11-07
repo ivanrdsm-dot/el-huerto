@@ -1562,6 +1562,30 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="fg"><label>Nota (si pasó algo con el efectivo)</label><input type="text" id="cierre-nota" placeholder="Opcional"></div>
     <button class="btn bp bfull" onclick="guardarCierre()" style="padding:15px;font-size:15px;font-weight:800;">Guardar cierre</button>
   </div>
+  <!-- Lo que sale o se cambia durante el día: anotado, no es descuadre -->
+  <div class="card" style="max-width:520px;margin:12px auto 0;">
+    <div class="ct">Sacar o cambiar efectivo</div>
+    <p style="font-size:12.5px;color:var(--text2);margin:0 0 10px;">Si pagas algo con dinero de la caja o cambias billetes, anótalo aquí. Lo que no se anota cuenta como faltante.</p>
+    <div class="rp-tabs" style="margin-bottom:10px;">
+      <button class="rp-tab-btn activa" id="mov-tab-salida" onclick="movModo('salida')">Salida</button>
+      <button class="rp-tab-btn" id="mov-tab-cambio" onclick="movModo('cambio')">Cambio de billetes</button>
+    </div>
+    <div id="mov-salida">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Qué billetes sacas</div>
+      <div class="corte-bills"><div class="cb"><label>$1000</label><input type="number" class="mov-sal-bill" data-val="1000" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$500</label><input type="number" class="mov-sal-bill" data-val="500" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$200</label><input type="number" class="mov-sal-bill" data-val="200" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$100</label><input type="number" class="mov-sal-bill" data-val="100" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$50</label><input type="number" class="mov-sal-bill" data-val="50" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$20</label><input type="number" class="mov-sal-bill" data-val="20" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>Monedas $</label><input type="number" id="mov-sal-monedas" placeholder="0" step="0.5" min="0" inputmode="decimal" oninput="movSuma()"></div></div>
+      <div class="fg"><label>Para qué</label><input type="text" id="mov-sal-motivo" placeholder="Ej: hielo, garrafón, propina de repartidor" maxlength="80"></div>
+      <button class="btn bp bfull" onclick="registrarSalida()" id="mov-sal-btn">Registrar salida</button>
+    </div>
+    <div id="mov-cambio" style="display:none;">
+      <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Lo que ENTRA a la caja</div>
+      <div class="corte-bills"><div class="cb"><label>$1000</label><input type="number" class="mov-in-bill" data-val="1000" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$500</label><input type="number" class="mov-in-bill" data-val="500" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$200</label><input type="number" class="mov-in-bill" data-val="200" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$100</label><input type="number" class="mov-in-bill" data-val="100" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$50</label><input type="number" class="mov-in-bill" data-val="50" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$20</label><input type="number" class="mov-in-bill" data-val="20" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>Monedas $</label><input type="number" id="mov-in-monedas" placeholder="0" step="0.5" min="0" inputmode="decimal" oninput="movSuma()"></div></div>
+      <div style="font-size:12px;color:var(--text3);margin-bottom:4px;">Lo que SALE de la caja</div>
+      <div class="corte-bills"><div class="cb"><label>$1000</label><input type="number" class="mov-out-bill" data-val="1000" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$500</label><input type="number" class="mov-out-bill" data-val="500" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$200</label><input type="number" class="mov-out-bill" data-val="200" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$100</label><input type="number" class="mov-out-bill" data-val="100" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$50</label><input type="number" class="mov-out-bill" data-val="50" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>$20</label><input type="number" class="mov-out-bill" data-val="20" placeholder="0" inputmode="numeric" min="0" oninput="movSuma()"></div><div class="cb"><label>Monedas $</label><input type="number" id="mov-out-monedas" placeholder="0" step="0.5" min="0" inputmode="decimal" oninput="movSuma()"></div></div>
+      <div id="mov-cambio-res" style="font-size:12.5px;margin-bottom:8px;"></div>
+      <button class="btn bp bfull" onclick="registrarCambio()">Registrar cambio</button>
+    </div>
+    <div id="mov-hoy" style="margin-top:10px;"></div>
+  </div>
 </div>
 
 <div id="page-caja" class="page">
@@ -13957,6 +13981,7 @@ function cajaDenom(fecha){
   let sinDesglose=0;
   const sumar=(dst,o,signo=1)=>{for(const k of [...DENOMS,'m']) dst[k]=r2(dst[k]+signo*(Number(o?.[k])||0));};
   for(const r of D.retiros.filter(x=>x.fecha===fecha)){
+    if(r.tipo==='cambio'){sumar(mov,r.denomEntra);sumar(mov,r.denomSale,-1);continue;}
     const signo=r.tipo==='retiro'?-1:1;
     if(r.denom&&denomSuma(r.denom)>0) sumar(r.tipo==='fondo'?ini:mov,r.denom,signo);
     else sinDesglose=r2(sinDesglose+signo*(r.monto||0));
@@ -14063,6 +14088,7 @@ function renderDenomCaja(){
 // La cajera cuenta sin ver cuánto debería haber ni cuánto se vendió: si
 // lo ve, puede hacer que cuadre. El resultado lo ve solo el dueño.
 function renderCierre(){
+  renderMovHoy();
   const hoy=D.caja.find(c=>c.fecha===today());
   if($('cierre-estado')) $('cierre-estado').innerHTML=hoy?.corteHora
     ?`<div style="font-size:13px;color:var(--teal);font-weight:600;margin-bottom:10px;">✓ Último cierre guardado a las ${esc(hoy.corteHora)}</div>`:'';
@@ -14083,12 +14109,125 @@ window.guardarCierre=async()=>{
   await fsSetCritical('cortes',corte);
   await fsSet('caja',cajaData);
   logAudit('corte_realizado',{ciego:true,contado,cerro:SESSION.nombre});
+  const veredicto=Math.abs(corte.diferencia)<=5?'Cuadra':(corte.diferencia>0?`Sobran ${fmt(corte.diferencia)}`:`Faltan ${fmt(Math.abs(corte.diferencia))}`);
+  avisarDueno(`Cierre de ${SESSION.nombre} · ${veredicto}`,
+    `Contó ${fmt(corte.contado)} · se esperaba ${fmt(corte.esperado)}`
+    +(corte.denomDif&&Object.keys(corte.denomDif).length?`\nBilletes: ${denomDifTxt(corte.denomDif)}`:'')
+    +(tcReal>0?`\nTerminal ${fmt(tcReal)} · POS ${fmt(corte.ventasTc)}`:'')
+    +(corte.nota?`\nNota: ${corte.nota}`:''),'cierre');
   document.querySelectorAll('.cierre-bill').forEach(el=>el.value='');
   ['cierre-monedas','cierre-terminal','cierre-propinas','cierre-nota'].forEach(id=>{if($(id))$(id).value='';});
   cierreSuma();
   toast('✓ Cierre guardado',3000);
   renderCierre();
 };
+// ══ SALIDAS Y CAMBIOS DEL PERSONAL (7-nov) ══════════════════
+// Con el cierre a ciegas, sacar $200 para el hielo salía como faltante y
+// cambiarle un billete a alguien, como "cambiaron billetes". Ahora se
+// anota: la salida baja lo esperado y el cambio mueve piezas sin mover
+// el total. Todo lleva nombre y te llega al teléfono.
+window.movModo=m=>{
+  if($('mov-salida'))$('mov-salida').style.display=m==='salida'?'':'none';
+  if($('mov-cambio'))$('mov-cambio').style.display=m==='cambio'?'':'none';
+  $('mov-tab-salida')?.classList.toggle('activa',m==='salida');
+  $('mov-tab-cambio')?.classList.toggle('activa',m==='cambio');
+};
+window.movSuma=()=>{
+  const sal=denomSuma(leerDenom('.mov-sal-bill','mov-sal-monedas'));
+  if($('mov-sal-btn'))$('mov-sal-btn').textContent=sal>0?`Registrar salida de ${fmt(sal)}`:'Registrar salida';
+  const ent=denomSuma(leerDenom('.mov-in-bill','mov-in-monedas')), sale=denomSuma(leerDenom('.mov-out-bill','mov-out-monedas'));
+  if($('mov-cambio-res'))$('mov-cambio-res').innerHTML=(ent||sale)
+    ?(Math.abs(ent-sale)<0.01?`<span style="color:var(--teal);font-weight:600;">✓ Entra ${fmt(ent)} y sale ${fmt(sale)}</span>`
+      :`<span style="color:var(--red);font-weight:600;">Entra ${fmt(ent)} y sale ${fmt(sale)}: tiene que ser lo mismo</span>`):'';
+};
+const movLimpiar=()=>{
+  document.querySelectorAll('.mov-sal-bill,.mov-in-bill,.mov-out-bill').forEach(el=>el.value='');
+  ['mov-sal-monedas','mov-in-monedas','mov-out-monedas','mov-sal-motivo'].forEach(id=>{if($(id))$(id).value='';});
+  movSuma();
+};
+window.registrarSalida=async()=>{
+  const denom=leerDenom('.mov-sal-bill','mov-sal-monedas'), monto=denomSuma(denom);
+  const motivo=($('mov-sal-motivo')?.value||'').trim();
+  if(!monto){toast('⚠ Captura los billetes que sacas',2500,'warn');return;}
+  if(motivo.length<3){toast('⚠ Escribe para qué es',2500,'warn');$('mov-sal-motivo')?.focus();return;}
+  if(!confirm(`¿Sacar ${fmt(monto)} de la caja?\n${denomTxt(denom)}\nPara: ${motivo}`)) return;
+  const quien=SESSION?.nombre||activeVend?.nombre||'—';
+  const r={id:Date.now(),fecha:today(),tipo:'retiro',monto,denom,concepto:'Salida: '+motivo,porPersonal:true,
+    hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
+    registradoPor:SESSION?.id||0,registradoPorNombre:quien};
+  if(!await fsSet('retiros',r)){toast('⚠ No se guardó, intenta otra vez',3000,'error');return;}
+  logAudit('movimiento_efectivo',{tipo:'retiro',monto,concepto:r.concepto,fecha:r.fecha,por:quien});
+  avisarDueno(`${quien} sacó ${fmt(monto)} de la caja`,`${motivo}\n${denomTxt(denom)}`,'mov');
+  movLimpiar(); renderMovHoy();
+  toast(`✓ Salida de ${fmt(monto)} registrada`,3000);
+};
+window.registrarCambio=async()=>{
+  const ent=leerDenom('.mov-in-bill','mov-in-monedas'), sale=leerDenom('.mov-out-bill','mov-out-monedas');
+  const tE=denomSuma(ent), tS=denomSuma(sale);
+  if(!tE||!tS){toast('⚠ Captura lo que entra y lo que sale',2500,'warn');return;}
+  if(Math.abs(tE-tS)>0.01){toast(`⚠ Entra ${fmt(tE)} y sale ${fmt(tS)}: tiene que ser lo mismo`,3500,'warn');return;}
+  const quien=SESSION?.nombre||activeVend?.nombre||'—';
+  const r={id:Date.now(),fecha:today(),tipo:'cambio',monto:0,denomEntra:ent,denomSale:sale,
+    concepto:`Cambio de billetes por ${fmt(tE)}`,porPersonal:true,
+    hora:new Date().toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit',hour12:false}),
+    registradoPor:SESSION?.id||0,registradoPorNombre:quien};
+  if(!await fsSet('retiros',r)){toast('⚠ No se guardó, intenta otra vez',3000,'error');return;}
+  logAudit('movimiento_efectivo',{tipo:'cambio',entra:ent,sale,por:quien});
+  avisarDueno(`${quien} cambió billetes por ${fmt(tE)}`,`Entró: ${denomTxt(ent)}\nSalió: ${denomTxt(sale)}`,'mov');
+  movLimpiar(); renderMovHoy();
+  toast('✓ Cambio registrado',3000);
+};
+function renderMovHoy(){
+  const el=$('mov-hoy'); if(!el) return;
+  const mios=D.retiros.filter(r=>r.fecha===today()&&r.porPersonal).sort((a,b)=>b.id-a.id);
+  el.innerHTML=mios.length?`<div style="font-size:11px;color:var(--text3);margin-bottom:4px;">Anotado hoy</div>`+mios.map(r=>
+    `<div class="sr" style="font-size:12px;"><span>${esc(r.hora||'')} · ${esc(r.concepto)} <span style="color:var(--text3);">(${esc(r.registradoPorNombre||'')})</span></span>
+     <span class="mono">${r.tipo==='cambio'?'↔':'−'+fmt(r.monto)}</span></div>`).join(''):'';
+}
+// ══ AVISO AL TELÉFONO DEL DUEÑO ═════════════════════════════
+// El aparato de la cajera manda el resumen a /api/aviso y de ahí sale una
+// notificación a los teléfonos que Iván activó. Ella no la ve. Si no hay
+// red o no hay teléfonos activados, no pasa nada: el Panel ya lo dice.
+const VAPID_PUBLICA='BLP1EDjbKi7-6crcSooJALztkFAoRhkPJXoAFKFqfXE4ENha6cQXPBYkwPXz_kwHo1kokxqPfgcN7y5-qGlfM1A';
+async function avisarDueno(titulo,cuerpo,tag){
+  try{
+    if(!auth.currentUser||auth.currentUser.isAnonymous) return;
+    const token=await auth.currentUser.getIdToken();
+    await fetch('/api/aviso',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({titulo,cuerpo,tag})});
+  }catch(e){console.warn('aviso:',e.message);}
+}
+const b64aBytes=b=>{const p='='.repeat((4-b.length%4)%4);const r=atob((b+p).replace(/-/g,'+').replace(/_/g,'/'));return Uint8Array.from([...r].map(c=>c.charCodeAt(0)));};
+let _avisoActivo=null;   // null = no se sabe todavía
+async function estadoAvisos(){
+  try{
+    if(!('serviceWorker' in navigator)||!('PushManager' in window)) return 'sin-soporte';
+    const reg=await navigator.serviceWorker.ready;
+    const sub=await reg.pushManager.getSubscription();
+    return sub?'activo':(Notification.permission==='denied'?'bloqueado':'inactivo');
+  }catch(e){return 'sin-soporte';}
+}
+window.activarAvisos=async()=>{
+  try{
+    if(!('serviceWorker' in navigator)||!('PushManager' in window)){
+      toast('Este navegador no recibe avisos. En iPhone: agrega la app a la pantalla de inicio y ábrela desde ahí.',6000,'warn');return;}
+    const perm=await Notification.requestPermission();
+    if(perm!=='granted'){toast('⚠ Sin permiso de notificaciones',3500,'warn');return;}
+    const reg=await navigator.serviceWorker.ready;
+    const sub=(await reg.pushManager.getSubscription())||await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:b64aBytes(VAPID_PUBLICA)});
+    const j=sub.toJSON();
+    const ref=doc(db,'sistema','avisos');
+    const actual=(await getDoc(ref)).data()?.subs||[];
+    const subs=[...actual.filter(x=>x.endpoint!==j.endpoint),
+      {endpoint:j.endpoint,p256dh:j.keys.p256dh,auth:j.keys.auth,aparato:navigator.userAgent.slice(0,80),fecha:today()}];
+    await setDoc(ref,{subs});
+    _avisoActivo='activo';
+    toast('✓ Avisos activados en este teléfono',3000);
+    renderDashboard();
+  }catch(e){toast('⚠ No se pudieron activar: '+(e.message||e),5000,'error');}
+};
+window.probarAviso=()=>{avisarDueno('Prueba de El Huerto','Así te van a llegar los cierres de caja y las salidas de efectivo.','prueba');toast('Enviado: debe llegarte en unos segundos',3000);};
+
 window.retiroSuma=()=>{
   const t=denomSuma(leerDenom('.ret-bill','ret-monedas'));
   if(t>0&&$('ret-monto')) $('ret-monto').value=t;
@@ -14188,9 +14327,10 @@ function renderCaja(){
   if($('retiros-lista'))$('retiros-lista').innerHTML=rHoy.length===0?'':
     rHoy.map(r=>`<div class="retiro-row">
       <div><div style="font-size:12.5px;font-weight:600;">${r.concepto}</div>
-        <div style="font-size:10px;color:var(--text3);">${r.tipo==='retiro'?'Retiro':r.tipo==='fondo'?'Fondo':'Depósito'} · ${r.fecha}</div></div>
+        <div style="font-size:10px;color:var(--text3);">${r.tipo==='retiro'?'Retiro':r.tipo==='fondo'?'Fondo':r.tipo==='cambio'?'Cambio':'Depósito'} · ${r.fecha}${r.hora?' '+esc(r.hora):''}${r.registradoPorNombre?' · '+esc(r.registradoPorNombre):''}</div>
+        ${r.tipo==='cambio'?`<div style="font-size:10.5px;color:var(--text2);">Entró ${denomTxt(r.denomEntra)} · salió ${denomTxt(r.denomSale)}</div>`:''}</div>
       <div style="display:flex;align-items:center;gap:8px;">
-        <span class="mono fw7 ${r.tipo==='retiro'?'ar':'at'}" style="font-size:14px;">${r.tipo==='retiro'?'−':'+'}${fmt(r.monto)}</span>
+        <span class="mono fw7 ${r.tipo==='retiro'?'ar':'at'}" style="font-size:14px;">${r.tipo==='cambio'?'↔':(r.tipo==='retiro'?'−':'+')+fmt(r.monto)}</span>
         <button class="btn bs bxs" onclick="editRetiro(${r.id})" title="Editar">✏️</button>
         <button class="btn bd bxs" onclick="delRetiro(${r.id})" title="Eliminar">✕</button>
       </div>
@@ -15023,6 +15163,7 @@ function renderFijosPanel(){
   const caja=$('db-fijos'); if(!caja) return;
   if(SESSION?.tipo!=='admin'){caja.innerHTML='';caja.style.display='none';return;}
   caja.style.display='';
+  if(_avisoActivo===null) estadoAvisos().then(e=>{_avisoActivo=e;renderFijosPanel();});
   programarPagosFijos();
   const e=fijosEstado();
   const fechaCorta=f=>{const d=new Date(f+'T12:00:00');return `${d.getDate()} ${['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'][d.getMonth()]}`;};
@@ -15062,7 +15203,12 @@ function renderFijosPanel(){
         <span class="mono fw7" style="font-size:15px;color:${e.totalDebe>0?'var(--gold)':'var(--teal)'};">${fmt(e.totalDebe)}</span></div>
       ${e.debe.map(fila).join('')||'<div style="font-size:11.5px;color:var(--teal);">✓ Nada pendiente</div>'}
       <div style="font-size:11px;color:var(--text3);margin-top:8px;">Banamex: ${cuotasFalta} de ${BANAMEX_CUOTAS.length} cuotas por pagar, ${fmt(cuotasFalta*3000)}, termina en marzo 2027</div>
-    </div>`;
+    </div>
+    ${_avisoActivo==='activo'
+      ?`<div style="grid-column:1/-1;font-size:12px;color:var(--text3);">✓ Este teléfono recibe los avisos de cierres y salidas de efectivo · <a href="#" onclick="probarAviso();return false;">mandar prueba</a></div>`
+      :_avisoActivo&&_avisoActivo!=='sin-soporte'?`<div class="card" style="grid-column:1/-1;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+        <div style="flex:1;min-width:200px;font-size:13px;">Recibe en este teléfono un aviso cada vez que cierren caja, saquen efectivo o cambien billetes.${_avisoActivo==='bloqueado'?' <b>Las notificaciones están bloqueadas para esta página: actívalas en los ajustes del navegador.</b>':''}</div>
+        <button class="btn bp bsm" onclick="activarAvisos()">Activar avisos</button></div>`:''}`;
 }
 function renderFijosBarra(){
   const b=$('fijos-barra'); if(!b) return;

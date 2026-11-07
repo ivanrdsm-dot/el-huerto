@@ -61,7 +61,8 @@ service cloud.firestore {
     // Doc de la pantalla a cliente y registro de migraciones
     match /sistema/{id} {
       allow read:  if request.auth != null;
-      allow write: if esStaff();
+      // Los teléfonos que reciben avisos los da de alta solo el dueño
+      allow write: if esStaff() && (id != 'avisos' || esAdmin());
     }
 
     // ── Solo el dueño ──

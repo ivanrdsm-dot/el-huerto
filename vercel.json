@@ -24,6 +24,10 @@
       "dest": "/api/point.js"
     },
     {
+      "src": "/api/aviso",
+      "dest": "/api/aviso.js"
+    },
+    {
       "src": "/manifest.json",
       "dest": "/manifest.json",
       "headers": {
