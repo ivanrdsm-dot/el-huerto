@@ -28,6 +28,10 @@
       "dest": "/api/aviso.js"
     },
     {
+      "src": "/api/ticket",
+      "dest": "/api/ticket.js"
+    },
+    {
       "src": "/manifest.json",
       "dest": "/manifest.json",
       "headers": {

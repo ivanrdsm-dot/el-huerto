@@ -7,3 +7,4 @@ pagina-huerto/products-originales/
 .env.*.local
 .mp-integrate-progress.md
 .vercel
+node_modules/

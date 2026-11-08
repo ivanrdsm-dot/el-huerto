@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.69'; // Salidas y cambios del personal; avisos al teléfono
+const CACHE_NAME = 'el-huerto-v15.70'; // Subir tickets con foto
 const ASSETS = [
   '/',
   '/index.html',

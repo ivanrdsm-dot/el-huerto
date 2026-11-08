@@ -1033,6 +1033,29 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- ══ CHECK-IN MODAL ══ -->
+<div id="tk-modal" style="display:none;" class="modal-bg">
+  <div class="modal" style="max-width:780px;">
+    <div class="modal-head"><span class="modal-title"><svg class="ic"><use href="#i-receipt"/></svg> Subir ticket</span><button class="btn bs bxs" onclick="tkCerrar()">✕</button></div>
+    <div id="tk-body"></div>
+  </div>
+</div>
+<style>
+.tk-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px;margin-bottom:10px;}
+.tk-grid .fg{margin:0;}
+.tk-row{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,2fr) 118px 104px 30px;gap:6px;align-items:center;padding:8px;border:1px solid var(--border);border-radius:10px;margin-bottom:6px;}
+.tk-row.tk-dudosa{border-color:#e0a800;background:rgba(224,168,0,.07);}
+.tk-row input,.tk-row select{margin:0;padding:6px 8px;font-size:12.5px;}
+.tk-num{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text2);}
+.tk-num input{min-width:0;}
+.tk-info{grid-column:1/-1;font-size:11.5px;color:var(--text2);line-height:1.4;}
+.tk-info .tk-ojo{color:#b35c00;font-weight:600;}
+.tk-av{background:rgba(224,168,0,.1);border:1px solid rgba(224,168,0,.4);border-radius:10px;padding:8px 10px;font-size:12.5px;margin-bottom:10px;line-height:1.45;}
+.tk-thumbs{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0;}
+.tk-thumbs > div{position:relative;width:84px;height:110px;border:1px solid var(--border);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--text2);text-align:center;}
+.tk-thumbs img{width:100%;height:100%;object-fit:cover;}
+.tk-thumbs button{position:absolute;top:2px;right:2px;padding:0 6px;}
+@media(max-width:640px){.tk-row{grid-template-columns:1fr 1fr 30px;}.tk-row .tk-c{grid-column:1/3;}.tk-row .tk-art{grid-column:1/-1;}}
+</style>
 <div id="checkin-modal" style="display:none;" class="modal-bg" onclick="if(event.target===this)this.style.display='none'">
   <div class="modal" style="max-width:360px;text-align:center;">
     <div class="modal-head"><span class="modal-title"><svg class="ic"><use href="#i-pin"/></svg> Check-in</span><button class="btn bs bxs" onclick="$('checkin-modal').style.display='none'">✕</button></div>
@@ -1795,6 +1818,13 @@ nav{padding-top:env(safe-area-inset-top);}
         <option value="todo">Todo el historial</option>
       </select>
     </div>
+  </div>
+  <div class="card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:210px;">
+      <div class="ct" style="margin-bottom:3px;"><svg class="ic"><use href="#i-receipt"/></svg> Subir ticket</div>
+      <div style="font-size:12.5px;color:var(--text2);line-height:1.45;">Toma la foto del ticket o sube el PDF de la factura. El sistema lo lee y lo liga a tu inventario. Tú lo revisas y lo registras.</div>
+    </div>
+    <button class="btn bp" onclick="tkAbrir()">Subir foto o PDF</button>
   </div>
   <!-- KPIs semana/período -->
   <div class="g4" style="margin-bottom:10px;" id="g-kpis"></div>
@@ -6369,7 +6399,7 @@ async function registrarLote(lote){
     if(!D.gastos.find(x=>x.ticket===g.ticket)){
       const monto=r2(partidas.reduce((a,x)=>a+x.i,0));
       await fsSet('gastos',{id:++gid,fecha:g.fecha,...(g.fechaTicket?{fechaTicket:g.fechaTicket}:{}),ticket:g.ticket,
-        prov:g.prov,cat:g.cat,tipoEstrategico:'operacion',metodo:g.metodo,monto,partidas,notas:g.notas});
+        prov:g.prov,cat:g.cat,tipoEstrategico:'operacion',metodo:g.metodo,monto,partidas,notas:g.notas,...(g.extra||{})});
     }
   }
   return {precios,hechos};
@@ -14889,6 +14919,274 @@ window.gastoSugiereCat=nombre=>{
   const cat=provCategoria(canon);
   if(cat && $('gc') && [...$('gc').options].some(o=>o.value===cat)) $('gc').value=cat;
 };
+// ═══════════════════════════════════════════════════════════
+// SUBIR TICKET CON FOTO (v15.70)
+//
+// Foto o PDF → /api/ticket (Claude lo lee y liga cada renglón a un
+// artículo del inventario, con la cantidad en la unidad del artículo) →
+// Iván revisa → registrarLote, el mismo camino de los lotes a mano:
+// precio ponderado, mercancía con el ticket como marca y el gasto.
+// Nada se escribe hasta que Iván toca "Registrar". Las fotos se reducen
+// en el teléfono (Vercel no acepta más de 4.5 MB por llamada).
+// ═══════════════════════════════════════════════════════════
+let TK=null;
+const TK_CATS=['proveedor','costco','servicios','renta','mantenimiento','marketing','sub_neg','varios'];
+const TK_MAX_B64=4.1e6;
+const tkInv=id=>id?D.inventario.find(i=>String(i.id)===String(id)):null;
+const tkNum=v=>{const n=parseFloat(String(v).replace(',','.'));return Number.isFinite(n)?n:0;};
+// Compra de fin de semana: cuenta el lunes siguiente (regla del surtido)
+function tkFechaCuenta(f){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(f||'')) return null;
+  const d=new Date(f+'T12:00:00'), dw=d.getDay();
+  if(dw===6) d.setDate(d.getDate()+2); else if(dw===0) d.setDate(d.getDate()+1); else return f;
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+function tkB64(file){
+  return new Promise((ok,ko)=>{const r=new FileReader();r.onload=()=>ok(String(r.result).split(',')[1]);r.onerror=()=>ko(new Error('No se pudo leer '+file.name));r.readAsDataURL(file);});
+}
+async function tkPreparar(file){
+  if(file.type==='application/pdf'||/\.pdf$/i.test(file.name)){
+    if(file.size>3e6) throw new Error(`El PDF ${file.name} pesa más de 3 MB.`);
+    return {tipo:'application/pdf',datos:await tkB64(file),nombre:file.name};
+  }
+  const url=URL.createObjectURL(file);
+  try{
+    const img=await new Promise((ok,ko)=>{const im=new Image();im.onload=()=>ok(im);
+      im.onerror=()=>ko(new Error(`No se pudo abrir ${file.name}. Si es HEIC, súbela desde el iPhone o mándala como JPG.`));im.src=url;});
+    const k=Math.min(1,2000/Math.max(img.naturalWidth,img.naturalHeight));
+    const c=document.createElement('canvas');
+    c.width=Math.round(img.naturalWidth*k); c.height=Math.round(img.naturalHeight*k);
+    const ctx=c.getContext('2d'); ctx.fillStyle='#fff'; ctx.fillRect(0,0,c.width,c.height); ctx.drawImage(img,0,0,c.width,c.height);
+    let q=0.85, d=c.toDataURL('image/jpeg',q);
+    while(d.length>1.35e6&&q>0.45){q-=0.1;d=c.toDataURL('image/jpeg',q);}
+    return {tipo:'image/jpeg',datos:d.split(',')[1],nombre:file.name,vista:d};
+  }finally{URL.revokeObjectURL(url);}
+}
+// Lo que ya se ligó antes: "Queso mozzarella cubicado Billy 5 kg" → Queso mozzarella
+function tkLigas(){
+  const vistas=new Set(), out=[];
+  const gs=[...D.gastos].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+  for(const g of gs) for(const p of (g.partidas||[])){
+    if(!p.art||!p.c) continue;
+    const k=normInvNombre(p.c); if(vistas.has(k)) continue;
+    vistas.add(k); out.push({c:p.c,a:p.art});
+    if(out.length>=400) return out;
+  }
+  return out;
+}
+function tkTicketId(){
+  const c=TK.cab, s=v=>normInvNombre(v).toUpperCase().slice(0,14);
+  const folio=String(c.folio||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  return `${s(c.prov)||'TICKET'}-${folio||(c.fechaTicket||'').replace(/-/g,'')+'-'+Math.round(tkSuma())}`;
+}
+const tkSuma=()=>r2(TK.filas.reduce((a,f)=>a+tkNum(f.i),0));
+function tkDuplicado(){
+  const id=tkTicketId(), c=TK.cab, suma=tkSuma();
+  const mismo=D.gastos.find(g=>g.ticket===id);
+  if(mismo) return {bloquea:true,g:mismo};
+  const pareca=D.gastos.find(g=>normInvNombre(g.prov)===normInvNombre(c.prov)
+    &&((g.fechaTicket||g.fecha)===c.fechaTicket||g.fecha===c.fecha)&&Math.abs((g.monto||0)-suma)<1);
+  return pareca?{bloquea:false,g:pareca}:null;
+}
+window.tkAbrir=()=>{
+  if(SESSION.tipo!=='admin'){toast('Solo el admin sube tickets');return;}
+  TK={paso:'subir',archivos:[]}; tkRender(); $('tk-modal').style.display='flex';
+};
+window.tkCerrar=()=>{
+  if(TK?.paso==='revisar'&&!confirm('¿Cerrar sin registrar? Se pierde lo leído.')) return;
+  TK=null; $('tk-modal').style.display='none';
+};
+window.tkArchivos=async files=>{
+  for(const f of [...files]){
+    if(TK.archivos.length>=4){toast('Máximo 4 fotos por ticket',3000);break;}
+    try{
+      const a=await tkPreparar(f);
+      const total=TK.archivos.reduce((s,x)=>s+x.datos.length,0)+a.datos.length;
+      if(total>TK_MAX_B64){toast('Ya no cabe otra foto; lee el ticket así o súbelo en dos partes',4000);break;}
+      TK.archivos.push(a);
+    }catch(e){toast(e.message,5000,'err');}
+  }
+  tkRender();
+};
+window.tkQuitarArchivo=k=>{TK.archivos.splice(k,1);tkRender();};
+window.tkLeer=async()=>{
+  if(!TK.archivos.length) return;
+  TK.leyendo=true; TK.error=''; tkRender();
+  try{
+    const token=await auth.currentUser.getIdToken();
+    const catalogo=D.inventario.filter(i=>i.nombre).map(i=>({id:String(i.id),n:i.nombre,u:i.unit||'',p:i.precio>0?Math.round(i.precio*10000)/10000:0}));
+    const proveedores=[...new Set([...PROVEEDORES.map(p=>p.n),...D.gastos.map(g=>(g.prov||'').trim()).filter(Boolean)])];
+    const r=await fetch('/api/ticket',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+      body:JSON.stringify({archivos:TK.archivos.map(a=>({tipo:a.tipo,datos:a.datos})),catalogo,ligas:tkLigas(),proveedores})});
+    const d=await r.json().catch(()=>({error:r.status===413?'Las fotos pesan demasiado; sube menos a la vez.':'Respuesta no válida del servidor.'}));
+    if(!r.ok) throw new Error(d.error||('Error '+r.status));
+    let prov=provCanonico(d.proveedor||'');
+    if(prov&&!PROVEEDORES.some(p=>p.n===prov)){
+      const k=normInvNombre(prov);
+      const hit=k.length>=3&&PROVEEDORES.find(p=>{const n=normInvNombre(p.n);return n.startsWith(k)||k.startsWith(n);});
+      if(hit) prov=hit.n;
+    }
+    const fechaTicket=/^\d{4}-\d{2}-\d{2}$/.test(d.fecha||'')?d.fecha:today();
+    const cat=provCategoria(prov)||(/costco/i.test(prov)?'costco':'proveedor');
+    TK.cab={prov,folio:d.folio||'',fechaTicket,fecha:tkFechaCuenta(fechaTicket)||fechaTicket,
+      metodo:['efectivo','tarjeta','transferencia'].includes(d.metodo)?d.metodo:'efectivo',
+      cat:TK_CATS.includes(cat)?cat:'proveedor',total:tkNum(d.total),esFactura:!!d.es_factura,yaContado:false,
+      notas:`Leído de foto${d.folio?` · ${d.es_factura?'factura':'ticket'} ${d.folio}`:''}${d.hora?` · ${d.fecha?d.fecha.slice(8,10)+'/'+d.fecha.slice(5,7)+' ':''}${d.hora}`:''}.`};
+    TK.avisos=(d.avisos||[]).filter(Boolean);
+    TK.filas=(d.partidas||[]).map(p=>{
+      const inv=tkInv(p.art_id);
+      return {c:p.descripcion||'',art:inv?String(inv.id):'',q:inv?tkNum(p.cantidad_inv):tkNum(p.cantidad_ticket)||1,
+        i:r2(tkNum(p.importe)),conf:inv?p.confianza:'alta',nota:p.nota||'',qt:tkNum(p.cantidad_ticket),ut:p.unidad_ticket||'',sinPrecio:false};
+    });
+    TK.paso='revisar';
+  }catch(e){TK.error=e.message;}
+  TK.leyendo=false; tkRender();
+};
+window.tkCab=(k,v)=>{
+  TK.cab[k]=v;
+  if(k==='fechaTicket') {TK.cab.fecha=tkFechaCuenta(v)||v; if($('tk-fecha')) $('tk-fecha').value=TK.cab.fecha;}
+  if(k==='prov'){const cat=provCategoria(provCanonico(v)); if(cat&&TK_CATS.includes(cat)){TK.cab.cat=cat; if($('tk-cat')) $('tk-cat').value=cat;}}
+  tkTotales();
+};
+window.tkFila=(k,campo,v)=>{
+  const f=TK.filas[k]; if(!f) return;
+  if(campo==='art'){
+    const antes=tkInv(f.art), inv=tkInv(v); f.art=inv?String(inv.id):'';
+    if(!inv&&antes){f.q=f.qt||1;}
+    f.conf='alta'; tkRender(); return;
+  }
+  f[campo]=(campo==='q'||campo==='i')?tkNum(v):campo==='sinPrecio'?!!v:v;
+  const el=$('tk-info-'+k); if(el) el.innerHTML=tkInfo(f,k);
+  tkTotales();
+};
+window.tkQuitarFila=k=>{TK.filas.splice(k,1);tkRender();};
+window.tkAgregarFila=()=>{TK.filas.push({c:'',art:'',q:1,i:0,conf:'alta',nota:'',qt:1,ut:'pz',sinPrecio:false});tkRender();};
+function tkInfo(f,k){
+  const inv=tkInv(f.art), partes=[];
+  if(f.qt&&f.ut) partes.push(`En el ticket: ${f.qt} ${esc(f.ut)}`);
+  if(inv){
+    const q=tkNum(f.q), pu=q>0?tkNum(f.i)/q:0;
+    if(pu>0){
+      const fmt=v=>v>=1?'$'+v.toFixed(2):'$'+v.toFixed(4);
+      let t=`${fmt(pu)}/${esc(inv.unit)}`;
+      if(inv.precio>0){
+        const dif=pu/inv.precio-1;
+        if(Math.abs(dif)>0.3) t+=` <span class="tk-ojo">· antes ${fmt(inv.precio)} (${dif>0?'+':''}${Math.round(dif*100)}%) — revisa la cantidad</span>
+          <label style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;cursor:pointer;"><input type="checkbox" style="width:auto;margin:0;" ${f.sinPrecio?'checked':''} onchange="tkFila(${k},'sinPrecio',this.checked)"> no cambiar el precio</label>`;
+        else t+=` · antes ${fmt(inv.precio)}`;
+      }
+      partes.push(t);
+    } else partes.push('<span class="tk-ojo">Falta la cantidad</span>');
+  } else partes.push('No entra al inventario (solo gasto)');
+  if(f.nota) partes.push(esc(f.nota));
+  return partes.join(' · ');
+}
+function tkTotales(){
+  const el=$('tk-tot'); if(!el||!TK?.cab) return;
+  const suma=tkSuma(), tot=TK.cab.total, dif=r2(suma-tot), dup=tkDuplicado();
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;">
+      <span>Suma de renglones: <b>$${suma.toLocaleString('es-MX',{minimumFractionDigits:2})}</b></span>
+      <span>Total del ticket: <b>$${(tot||0).toLocaleString('es-MX',{minimumFractionDigits:2})}</b></span>
+      <span style="color:${Math.abs(dif)<1?'var(--green,#1a7f37)':'#b35c00'};font-weight:600;">${Math.abs(dif)<1?'✓ Cuadra':`Diferencia $${dif.toFixed(2)}`}</span>
+    </div>
+    ${dup?`<div class="tk-av" style="margin:8px 0 0;">${dup.bloquea?'Este ticket ya está registrado':'Parece que ya está registrado'}: ${esc(dup.g.prov||'')} · ${esc(dup.g.fecha||'')} · $${(dup.g.monto||0).toFixed(2)}${dup.bloquea?'. No se puede registrar dos veces.':'. Revisa antes de registrar.'}</div>`:''}`;
+  const b=$('tk-reg'); if(b) b.disabled=!!dup?.bloquea;
+}
+function tkRender(){
+  const b=$('tk-body'); if(!b||!TK) return;
+  if(TK.paso==='subir'){
+    b.innerHTML=`<div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:10px;">
+        Si el ticket es largo, toma 2 o 3 fotos de arriba hacia abajo y súbelas juntas. Para Costco sirve más el PDF de la factura.</div>
+      <label class="btn bs bfull" style="cursor:pointer;justify-content:center;${TK.leyendo?'pointer-events:none;opacity:.5;':''}">
+        Elegir foto o PDF<input type="file" accept="image/*,application/pdf" multiple style="display:none" onchange="tkArchivos(this.files);this.value=''"></label>
+      <div class="tk-thumbs">${TK.archivos.map((a,k)=>`<div>${a.vista?`<img src="${a.vista}" alt="">`:`PDF<br>${esc(a.nombre).slice(0,24)}`}
+        ${TK.leyendo?'':`<button class="btn bs bxs" onclick="tkQuitarArchivo(${k})">✕</button>`}</div>`).join('')}</div>
+      ${TK.error?`<div class="tk-av">${esc(TK.error)}</div>`:''}
+      <button class="btn bp bfull" onclick="tkLeer()" ${!TK.archivos.length||TK.leyendo?'disabled':''}>${TK.leyendo?'Leyendo el ticket… (unos 20 a 40 segundos)':'Leer ticket'}</button>`;
+    return;
+  }
+  if(TK.paso==='listo'){
+    const r=TK.resultado;
+    b.innerHTML=`<div style="font-size:15px;font-weight:600;margin-bottom:8px;">✓ Compra registrada</div>
+      <div style="font-size:13px;line-height:1.55;margin-bottom:10px;">${esc(r.prov)} · $${r.monto.toLocaleString('es-MX',{minimumFractionDigits:2})} · cuenta el ${esc(r.fecha)}</div>
+      ${r.hechos.length?`<div class="ct" style="font-size:12px;">Entró al inventario</div><div style="font-size:12.5px;line-height:1.5;margin-bottom:8px;">${r.hechos.map(h=>esc(h).replace('→ stock','→ existencia').replace('→ conteo','→ al conteo').replace('→ ya','→ ya estaba')).join('<br>')}</div>`:''}
+      ${r.precios.length?`<div class="ct" style="font-size:12px;">Precios al día</div><div style="font-size:12.5px;line-height:1.5;margin-bottom:8px;">${r.precios.map(esc).join('<br>')}</div>`:''}
+      <div style="display:flex;gap:8px;"><button class="btn bp" style="flex:1" onclick="tkAbrir()">Subir otro ticket</button><button class="btn bs" onclick="tkCerrar()">Listo</button></div>`;
+    return;
+  }
+  const c=TK.cab;
+  const invs=[...D.inventario].filter(i=>i.nombre).sort((a,b)=>a.nombre.localeCompare(b.nombre,'es'));
+  const opts=sel=>`<option value="">— no va al inventario —</option>`+invs.map(i=>`<option value="${esc(String(i.id))}"${String(i.id)===sel?' selected':''}>${esc(i.nombre)} (${esc(i.unit||'')})</option>`).join('');
+  const dudosas=TK.filas.filter(f=>f.conf!=='alta').length;
+  b.innerHTML=`
+    ${TK.avisos.length?`<div class="tk-av"><b>Revisa:</b><br>${TK.avisos.map(esc).join('<br>')}</div>`:''}
+    <div class="tk-grid">
+      <div class="fg"><label>Proveedor</label><input list="pvdl" value="${esc(c.prov)}" oninput="tkCab('prov',this.value)" onchange="this.value=provCanonico(this.value);tkCab('prov',this.value)"></div>
+      <div class="fg"><label>Ticket / folio</label><input value="${esc(c.folio)}" oninput="tkCab('folio',this.value)"></div>
+      <div class="fg"><label>Fecha del ticket</label><input type="date" value="${esc(c.fechaTicket)}" onchange="tkCab('fechaTicket',this.value)"></div>
+      <div class="fg"><label>Cuenta en la semana del</label><input type="date" id="tk-fecha" value="${esc(c.fecha)}" onchange="tkCab('fecha',this.value)"></div>
+      <div class="fg"><label>Categoría</label><select id="tk-cat" onchange="tkCab('cat',this.value)">${TK_CATS.map(v=>`<option value="${v}"${v===c.cat?' selected':''}>${({proveedor:'Proveedor',costco:'Costco',servicios:'Servicios',renta:'Renta',mantenimiento:'Mantenimiento',marketing:'Marketing',sub_neg:'Suscripción neg.',varios:'Varios'})[v]}</option>`).join('')}</select></div>
+      <div class="fg"><label>Método</label><select onchange="tkCab('metodo',this.value)">${['efectivo','tarjeta','transferencia'].map(v=>`<option value="${v}"${v===c.metodo?' selected':''}>${v[0].toUpperCase()+v.slice(1)}</option>`).join('')}</select></div>
+      <div class="fg"><label>Total del ticket</label><input type="number" step="0.01" value="${c.total}" oninput="tkCab('total',tkNum(this.value))"></div>
+    </div>
+    <div class="fg"><label>Notas</label><input value="${esc(c.notas)}" oninput="tkCab('notas',this.value)"></div>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 6px;">
+      <div class="ct" style="margin:0;">Renglones (${TK.filas.length})${dudosas?` · <span style="color:#b35c00;">${dudosas} por revisar</span>`:''}</div>
+      <button class="btn bs bxs" onclick="tkAgregarFila()">+ Renglón</button>
+    </div>
+    <div style="font-size:11.5px;color:var(--text2);margin-bottom:6px;">Descripción · artículo del inventario · cantidad en la unidad del artículo · importe pagado</div>
+    ${TK.filas.map((f,k)=>{const inv=tkInv(f.art);return `<div class="tk-row${f.conf!=='alta'?' tk-dudosa':''}">
+      <input class="tk-c" value="${esc(f.c)}" oninput="tkFila(${k},'c',this.value)" placeholder="Descripción">
+      <select class="tk-art" onchange="tkFila(${k},'art',this.value)">${opts(f.art)}</select>
+      <div class="tk-num"><input type="number" step="any" value="${f.q}" oninput="tkFila(${k},'q',this.value)"><span>${esc(inv?inv.unit:(f.ut||'pz'))}</span></div>
+      <div class="tk-num">$<input type="number" step="0.01" value="${f.i}" oninput="tkFila(${k},'i',this.value)"></div>
+      <button class="btn bs bxs" onclick="tkQuitarFila(${k})" title="Quitar renglón">✕</button>
+      <div class="tk-info" id="tk-info-${k}">${tkInfo(f,k)}</div></div>`;}).join('')}
+    <label style="display:flex;align-items:flex-start;gap:8px;font-size:12.5px;color:var(--text2);margin:10px 0;cursor:pointer;line-height:1.4;">
+      <input type="checkbox" style="width:auto;margin:2px 0 0;" ${c.yaContado?'checked':''} onchange="tkCab('yaContado',this.checked)">
+      El conteo del inventario de ese día ya incluía esta mercancía</label>
+    <div id="tk-tot" style="border-top:1px solid var(--border);padding-top:10px;margin-bottom:10px;"></div>
+    <div style="display:flex;gap:8px;"><button class="btn bs" onclick="tkVolver()">Volver a las fotos</button>
+      <button class="btn bp" style="flex:1" id="tk-reg" onclick="tkRegistrar()">Registrar compra</button></div>`;
+  tkTotales();
+}
+window.tkRegistrar=async()=>{
+  const c=TK.cab;
+  if(!c.prov.trim()){toast('Falta el proveedor',3000,'err');return;}
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(c.fecha)){toast('Falta la fecha',3000,'err');return;}
+  const filas=TK.filas.filter(f=>f.c.trim()||tkNum(f.i));
+  if(!filas.length){toast('No hay renglones',3000,'err');return;}
+  const sinQ=filas.find(f=>f.art&&!(tkNum(f.q)>0));
+  if(sinQ){toast(`Falta la cantidad de ${sinQ.c||'un renglón'}`,3500,'err');return;}
+  const dup=tkDuplicado();
+  if(dup?.bloquea){toast('Este ticket ya está registrado',3500,'err');return;}
+  if(dup&&!confirm(`Parece que ya está registrado (${dup.g.prov} · ${dup.g.fecha} · $${(dup.g.monto||0).toFixed(2)}). ¿Registrar de todos modos?`)) return;
+  const suma=tkSuma();
+  if(c.total&&Math.abs(suma-c.total)>=1&&!confirm(`Los renglones suman $${suma.toFixed(2)} y el ticket dice $${c.total.toFixed(2)}. ¿Registrar así?`)) return;
+  const btn=$('tk-reg'); if(btn){btn.disabled=true;btn.textContent='Registrando…';}
+  try{
+    const ticket=tkTicketId();
+    const p=filas.map(f=>{
+      const inv=tkInv(f.art);
+      return inv?[f.c.trim()||inv.nombre,inv.nombre,tkNum(f.q),inv.unit,r2(tkNum(f.i)),...(f.sinPrecio?[{sinPrecio:true}]:[])]
+                :[f.c.trim()||'Sin descripción',null,f.qt||tkNum(f.q)||1,f.ut||'pz',r2(tkNum(f.i))];
+    });
+    const g={ticket,prov:c.prov.trim(),cat:c.cat,metodo:c.metodo,fecha:c.fecha,...(c.fechaTicket&&c.fechaTicket!==c.fecha?{fechaTicket:c.fechaTicket}:{}),
+      llegada:c.fechaTicket||c.fecha,yaContado:!!c.yaContado,notas:c.notas.trim(),
+      extra:{origen:'foto',...(c.esFactura&&c.folio?{factura:c.folio}:{})},p};
+    const {precios,hechos}=await registrarLote([g]);
+    logAudit('compras_registradas',{lote:'ticket leído de foto',ticket,precios,inventario:hechos,monto:suma});
+    TK.resultado={prov:g.prov,monto:suma,fecha:c.fecha,precios,hechos};
+    TK.paso='listo'; tkRender();
+    if(typeof renderGastos==='function') setTimeout(()=>{try{renderGastos();}catch(e){}},600);
+  }catch(e){
+    console.error('tkRegistrar',e); toast('No se pudo registrar: '+e.message,5000,'err');
+    if(btn){btn.disabled=false;btn.textContent='Registrar compra';}
+  }
+};
+window.tkNum=tkNum;
+window.tkVolver=()=>{TK.paso='subir';TK.error='';tkRender();};
+window.provCanonico=window.provCanonico||provCanonico;
 // ══ LO QUE DEBE ══
 // Hay proveedores que le fían —la Tía Renee entrega y cobra después—.
 // El gasto cuenta desde que se devenga, pero el dinero sigue en la
