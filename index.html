@@ -19998,6 +19998,38 @@ window.recostearVentas=async(semanas)=>{
   renderAll();
 };
 
+// ══ RECOSTEO POR RECETAS CORREGIDAS (9-nov) ══
+// El 9-nov se corrigieron recetas que costeaban mal TODAS las ventas:
+// mozzarella que no estaba en 4 paninis, chai en 5 g, plato en vez de
+// bolsa, mangas y cubiertos que no se cargaban, servitoallas que no se
+// usan. Aquí se rehacen las ventas desde `desde` con el costeo de hoy,
+// aunque ya tuvieran costo. El costo anterior queda en foodCostPrevio y
+// la marca fcRecetas evita hacerlo dos veces. Solo 4 semanas atrás: más
+// lejos, los precios de hoy ya no son los de esos días.
+window.recostearConRecetas=async(desde,marca)=>{
+  const vs=D.ventas.filter(v=>!v.anulada&&v.fecha>=desde&&v.fecha<=today()&&v.fcRecetas!==marca);
+  if(!vs.length){toast('No hay ventas por recostear',2500);return {ok:0,siguen:0};}
+  let ok=0, siguen=0, lote=[], antes=0, despues=0;
+  const vaciar=async()=>{ if(!lote.length) return; await Promise.all(lote.map(x=>fsSet('ventas',x))); lote=[]; };
+  for(const v of vs){
+    let fc=0, completo=true; const supuestos=[];
+    (v.items||[]).forEach(i=>{ const r=costoRenglonVenta(i);
+      if(r.costo!=null) fc+=r.costo*(i.qty||0); if(!r.completo) completo=false;
+      if(r.supuesto) supuestos.push({item:i.nombre||i.id,...r.supuesto}); });
+    if(!completo||(fc>v.total&&v.total>0&&!perdidaConocida(v))){siguen++;continue;}
+    const actual=D.ventas.find(x=>x.id===v.id); if(!actual||actual.anulada){siguen++;continue;}
+    antes+=actual.foodCost||0; despues+=fc;
+    const upd={...actual,foodCostPrevio:actual.foodCost??null,foodCost:r2(fc),foodCostCompleto:true,fcToppings:true,fcRecetas:marca,
+      ...(supuestos.length?{fcSupuesto:supuestos}:{})};
+    lote.push(upd); const ix=D.ventas.findIndex(x=>x.id===v.id); if(ix>=0) D.ventas[ix]=upd; ok++;
+    if(lote.length>=50) await vaciar();
+  }
+  await vaciar();
+  logAudit('ventas_recosteadas',{recosteadas:ok,siguenIncompletas:siguen,desde,costoAntes:r2(antes),costoDespues:r2(despues),
+    motivo:'Recetas corregidas el 9-nov (mozzarella en paninis, chai 20 g, empaques, cubiertos, mangas, sin servitoallas)'});
+  toast(`✓ ${ok} ventas recosteadas`,5000); renderAll();
+  return {ok,siguen,antes:r2(antes),despues:r2(despues)};
+};
 // ── El editor ──
 // Guarda en cuanto tocas algo: no hay botón "guardar" que se te olvide.
 let CST_PROD=null;

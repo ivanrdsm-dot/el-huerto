@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.76'; // Mínimos semanales automáticos, aviso de conteo completo
+const CACHE_NAME = 'el-huerto-v15.77'; // Recosteo por recetas corregidas
 const ASSETS = [
   '/',
   '/index.html',
