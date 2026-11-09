@@ -2092,6 +2092,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <button class="kpi-tab on" onclick="setInvMode('captura')" data-mode="captura"><svg class="ic"><use href="#i-receipt"/></svg> Captura del día</button>
     <button class="kpi-tab" onclick="setInvMode('dashboard')" data-mode="dashboard" id="inv-tab-dashboard"><svg class="ic"><use href="#i-chart"/></svg> Dashboard</button>
     <button class="kpi-tab" onclick="setInvMode('historial')" data-mode="historial" id="inv-tab-hist"><svg class="ic"><use href="#i-trend"/></svg> Histórico</button>
+    <button class="kpi-tab" onclick="setInvMode('control')" data-mode="control" id="inv-tab-control"><svg class="ic"><use href="#i-target"/></svg> Control</button>
     <button class="kpi-tab" onclick="setInvMode('admin')" data-mode="admin" id="inv-tab-admin"><svg class="ic"><use href="#i-gear"/></svg> Productos</button>
     <div style="flex:1;"></div>
     <button class="btn bs bsm" id="btn-hoja-compras" onclick="hojaComprasPDF()" style="font-weight:700;display:none;"><svg class="ic"><use href="#i-printer"/></svg> Hoja de compras</button>
@@ -16974,7 +16975,11 @@ function _surtidoSugerido(){
     const ref=real??comp;
     const impacto=receta>0&&ref>0?Math.abs(receta-ref)*(inv.precio||0):0;
     if(receta>0&&ref>0&&(receta/ref>1.5||receta/ref<0.67)&&impacto>=30) revisar.push({inv,receta,ref,impacto,quien:(quien[id]||[]).slice(0,2)});
-    const falta=sem*SURTIDO_COLCHON-hay;
+    // Con suficientes conteos, el nivel del domingo lleva stock de
+    // seguridad según lo que varía el consumo (pestaña Control); si no,
+    // el 10% de colchón de siempre.
+    const pol=controlInv().porId[id];
+    const falta=(pol&&pol.base==='conteos'?pol.max:sem*SURTIDO_COLCHON)-hay;
     if(falta<=0) continue;
     const c=enUnidadDeCompra(inv,falta);
     if(!(c.q>0)) continue;
@@ -17187,7 +17192,7 @@ function renderSurtidoCard(){
         <button class="btn bs bsm" onclick="surtidoACompras()">🧺 Pasar a Compras</button>
         <button class="btn bs bsm" onclick="surtidoCopiar()">📋 WhatsApp</button>
       </div></div>
-    <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;"><b>Se usa/semana</b> = consumo REAL de los conteos (lo que había + lo que llegó − lo que quedó, ${S.desde} a ${S.hasta}); si un artículo no tiene suficientes conteos, se usa la receta. Se compra eso + 10% − lo que hay. ≈ <b>${fmt(S.total)}</b> a los últimos precios.</p>
+    <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;"><b>Se usa/semana</b> = consumo REAL de los conteos (lo que había + lo que llegó − lo que quedó, ${S.desde} a ${S.hasta}); si un artículo no tiene suficientes conteos, se usa la receta. Se compra lo de la semana + stock de seguridad (según cuánto varía el consumo; ve la pestaña Control) − lo que hay. ≈ <b>${fmt(S.total)}</b> a los últimos precios.</p>
     ${S.filas.length?`<div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Artículo</th><th style="text-align:right;">Se usa / sem</th><th style="text-align:right;">Receta</th><th style="text-align:right;">Compras</th><th style="text-align:right;">Hay</th><th style="text-align:right;">Comprar</th><th style="text-align:right;">≈ $</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`:'<p style="font-size:12px;color:var(--accent);">Hay de todo para la semana.</p>'}
     ${S.dudosos.length?`<div style="font-size:11px;color:var(--goldd);margin-top:8px;">⚠ Apartados por cifra imposible (revisa cómo se cuentan): ${S.dudosos.map(f=>`${esc(f.inv.nombre)} — ${enCompra(f,f.sem)}/sem`).join(' · ')}</div>`:''}
     ${S.quitados.length?`<div style="font-size:11px;color:var(--text3);margin-top:8px;">Fuera de la orden: ${S.quitados.map(i=>`${esc(i.nombre)} <a href="#" onclick="surtidoQuitar(${JSON.stringify(String(i.id)).replace(/"/g,'&quot;')},false);return false;">regresar</a>`).join(' · ')}</div>`:''}
@@ -17198,6 +17203,208 @@ function invMinimoSugerido(productoId){
   const prom=invConsumoPromedio(productoId,14);
   if(prom==null) return null;
   return Math.round(prom*1.5*100)/100;
+}
+// ═══════════════════════════════════════════════════════════
+// CONTROL DE INVENTARIO (v15.75) — reorden, EOQ y fugas
+//
+// Iván: "las fórmulas de EOQ que hasta Toyota utilizaba… cuándo tengo
+// que ordenar… y que el sistema detecte las mermas o hasta un robo
+// hormiga". Todo sale de dos fuentes que ya existen:
+//   · el consumo REAL entre conteos (lo que había + lo que llegó − lo
+//     que quedó), por día de operación, y su variación día a día;
+//   · la diferencia de cada conteo contra lo que el sistema esperaba
+//     (lo vendido por receta), que es la fuga.
+//
+// Política por artículo (revisión semanal, surtido del domingo):
+//   d  = consumo por día de operación     σ = cuánto varía al día
+//   z  = nivel de servicio por clase ABC  (A 98% · B 95% · C 90%)
+//   L  = 1 día (lo que tarda en llegar)   R = 5 días (de un surtido al otro)
+//   Stock de seguridad  SS  = z·σ·√(R+L)
+//   Punto de reorden    ROP = d·L + z·σ·√L   ("si baja de aquí, pide ya")
+//   Nivel del domingo   MAX = d·(R+L) + SS   (la orden = MAX − lo que hay)
+//   EOQ (Wilson, el que usaba Toyota antes del kanban):
+//                       Q*  = √(2·D·S / H)   D anual, S costo de ir a
+//   comprar, H costo de guardar una pieza un año (25% de su precio).
+//   Solo para lo que no se echa a perder: dice cuándo conviene comprar
+//   por caja en vez de cada semana.
+// ═══════════════════════════════════════════════════════════
+const CTRL={z:{A:2.05,B:1.65,C:1.28},L:1,R:5,costoPedido:100,tasaAnual:0.25,ventana:35,alertaPesos:80};
+const CTRL_VIDA={frutas_verduras:4};   // fruta y verdura picada no aguanta la semana
+const CTRL_PERECE=new Set(['frutas_verduras','lacteos_proteinas']);
+function diasOperacionEntre(a,b){ // días que abre en (a, b]
+  let d=0; const x=new Date(a+'T12:00:00');
+  while(true){ x.setDate(x.getDate()+1); const f=localDate(x); if(f>b) break; if(!esDiaDescanso(f)) d++; }
+  return d;
+}
+let _ctrlMemo=null;
+function controlInv(){
+  const llave=[today(),D.ventas.length,D.gastos.length,D.invDiario.length,D.inventario.length,D.recetas.length].join('|');
+  if(_ctrlMemo&&_ctrlMemo.llave===llave) return _ctrlMemo.r;
+  const r=_controlInv(); _ctrlMemo={llave,r}; return r;
+}
+function _controlInv(){
+  const ini=new Date(today()+'T12:00:00'); ini.setDate(ini.getDate()-CTRL.ventana);
+  const desde=localDate(ini);
+  const idx=indiceCompras();
+  const teo=consumoTeoricoSemanal().porSemana;
+  const filas=[];
+  for(const inv of invConteo()){
+    if(inv.catOf==='equipo'||inv.noContar) continue;
+    const caps=(idxConteos().get(inv.id)||[]).filter(c=>c.fecha>=desde&&c.qty!=null).slice().reverse();
+    const compras=(idx[inv.id]||[]).filter(x=>x.q!=null);
+    const tramos=[]; let fuga=0, nDif=0, nFalta=0, nSobra=0;
+    for(let k=1;k<caps.length;k++){
+      const a=caps[k-1], b=caps[k];
+      const lleg=compras.filter(x=>x.f>a.fecha&&x.f<=b.fecha).reduce((s,x)=>s+x.q,0);
+      const u=(a.qty||0)+lleg-(b.qty||0), d=diasOperacionEntre(a.fecha,b.fecha);
+      if(u>=0&&d) tramos.push({u,d,r:u/d});
+    }
+    const precio=inv.precio||0;
+    for(const c of caps){
+      if(c.diferencia==null||c.esperado==null) continue;
+      const p=c.diferencia*(c.precioUnit??precio);
+      if(Math.abs(p)>5000) continue;   // dedazo de unidad: no es fuga
+      nDif++; fuga+=p;
+      if(c.diferencia<-DESCUADRE_MIN) nFalta++; else if(c.diferencia>DESCUADRE_MIN) nSobra++;
+    }
+    // Un tramo absurdo no manda (mismo filtro que la orden de compra)
+    let ok=tramos;
+    if(tramos.length>=3){ const rs=tramos.map(t=>t.r).sort((x,y)=>x-y), med=rs[Math.floor(rs.length/2)];
+      if(med>0) ok=tramos.filter(t=>t.r<=med*4); }
+    const dias=ok.reduce((s,t)=>s+t.d,0);
+    let d=null, sigma=null, base=null;
+    if(ok.length>=4&&dias>0){
+      d=ok.reduce((s,t)=>s+t.u,0)/dias;
+      sigma=Math.sqrt(ok.reduce((s,t)=>s+t.d*(t.r-d)**2,0)/dias);
+      base='conteos';
+    } else if(teo[inv.id]>0){
+      d=teo[inv.id]/(DIAS_OPERACION.length||5); sigma=d*0.3; base='receta';
+    }
+    if(!(d>0)) { if(nDif) filas.push({inv,d:0,precio,fuga,nDif,nFalta,nSobra,sinDemanda:true}); continue; }
+    const hay=Math.max(0,invStockHoy(inv.id)??inv.qty??0);
+    filas.push({inv,d,sigma,base,precio,hay,valorSem:d*(DIAS_OPERACION.length||5)*precio,
+      teoDia:teo[inv.id]>0?teo[inv.id]/(DIAS_OPERACION.length||5):null,fuga,nDif,nFalta,nSobra});
+  }
+  // ABC por dinero que mueve a la semana: A = 80%, B = siguiente 15%, C = el resto
+  const conValor=filas.filter(f=>!f.sinDemanda).sort((a,b)=>b.valorSem-a.valorSem);
+  const total=conValor.reduce((s,f)=>s+f.valorSem,0)||1; let acum=0;
+  for(const f of conValor){ acum+=f.valorSem; f.clase=acum/total<=0.80||f===conValor[0]?'A':(acum/total<=0.95?'B':'C'); }
+  for(const f of conValor){
+    const z=CTRL.z[f.clase];
+    f.ss=z*f.sigma*Math.sqrt(CTRL.R+CTRL.L);
+    f.rop=f.d*CTRL.L+z*f.sigma*Math.sqrt(CTRL.L);
+    f.max=f.d*(CTRL.R+CTRL.L)+f.ss;
+    f.cobertura=f.d>0?f.hay/f.d:null;
+    f.estado=f.hay<=f.rop?'pedir':(f.hay<f.max?'domingo':'ok');
+    const vida=CTRL_VIDA[f.inv.catOf];
+    f.vida=vida&&f.max>f.d*vida?vida:null;   // lo de la semana no aguanta: comprar 2 veces
+    if(!CTRL_PERECE.has(f.inv.catOf)&&f.precio>0){
+      const Danual=f.d*(DIAS_OPERACION.length||5)*52, H=f.precio*CTRL.tasaAnual;
+      const q=Math.sqrt(2*Danual*CTRL.costoPedido/H);
+      f.eoq=q; f.eoqSemanas=q/(f.d*(DIAS_OPERACION.length||5));
+    }
+  }
+  const porId={}; for(const f of conValor) porId[String(f.inv.id)]=f;
+  // ══ FUGAS ══ por artículo: pérdida neta en pesos en la ventana y qué
+  // tan constante es. Una pérdida que aparece casi todos los días en lo
+  // caro (A/B) es el patrón del robo hormiga o de servir de más; una que
+  // va y viene es conteo. Lo que SOBRA a diario es receta alta.
+  const fugas=filas.filter(f=>f.nDif>=4&&f.fuga<=-30).map(f=>{
+    const constante=f.nFalta>=Math.max(3,Math.ceil(f.nDif*0.6));
+    const pctUso=f.teoDia>0?Math.abs(f.fuga)/(f.teoDia*diasOperacionEntre(desde,today())*(f.precio||1))*100:null;
+    return {...f,constante,pctUso,
+      causa:pctUso!=null&&pctUso>=60?'Se va mucho más de lo que piden las recetas: pesa una porción real y ajusta la receta (si la porción está bien, es pérdida)'
+        :constante?(f.clase==='A'||f.clase==='B'?'Falta casi todos los días en algo caro: porción servida de más, se come o sale sin cobrar':'Falta casi todos los días: revisa cómo se guarda y cómo se sirve')
+        :'Va y viene: más parece conteo mal hecho que pérdida'};
+  }).sort((a,b)=>a.fuga-b.fuga);
+  const recetaAlta=filas.filter(f=>f.nDif>=4&&f.fuga>=30&&f.nSobra>=Math.ceil(f.nDif*0.6)).sort((a,b)=>b.fuga-a.fuga);
+  return {filas:conValor,porId,fugas,recetaAlta,desde,total:r2(total),
+    fugaTotal:r2(fugas.reduce((s,f)=>s+f.fuga,0)),fugaConstante:r2(fugas.filter(f=>f.constante).reduce((s,f)=>s+f.fuga,0))};
+}
+// ¿Coincide la pérdida con quién estaba? Faltante de A y B por día,
+// contra los días que cada quien cobró o contó. Es un patrón para mirar
+// de cerca, no una prueba: también coincide con los días de más venta.
+function fugaPorPersona(C){
+  const caras=new Set(C.filas.filter(f=>f.clase!=='C').map(f=>f.inv.id));
+  const porDia={};
+  for(const c of D.invDiario){
+    if(c.fecha<C.desde||!caras.has(c.productoId)||c.diferencia==null||c.esperado==null) continue;
+    const inv=D.inventario.find(i=>i.id===c.productoId); const p=c.diferencia*(c.precioUnit??inv?.precio??0);
+    if(Math.abs(p)>5000) continue;
+    const d=(porDia[c.fecha]??={fecha:c.fecha,perdida:0,gente:new Set()});
+    if(p<0) d.perdida-=p;
+    if(c.capturadoPorNombre) d.gente.add(c.capturadoPorNombre);
+  }
+  for(const v of D.ventas){ if(v.anulada||!porDia[v.fecha]||!v.vendedorNombre) continue; porDia[v.fecha].gente.add(v.vendedorNombre); }
+  const dias=Object.values(porDia); if(dias.length<8) return [];
+  const nombres=new Set(dias.flatMap(d=>[...d.gente]).filter(n=>n&&n!=='Admin'&&n!=='Sin sesión'));
+  return [...nombres].map(n=>{
+    const con=dias.filter(d=>d.gente.has(n)), sin=dias.filter(d=>!d.gente.has(n));
+    if(con.length<5||sin.length<3) return null;
+    const pc=con.reduce((s,d)=>s+d.perdida,0)/con.length, ps=sin.reduce((s,d)=>s+d.perdida,0)/sin.length;
+    return {n,dias:con.length,pc,ps,veces:ps>0?pc/ps:null};
+  }).filter(Boolean).sort((a,b)=>(b.veces||0)-(a.veces||0));
+}
+window.ctrlUsarMinimos=async()=>{
+  const C=controlInv();
+  const cambios=C.filas.filter(f=>f.rop>0).map(f=>({f,min:Math.ceil(f.rop*100)/100})).filter(x=>Math.abs((x.f.inv.min||0)-x.min)>0.009);
+  if(!cambios.length){toast('Los mínimos ya son el punto de reorden',2500);return;}
+  if(!confirm(`Poner como mínimo de ${cambios.length} artículos su punto de reorden.\n\nEl semáforo del inventario (BAJO / MEDIO) usará esos números. ¿Seguir?`)) return;
+  for(const {f,min} of cambios){ await fsSet('inventario',{...f.inv,min}); }
+  logAudit('minimos_reorden',{articulos:cambios.length,motivo:'Mínimo = punto de reorden (d·L + z·σ·√L) de la pestaña Control'});
+  toast(`✓ ${cambios.length} mínimos actualizados`,3000); renderInv();
+};
+function renderInvControl(){
+  const C=controlInv();
+  const u=f=>f.inv.unidadOf||f.inv.unit;
+  const q=(f,v)=>{ if(v==null) return '—'; const un=normUnit(f.inv.unit);
+    if(un==='g'&&v>=1000) return r2(v/1000)+' kg'; if(un==='ml'&&v>=1000) return r2(v/1000)+' L';
+    return (v>=10?Math.round(v):r2(v))+' '+u(f); };
+  const est={pedir:['Pedir ya','var(--red)'],domingo:['En el surtido','var(--goldd)'],ok:['Alcanza','var(--accent)']};
+  const pedirYa=C.filas.filter(f=>f.estado==='pedir');
+  const personas=fugaPorPersona(C);
+  const cajas=C.filas.filter(f=>f.eoq&&f.eoqSemanas>=3&&f.eoq>f.max*2).sort((a,b)=>b.valorSem-a.valorSem).slice(0,8);
+  const fila=f=>`<tr>
+      <td>${esc(f.inv.nombre)} <span class="mono" style="font-size:10px;color:var(--text3);">${f.clase}</span></td>
+      <td class="mono" style="text-align:right;">${q(f,f.d)}</td>
+      <td class="mono" style="text-align:right;">${q(f,f.hay)}</td>
+      <td class="mono" style="text-align:right;">${f.cobertura!=null?(f.cobertura>=20?'20+':f.cobertura.toFixed(1))+' d':'—'}</td>
+      <td class="mono" style="text-align:right;">${q(f,f.rop)}</td>
+      <td class="mono" style="text-align:right;">${q(f,f.max)}</td>
+      <td style="color:${est[f.estado][1]};font-weight:650;font-size:11.5px;">${est[f.estado][0]}${f.vida?` <span style="font-weight:400;color:var(--text3);">· dura ${f.vida} d: 2 compras</span>`:''}</td></tr>`;
+  const html=`
+  <div class="card" style="margin-bottom:12px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Fugas: merma y robo hormiga</span>
+      <span class="mono" style="font-weight:700;color:${C.fugaTotal<0?'var(--red)':'var(--accent)'};">${fmt(Math.abs(C.fugaTotal))} en ${CTRL.ventana} días</span></div>
+    <p style="font-size:11.5px;color:var(--text3);margin:4px 0 8px;">Lo que faltó en los conteos contra lo que el sistema esperaba con las ventas y las recetas. <b>Constante</b> = faltó en 6 de cada 10 conteos o más: ahí está el dinero que se va de a poquito (${fmt(Math.abs(C.fugaConstante))}).</p>
+    ${C.fugas.length?C.fugas.slice(0,12).map(f=>`<div class="sr" style="align-items:flex-start;">
+      <span style="font-size:12.5px;">${esc(f.inv.nombre)} ${f.clase?`<span class="mono" style="font-size:10px;color:var(--text3);">${f.clase}</span>`:''} ${f.constante?'<span style="font-size:10.5px;color:var(--red);font-weight:700;">CONSTANTE</span>':''}
+        <div style="font-size:11px;color:var(--text3);">faltó en ${f.nFalta} de ${f.nDif} conteos${f.pctUso!=null?` · la pérdida es ${Math.round(f.pctUso)}% de lo que piden las recetas`:''}</div>
+        <div style="font-size:11px;color:var(--goldd);">${f.causa}</div></span>
+      <span class="mono ar fw7">${fmt(Math.abs(f.fuga))}</span></div>`).join(''):'<p style="font-size:12px;color:var(--accent);margin:0;">Sin fugas que se repitan.</p>'}
+    ${C.recetaAlta.length?`<div style="font-size:11.5px;color:var(--text3);margin-top:8px;">Sobra casi todos los días (la receta descuenta de más; ajústala para que el costo sea real): ${C.recetaAlta.slice(0,6).map(f=>`${esc(f.inv.nombre)} ${fmt(f.fuga)}`).join(' · ')}</div>`:''}
+    ${personas.length?`<details style="margin-top:10px;"><summary style="font-size:12px;font-weight:650;cursor:pointer;">Faltante por quién estaba</summary>
+      <p style="font-size:11px;color:var(--text3);margin:6px 0;">Faltante promedio de lo caro (A y B) en los días que cada quien cobró o contó, contra los días que no. Es un patrón para mirar de cerca, no una prueba: también sube los días de más venta o de conteo apurado.</p>
+      ${personas.map(p=>`<div class="sr" style="font-size:12px;"><span>${esc(p.n)} <span style="color:var(--text3);">· ${p.dias} días</span></span>
+        <span class="mono">${fmt(p.pc)}/día con ella · ${fmt(p.ps)} sin ella${p.veces!=null&&p.veces>=1.5?` · <b style="color:var(--red);">${p.veces.toFixed(1)}×</b>`:''}</span></div>`).join('')}
+    </details>`:''}
+    <p style="font-size:11px;color:var(--text3);margin:8px 0 0;">Si en un conteo falta más de ${fmt(CTRL.alertaPesos)} de algo, te llega aviso al teléfono en ese momento.</p>
+  </div>
+  <div class="card" style="margin-bottom:12px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Cuándo pedir y cuánto</span>
+      <button class="btn bs bsm" onclick="ctrlUsarMinimos()">Usar como mínimos</button></div>
+    <p style="font-size:11.5px;color:var(--text3);margin:4px 0 8px;"><b>Punto de reorden</b>: si baja de ahí entre semana, pide ya (no llega al domingo). <b>Nivel del domingo</b>: con cuánto debes arrancar la semana; la orden de compra pide la diferencia. Incluye el <b>stock de seguridad</b>, que crece con lo que varía el consumo día a día. ABC: A es el 80% del dinero (se cubre al 98%), B el 15% (95%), C el resto (90%). Consumo real de los conteos de los últimos ${CTRL.ventana} días.</p>
+    ${pedirYa.length?`<div style="font-size:12.5px;font-weight:700;color:var(--red);margin-bottom:6px;">Pedir ya (${pedirYa.length}): ${pedirYa.map(f=>esc(f.inv.nombre)).join(' · ')}</div>`:''}
+    <div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Artículo</th><th style="text-align:right;">Usa / día</th><th style="text-align:right;">Hay</th><th style="text-align:right;">Alcanza</th><th style="text-align:right;">Reorden</th><th style="text-align:right;">Domingo</th><th></th></tr></thead>
+      <tbody>${['A','B','C'].map(k=>{const arr=C.filas.filter(f=>f.clase===k); return arr.length?`<tr><td colspan="7" style="background:var(--surface2);font-weight:700;font-size:11.5px;">Clase ${k} · ${arr.length} artículos · ${fmt(r2(arr.reduce((s,f)=>s+f.valorSem,0)))}/sem</td></tr>`+arr.map(fila).join(''):'';}).join('')}</tbody></table></div>
+  </div>
+  ${cajas.length?`<div class="card" style="margin-bottom:12px;">
+    <div class="ct">Conviene comprar por caja (EOQ)</div>
+    <p style="font-size:11.5px;color:var(--text3);margin:4px 0 8px;">Cantidad económica de pedido: el punto donde ir a comprar (≈ ${fmt(CTRL.costoPedido)} por vuelta) y tener dinero parado en bodega (25% al año) cuestan lo mínimo. Solo lo que no se echa a perder.</p>
+    ${cajas.map(f=>`<div class="sr" style="font-size:12.5px;"><span>${esc(f.inv.nombre)} <span style="color:var(--text3);">· usas ${q(f,f.d*5)}/sem</span></span>
+      <span class="mono fw7">de ${q(f,f.eoq)} en ${q(f,f.eoq)} · dura ${Math.round(f.eoqSemanas)} sem</span></div>`).join('')}
+  </div>`:''}`;
+  $('inv-content').innerHTML=html;
 }
 function invEstadoStock(item){
   const stock=invStockHoy(item.id);
@@ -17360,6 +17567,16 @@ window.invGuardarCantidad=async(productoId,qty)=>{
     {...existe,...extra,qty:valor,ts:Date.now(),capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre}:
     {id:Date.now()+Math.floor(Math.random()*100),fecha:td,productoId,qty:valor,...extra,capturadoPor:SESSION?.id||0,capturadoPorNombre:empNombre,ts:Date.now()};
   await fsSet('invDiario',captura);
+  // Robo hormiga en tiempo real: si en el conteo falta algo que vale más
+  // de $80, le llega al dueño en ese momento. La cajera no lo ve. Solo la
+  // primera captura del día o si la recaptura empeora: sin spam.
+  try{
+    const pesos=diferencia!=null?diferencia*(inv?.precio||0):0;
+    const antes=existe?.diferencia!=null?existe.diferencia*(inv?.precio||0):0;
+    if(SESSION?.tipo==='emp'&&pesos<=-CTRL.alertaPesos&&pesos>-5000&&(!existe||pesos<antes-CTRL.alertaPesos/2))
+      avisarDueno(`Faltante en el conteo: ${inv.nombre}`,
+        `${empNombre} contó ${valor} ${inv.unidadOf||inv.unit}; el sistema esperaba ${esperado}. Faltan ${r2(-diferencia)} ${inv.unit} ≈ ${fmt(-pesos)}.`,'conteo-'+productoId);
+  }catch(e){}
   // El conteo físico manda: lo que se contó es lo que hay
   if(inv){inv.qty=valor;await fsSet('inventario',{...inv,qty:valor});}
 };
@@ -17493,6 +17710,10 @@ function renderInv(){
   if($('inv-tab-admin'))$('inv-tab-admin').style.display=isAdmin?'':'none';
   if($('inv-tab-dashboard'))$('inv-tab-dashboard').style.display=isAdmin?'':'none';
   if($('inv-tab-hist'))$('inv-tab-hist').style.display=isAdmin?'':'none';
+  // Control habla de pérdidas y de quién estaba: solo el dueño
+  const esDueno=SESSION?.tipo==='admin';
+  if($('inv-tab-control'))$('inv-tab-control').style.display=esDueno?'':'none';
+  if(invModoActivo==='control'&&!esDueno) invModoActivo='captura';
 
   // Render según modo
   if(!isAdmin && invModoActivo!=='captura') invModoActivo='captura';
@@ -17500,6 +17721,7 @@ function renderInv(){
   else if(invModoActivo==='dashboard') renderInvDashboard();
   else if(invModoActivo==='historial') renderInvHistorial();
   else if(invModoActivo==='admin') renderInvAdmin();
+  else if(invModoActivo==='control') renderInvControl();
 }
 
 // ─── Modo CAPTURA (para chicas y admin) ───

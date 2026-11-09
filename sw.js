@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.74'; // Renee ticket 20322
+const CACHE_NAME = 'el-huerto-v15.75'; // Control de inventario: reorden, EOQ, fugas
 const ASSETS = [
   '/',
   '/index.html',
