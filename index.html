@@ -6842,7 +6842,7 @@ async function migPagos9Nov(){
   await pagar('RENEE-21OCT26','2026-11-09');
   await registrarLote([{ticket:'VEGALIFE-09NOV26',prov:'Vega Life',cat:'proveedor',metodo:'transferencia',
     fecha:'2026-11-09',llegada:'2026-11-09',yaContado:false,
-    notas:'Açaí, pagado el 9-nov. Monto supuesto ($907, igual que agosto y octubre): falta que Iván lo confirme. Sin ticket desglosado.',
+    notas:'Açaí, pagado el 9-nov. $907 confirmado por Iván (igual que agosto y octubre). Sin ticket desglosado.',
     extra:{fechaPago:'2026-11-09'},
     p:[['Açaí (pago del 9-nov)',null,1,'pz',907.00]]}]);
   await markMig(migKey);
