@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.73'; // Fruta del 8-nov
+const CACHE_NAME = 'el-huerto-v15.74'; // Renee ticket 20322
 const ASSETS = [
   '/',
   '/index.html',

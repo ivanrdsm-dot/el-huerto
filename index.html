@@ -3372,6 +3372,7 @@ async function completeInit(){
   await migSurtido9Nov();
   await migPagos9Nov();
   await migFruta9Nov();
+  await migRenee20322();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6848,6 +6849,31 @@ async function migFruta9Nov(){
   logAudit('compras_registradas',{lote:'fruta del 8-nov',precios,inventario:hechos,
     motivo:'Fruta del surtido, sin ticket: $1,011. Semana $8,021.01 contra $7,000'});
   toast(`✓ Fruta del 8-nov: $1,011 · ${precios.length} precios al día`,6000);
+  await markMig(migKey);
+}
+// 9-nov — Ticket 20322 de la Tía Renee: 50 panes con queso pedidos el
+// 27-oct, entregados el 28 (10 pizza, 10 chilaquiles verdes, 10 rojos,
+// 10 zatar, 10 solos). $46.75 la pieza (lista $55 − 15%) = $2,337.50.
+// Iván lo pagó hoy: cuenta en esta semana, como todo el pan de Renee.
+// El conteo del 29 todavía no lo tenía (rojos en 0) y el del 30 sí: la
+// mercancía va a lo esperado del 30. El zatar no tiene artículo ni
+// producto: queda solo como gasto hasta que Iván diga cómo se vende.
+const RENEE_20322=[
+  {ticket:'RENEE-20322',prov:'Tía Renee',cat:'proveedor',metodo:'transferencia',fecha:'2026-11-09',fechaTicket:'2026-10-28',llegada:'2026-10-29',yaContado:false,
+   notas:'Ticket 20322 · tienda en línea, vendedora Grace Roffe · pedido 27-oct, entrega 28-oct. 50 panes con queso a $46.75 (lista $55 − 15%). Pagado el 9-nov.',
+   extra:{fechaPago:'2026-11-09'},
+   p:[['Pan con queso — Pizza ×10','Pan Tía Renee — Pizza',10,'pz',467.50],
+      ['Pan con queso — Chilaquiles verdes ×10','Pan Tía Renee — Chilaquiles Verdes',10,'pz',467.50],
+      ['Pan con queso — Chilaquiles rojos ×10','Pan Tía Renee — Chilaquiles Rojos',10,'pz',467.50],
+      ['Pan con queso — Zatar ×10',null,10,'pz',467.50],
+      ['Pan con queso — solo ×10','Pan Tía Renee — Queso',10,'pz',467.50]]},
+];
+async function migRenee20322(){
+  const migKey='h5renee_20322';
+  if(await migDone(migKey)) return;
+  const {precios,hechos}=await registrarLote(RENEE_20322);
+  logAudit('compras_registradas',{lote:'Renee ticket 20322',precios,inventario:hechos,
+    motivo:'Iván subió el ticket 20322 (entregado 28-oct) y lo pagó el 9-nov'});
   await markMig(migKey);
 }
 // 9-nov — Pagos que dio Iván: Banamex (cuota 1) ya se pagó el 3-nov;
