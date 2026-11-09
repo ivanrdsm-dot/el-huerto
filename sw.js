@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.71'; // Surtido del 8-nov y pagos del 9
+const CACHE_NAME = 'el-huerto-v15.72'; // Migraciones solo con la sesión del admin; surtido del 8-nov
 const ASSETS = [
   '/',
   '/index.html',

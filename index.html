@@ -2937,7 +2937,7 @@ nav{padding-top:env(safe-area-inset-top);}
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, query, where } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, getDocsFromServer, limit, query, where } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
@@ -3018,6 +3018,13 @@ let activeVend=null; // {id, nombre, color}
 
 const colRef=c=>collection(db,c);
 const docRef=(c,id)=>doc(db,c,String(id));
+// ¿La colección está vacía DE VERDAD? Un arreglo vacío en D también sale
+// de un permiso negado o de un oyente que todavía no llega. Así se
+// sembraron 56 recetas repetidas y 48 artículos el 9-nov. Ante la duda: no.
+async function vacioEnServidor(col){
+  try{ return (await getDocsFromServer(query(collection(db,col),limit(1)))).empty; }
+  catch(e){ return false; }
+}
 // ══════════════════════════════════════════════════════════════
 // PAGOS DE UNA VENTA
 // Hasta hoy una venta tenía UN método y `total` entero caía en
@@ -3155,6 +3162,14 @@ async function migDone(key){
   // Si no se pudo leer el registro, se da todo por hecho. Volver a correr
   // una migración destruye datos; no correrla solo aplaza el cambio.
   if(!MIG_LEIDO) return true;
+  // Sin la sesión propia del admin las reglas rechazan las escrituras: la
+  // migración "terminaba" con todo rechazado y quedaba marcada en este
+  // aparato (pasó el 9-nov con el surtido). Se aplaza: al entrar el admin
+  // la app se recarga con su sesión y entonces corre.
+  if(AUTH_PERFIL?.quien!=='admin'){
+    if(!MIG[key]&&!localStorage.getItem(key)) MIG_PENDIENTE=true;
+    return true;
+  }
   // Legacy: si este dispositivo ya la corrió (localStorage), enséñaselo a Firestore
   if(localStorage.getItem(key)){
     if(!MIG[key]){ MIG[key]=true; guardaMig(key).catch(()=>{}); }
@@ -3162,6 +3177,7 @@ async function migDone(key){
   }
   return !!MIG[key];
 }
+let MIG_PENDIENTE=false;
 async function markMig(key){
   MIG[key]=true;
   try{localStorage.setItem(key,'1');}catch(e){}
@@ -3222,9 +3238,9 @@ async function completeInit(){
   // las reglas lo rechazan (bien) pero llena la consola de errores, y
   // el día que una regla fuera más laxa duplicaría al personal.
   // Vacío por falta de permiso NO es lo mismo que vacío de verdad.
-  const puedeSembrar=()=>!!AUTH_PERFIL;
-  if(D.productos.length===0 && puedeSembrar()) await seedMenu();
-  if(D.empleados.length===0 && puedeSembrar()) await seedEmps();
+  const puedeSembrar=()=>AUTH_PERFIL?.quien==='admin';
+  if(D.productos.length===0 && puedeSembrar() && await vacioEnServidor('productos')) await seedMenu();
+  if(D.empleados.length===0 && puedeSembrar() && await vacioEnServidor('empleados')) await seedEmps();
   const loader=document.getElementById('loader');
   if(loader) loader.style.display='none';
   // Si un render truena aquí, antes se abortaba completeInit entero: no
@@ -6795,7 +6811,7 @@ const SURTIDO_9NOV=[
    p:[['Pan precocido para panini 150 pz × $5.80','Pan para panini',150,'pz',870.00]]},
 ];
 async function migSurtido9Nov(){
-  const migKey='h5surtido_9nov26';
+  const migKey='h5surtido_9nov26b';
   if(await migDone(migKey)) return;
   let nid=Date.now();
   for(const a of NUEVOS_9NOV) if(!D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(a.nombre))){
@@ -6811,7 +6827,7 @@ async function migSurtido9Nov(){
 // açaí no estaba registrado: $907, el mismo monto de agosto y octubre.
 // La renta sigue pendiente (se paga esta semana).
 async function migPagos9Nov(){
-  const migKey='h5pagos_9nov26';
+  const migKey='h5pagos_9nov26b';
   if(await migDone(migKey)) return;
   const pagar=async(ticket,fechaPago)=>{
     const g=D.gastos.find(x=>x.ticket===ticket);
@@ -9513,6 +9529,11 @@ async function autoSeedRecetas(){
   if(D.recetas.length>0) return; // Ya hay recetas, no sobreescribir
   if(D.productos.length===0) return; // Sin productos aún
   if(D.inventario.length===0) return; // Sin inventario aún
+  // 9-nov: con la app recién abierta `recetas` llegó vacía (permiso
+  // negado) y esto sembró 56 recetas encima de las buenas. Solo el admin,
+  // y solo si el servidor confirma que de verdad no hay ninguna.
+  if(AUTH_PERFIL?.quien!=='admin') return;
+  if(!(await vacioEnServidor('recetas'))) return;
   // Llamar seedRecetasPredefinidas sin confirm
   toast('Cargando recetas automáticamente...',3000);
 
@@ -10255,6 +10276,12 @@ async function checkPINInterno(val,valHash,soltar){
     pinExito();
     SESSION={tipo:'admin',nombre:'Admin',color:'#e8c96a'};
     try{ localStorage.setItem('h5session',JSON.stringify(SESSION)); }catch(e){}
+    // Quedaron cambios de datos sin aplicar porque la app abrió sin la
+    // sesión del admin: se recarga ya con ella para que corran.
+    if(MIG_PENDIENTE && rAdmin==='ok'){
+      toast('Actualizando los datos del sistema…',3000);
+      setTimeout(()=>location.reload(),1200);
+    }
     $('pin-modal').style.display='none';
     $('lock-screen').style.display='none';
     updateNavForSession();
