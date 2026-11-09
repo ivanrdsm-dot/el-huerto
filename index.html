@@ -3371,6 +3371,7 @@ async function completeInit(){
   await migSueldosPrivados5Nov();
   await migSurtido9Nov();
   await migPagos9Nov();
+  await migFruta9Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -6820,6 +6821,33 @@ async function migSurtido9Nov(){
   logAudit('compras_registradas',{lote:'surtido del 8-nov',precios,inventario:hechos,
     motivo:'Tickets del domingo 8-nov y pan de La Comer: $7,010.01 contra los $7,000, sin fruta'});
   toast(`✓ Surtido del 8-nov: ${SURTIDO_9NOV.length} gastos · ${precios.length} precios al día`,6000);
+  await markMig(migKey);
+}
+// 9-nov — La fruta del surtido del 8-nov, sin ticket: precio por kilo
+// (o pieza) y cantidad que dio Iván. Total $1,011. Con ella el mandado de
+// la semana es $8,021.01: $1,021.01 arriba de los $7,000.
+const FRUTA_9NOV=[
+  {...BASE_9NOV,ticket:'MERCADO-08NOV26',prov:'Reyes Ramiro',
+   notas:'Sin ticket: varios puestos, englobado con Reyes Ramiro. Precios y cantidades de Iván (9-nov). Con esto el mandado de la semana es $8,021.01: $1,021.01 arriba de los $7,000.',
+   p:[['Piña 1 pz × $25','Piña',1,'pz',25.00],
+      ['Jícama 9 kg × $15','Jícama',9000,'g',135.00],
+      ['Pepino 10 kg × $15','Pepino',10000,'g',150.00],
+      ['Zanahoria 5 kg × $9','Zanahoria',5000,'g',45.00],
+      ['Limón 1 kg × $16','Limón agrio',1000,'g',16.00],
+      ['Jitomate 2 kg × $38','Jitomate',2000,'g',76.00],
+      ['Aguacate 2 kg × $32','Aguacate',2000,'g',64.00],
+      ['Plátano 8 kg × $15','Plátano',8000,'g',120.00],
+      ['Mango 3 kg × $70','Mango verde',3000,'g',210.00],
+      ['Fresa 2 kg × $50','Fresa',2000,'g',100.00],
+      ['Jitomate cherry 1 kg × $70','Tomate cherry',1000,'g',70.00]]},
+];
+async function migFruta9Nov(){
+  const migKey='h5fruta_9nov26';
+  if(await migDone(migKey)) return;
+  const {precios,hechos}=await registrarLote(FRUTA_9NOV);
+  logAudit('compras_registradas',{lote:'fruta del 8-nov',precios,inventario:hechos,
+    motivo:'Fruta del surtido, sin ticket: $1,011. Semana $8,021.01 contra $7,000'});
+  toast(`✓ Fruta del 8-nov: $1,011 · ${precios.length} precios al día`,6000);
   await markMig(migKey);
 }
 // 9-nov — Pagos que dio Iván: Banamex (cuota 1) ya se pagó el 3-nov;
