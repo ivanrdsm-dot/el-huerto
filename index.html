@@ -6856,8 +6856,10 @@ async function migFruta9Nov(){
 // 10 zatar, 10 solos). $46.75 la pieza (lista $55 − 15%) = $2,337.50.
 // Iván lo pagó hoy: cuenta en esta semana, como todo el pan de Renee.
 // El conteo del 29 todavía no lo tenía (rojos en 0) y el del 30 sí: la
-// mercancía va a lo esperado del 30. El zatar no tiene artículo ni
-// producto: queda solo como gasto hasta que Iván diga cómo se vende.
+// mercancía va a lo esperado del 30. El zatar (Iván, 9-nov): el
+// artículo y el producto de "Rajas Poblanas" eran en realidad el zatar y
+// se renombraron; sus 10 piezas se sumaron al conteo del 5-nov, el
+// primero donde aparecen. El 21-oct se pagó en su momento (26-oct).
 const RENEE_20322=[
   {ticket:'RENEE-20322',prov:'Tía Renee',cat:'proveedor',metodo:'transferencia',fecha:'2026-11-09',fechaTicket:'2026-10-28',llegada:'2026-10-29',yaContado:false,
    notas:'Ticket 20322 · tienda en línea, vendedora Grace Roffe · pedido 27-oct, entrega 28-oct. 50 panes con queso a $46.75 (lista $55 − 15%). Pagado el 9-nov.',
@@ -6865,7 +6867,7 @@ const RENEE_20322=[
    p:[['Pan con queso — Pizza ×10','Pan Tía Renee — Pizza',10,'pz',467.50],
       ['Pan con queso — Chilaquiles verdes ×10','Pan Tía Renee — Chilaquiles Verdes',10,'pz',467.50],
       ['Pan con queso — Chilaquiles rojos ×10','Pan Tía Renee — Chilaquiles Rojos',10,'pz',467.50],
-      ['Pan con queso — Zatar ×10',null,10,'pz',467.50],
+      ['Pan con queso — Zatar ×10','Pan Tía Renee — Zatar',10,'pz',467.50],
       ['Pan con queso — solo ×10','Pan Tía Renee — Queso',10,'pz',467.50]]},
 ];
 async function migRenee20322(){
