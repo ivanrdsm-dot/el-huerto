@@ -3380,6 +3380,7 @@ async function completeInit(){
   await migrarRecategorizacionV1();
   await autoSeedRecetas();
   await migRecetasExtras_v1();
+  setTimeout(()=>ctrlMinimosSemana(),20000);
   // La lista pública se lee SIEMPRE: con reglas v3 y sesión anónima es
   // la única forma de pintar la pantalla de acceso.
   // La pantalla de acceso se pinta YA, con la lista guardada en el
@@ -10338,7 +10339,7 @@ async function checkPINInterno(val,valHash,soltar){
     if(MIG_PENDIENTE && rAdmin==='ok'){
       toast('Actualizando los datos del sistema…',3000);
       setTimeout(()=>location.reload(),1200);
-    }
+    } else setTimeout(()=>ctrlMinimosSemana(),20000);
     $('pin-modal').style.display='none';
     $('lock-screen').style.display='none';
     updateNavForSession();
@@ -17345,15 +17346,40 @@ function fugaPorPersona(C){
     return {n,dias:con.length,pc,ps,veces:ps>0?pc/ps:null};
   }).filter(Boolean).sort((a,b)=>(b.veces||0)-(a.veces||0));
 }
-window.ctrlUsarMinimos=async()=>{
-  const C=controlInv();
-  const cambios=C.filas.filter(f=>f.rop>0).map(f=>({f,min:Math.ceil(f.rop*100)/100})).filter(x=>Math.abs((x.f.inv.min||0)-x.min)>0.009);
-  if(!cambios.length){toast('Los mínimos ya son el punto de reorden',2500);return;}
-  if(!confirm(`Poner como mínimo de ${cambios.length} artículos su punto de reorden.\n\nEl semáforo del inventario (BAJO / MEDIO) usará esos números. ¿Seguir?`)) return;
-  for(const {f,min} of cambios){ await fsSet('inventario',{...f.inv,min}); }
-  logAudit('minimos_reorden',{articulos:cambios.length,motivo:'Mínimo = punto de reorden (d·L + z·σ·√L) de la pestaña Control'});
-  toast(`✓ ${cambios.length} mínimos actualizados`,3000); renderInv();
+// Mínimo = punto de reorden. Lo que ya no se usa (sin consumo en 35
+// días) queda en 0 para que no pinte rojo. Los que Iván puso a mano
+// (minManual) no se tocan.
+function ctrlCambiosMinimos(){
+  const C=controlInv(), out=[];
+  for(const inv of invConteo()){
+    if(inv.minManual||inv.catOf==='equipo') continue;
+    const f=C.porId[String(inv.id)];
+    const min=f&&f.rop>0?Math.ceil(f.rop*100)/100:0;
+    if(Math.abs((inv.min||0)-min)>0.009) out.push({inv,min});
+  }
+  return out;
+}
+window.ctrlUsarMinimos=async auto=>{
+  const cambios=ctrlCambiosMinimos();
+  if(!cambios.length){ if(!auto) toast('Los mínimos ya son el punto de reorden',2500); return 0; }
+  if(!auto&&!confirm(`Poner como mínimo de ${cambios.length} artículos su punto de reorden.\n\nEl semáforo del inventario (BAJO / MEDIO) usará esos números. Los que pusiste a mano no se tocan. ¿Seguir?`)) return 0;
+  for(const {inv,min} of cambios){ await fsSet('inventario',{...inv,min}); }
+  logAudit('minimos_reorden',{articulos:cambios.length,automatico:!!auto,motivo:'Mínimo = punto de reorden (d·L + z·σ·√L) de la pestaña Control'});
+  if(!auto){ toast(`✓ ${cambios.length} mínimos actualizados`,3000); renderInv(); }
+  return cambios.length;
 };
+// Una vez por semana, con la sesión del dueño: los mínimos siguen a la
+// venta sin que nadie tenga que acordarse.
+async function ctrlMinimosSemana(){
+  try{
+    if(AUTH_PERFIL?.quien!=='admin'||SESSION?.tipo!=='admin') return;
+    const k='h5minSem-'+getMonday(today());
+    if(localStorage.getItem(k)) return;
+    const n=await ctrlUsarMinimos(true);
+    localStorage.setItem(k,'1');
+    if(n) console.log('mínimos de la semana:',n);
+  }catch(e){ console.warn('mínimos semana:',e); }
+}
 function renderInvControl(){
   const C=controlInv();
   const u=f=>f.inv.unidadOf||f.inv.unit;
@@ -17410,6 +17436,7 @@ function invEstadoStock(item){
   const stock=invStockHoy(item.id);
   const stockReal=stock!=null?stock:(item.qty||0);
   const min=item.min||0;
+  if(stockReal<=0&&!(min>0)) return {color:'#8a8a8e',bg:'#f2f2f7',estado:'sinuso',icono:'⚪',label:'SIN USO'};
   if(stockReal<=0) return {color:'#c62828',bg:'#ffebee',estado:'agotado',icono:'🔴',label:'AGOTADO'};
   if(min>0&&stockReal<=min) return {color:'#c62828',bg:'#ffebee',estado:'bajo',icono:'🔴',label:'BAJO'};
   if(min>0&&stockReal<=min*1.5) return {color:'#f57c00',bg:'#fff8e1',estado:'medio',icono:'🟡',label:'MEDIO'};
@@ -17577,13 +17604,30 @@ window.invGuardarCantidad=async(productoId,qty)=>{
       avisarDueno(`Faltante en el conteo: ${inv.nombre}`,
         `${empNombre} contó ${valor} ${inv.unidadOf||inv.unit}; el sistema esperaba ${esperado}. Faltan ${r2(-diferencia)} ${inv.unit} ≈ ${fmt(-pesos)}.`,'conteo-'+productoId);
   }catch(e){}
+  // Conteo del día completo: resumen al teléfono del dueño, una vez.
+  try{
+    if(SESSION?.tipo==='emp'){
+      const td=today(), k='h5conteoAvisado-'+td;
+      const hechos=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId)); hechos.add(productoId);
+      const total=invConteo().length;
+      if(total&&hechos.size>=total&&!localStorage.getItem(k)){
+        localStorage.setItem(k,'1');
+        const R=calcCierreDia(td);
+        const top=R.descuadres.filter(x=>x.dif<0&&x.pesos!=null).sort((a,b)=>a.pesos-b.pesos).slice(0,3)
+          .map(x=>`${x.nombre} ${fmt(-x.pesos)}`).join(' · ');
+        avisarDueno(`Conteo completo · faltó ${fmt(-R.faltante)}`,
+          `${empNombre} terminó el conteo (${total} artículos). Faltó ${fmt(-R.faltante)}, sobró ${fmt(R.sobrante)}.${top?` Lo que más faltó: ${top}.`:''}`,'conteo-dia');
+      }
+    }
+  }catch(e){}
   // El conteo físico manda: lo que se contó es lo que hay
   if(inv){inv.qty=valor;await fsSet('inventario',{...inv,qty:valor});}
 };
 
 window.invSetMinimo=async(productoId,min)=>{
   const inv=D.inventario.find(i=>i.id===productoId); if(!inv) return;
-  await fsSet('inventario',{...inv,min:parseFloat(min)||0});
+  // Puesto a mano: el ajuste semanal automático ya no lo toca
+  await fsSet('inventario',{...inv,min:parseFloat(min)||0,minManual:true});
   toast('✓ Mínimo actualizado',1500);
 };
 
@@ -17850,7 +17894,7 @@ window.invFinalizarConteo=()=>{
 function renderInvDashboard(){
   const items=[...D.inventario].sort((a,b)=>{
     const ea=invEstadoStock(a),eb=invEstadoStock(b);
-    const orden={agotado:0,bajo:1,medio:2,ok:3};
+    const orden={agotado:0,bajo:1,medio:2,ok:3,sinuso:4};
     return orden[ea.estado]-orden[eb.estado];
   });
   const bajos=items.filter(x=>{const e=invEstadoStock(x);return e.estado==='bajo'||e.estado==='agotado';});
