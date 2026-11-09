@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.70'; // Subir tickets con foto
+const CACHE_NAME = 'el-huerto-v15.71'; // Surtido del 8-nov y pagos del 9
 const ASSETS = [
   '/',
   '/index.html',

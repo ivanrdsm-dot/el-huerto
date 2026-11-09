@@ -3353,6 +3353,8 @@ async function completeInit(){
   await migFijosDedup4Nov();
   await migCostco4Nov();
   await migSueldosPrivados5Nov();
+  await migSurtido9Nov();
+  await migPagos9Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -4450,6 +4452,7 @@ const PROVEEDORES=[
   {n:'Chilapita',                   cat:'proveedor', alias:['chilapita','chilapitaazcapotzalco']},
   {n:'Saavedra Market',             cat:'proveedor', alias:['saavedramarket','saavedra']},
   {n:'Cremería La Suiza',           cat:'proveedor', alias:['lasuiza','cremerialasuiza','suiza']},
+  {n:'El Rematón',                  cat:'proveedor', alias:['elrematon','rematon']},
   {n:'Sigma Alimentos',             cat:'proveedor', alias:['sigmaalimentos','sigma','sigmaalimentoscomercial','yoplait']},
   {n:'Universidad Panamericana',    cat:'renta',     alias:['panamericana','universidadpanamericana','up','ciudadup']},
   {n:'IMSS',                        cat:'servicios', alias:['imss','segurosocial']},
@@ -6716,6 +6719,116 @@ async function migFijosDedup4Nov(){
     D.gastos=[...D.gastos.filter(g=>g.ticket!==ticket),{...queda,id}];
   }
   logAudit('gasto_corregido',{motivo:'Pagos fijos duplicados al abrir la app',quitados});
+  await markMig(migKey);
+}
+// ═══════════════════════════════════════════════════════════
+// SURTIDO DEL DOMINGO 8-NOV (cuenta el lunes 9)
+//
+// Ocho tickets que mandó Iván el 9-nov, todos cuadran con su total:
+// Molinera $241 · La Suiza $1,849.63 · La Nueva $659 · Zorro $87.20 ·
+// Plastidoro $383.38 · El Rematón $100 · HM $295 · Costco $2,524.80
+// = $6,140.01. Más el pan de La Comer (150 × $5.80 = $870) que Iván
+// pidió agregar: $7,010.01 contra los $7,000. Sin fruta todavía.
+//
+// Nada estaba contado el 7 ni el 8 (cerrado), y el conteo del 9 solo
+// lleva tres artículos de limpieza: la mercancía entra a la existencia.
+// Plastidoro es factura: importes con IVA (la bolsa absorbe el centavo).
+// Costco: importes netos del CFDI; la caja de 102 L lleva su IVA y no va
+// al inventario (es equipo).
+// ═══════════════════════════════════════════════════════════
+const BASE_9NOV={cat:'proveedor',metodo:'efectivo',fecha:'2026-11-09',fechaTicket:'2026-11-08',llegada:'2026-11-08',yaContado:false};
+const NUEVOS_9NOV=[
+  {nombre:'Cloro gel Cloralex',cat:'limpieza',catOf:'limpieza',unit:'bote',unidadOf:'bote'},
+  {nombre:'Aderezo de mayonesa',cat:'salsas',catOf:'abarrotes',unit:'pz',unidadOf:'pz'},
+];
+const SURTIDO_9NOV=[
+  {...BASE_9NOV,ticket:'MOLINERA-30095',prov:'La Molinera de Abastos',
+   notas:'Ticket 209914 · folio 30095 · 8-nov 09:41.',
+   p:[['Aceituna negra rebanada Astra 3 kg','Aceitunas negras',3000,'g',190.00],
+      ['Avena en hojuela a granel 3 kg × $17','Avena',3000,'g',51.00]]},
+  {...BASE_9NOV,ticket:'LASUIZA-107449',prov:'Cremería La Suiza',
+   notas:'Ticket 107449 · 8-nov 09:35 · efectivo. El pavo subió de $120 a $126 el kilo.',
+   p:[['Queso panela 0.825 kg × $105','Queso panela',825,'g',86.63],
+      ['Queso mozzarella cubicado Billy 5 kg','Queso mozzarella',5000,'g',361.00],
+      ['Jamón serrano español 2 kg × $575','Jamón serrano',2000,'g',1150.00],
+      ['Pechuga de pavo San Ángel 2 kg × $126','Pechuga de pavo',2000,'g',252.00]]},
+  {...BASE_9NOV,ticket:'LANUEVA-221167',prov:'Materias Primas La Nueva',
+   notas:'Folio 221167 · 8-nov 10:29 · efectivo.',
+   p:[['Universal charola núm 4 ×100',null,100,'pz',146.00],
+      ['Classy tenedor sopero','Tenedores',100,'pz',36.00],
+      ['Reyma vaso 16 largo','Vaso smoothie 16 oz',100,'pz',108.00],
+      ['Goplas TD95 tapa domo p/vaso 16','Tapa Smoothie',100,'pz',94.00],
+      ['Inix vaso blanco 16 oz','Vaso p/café 16 oz',100,'pz',140.00],
+      ['Inix guantes nitrilo','Guantes',1,'caja',135.00]]},
+  {...BASE_9NOV,ticket:'ZORRO-400057',prov:'Grupo El Zorro',cat:'varios',
+   notas:'Sucursal H2 · ticket 400057 · 8-nov 10:07 · efectivo. Limpieza.',
+   p:[['Bolsa p/basura Anguiplast 60×90','Bolsas de basura',1,'rollo',45.20],
+      ['Cloralex gel 950 ml','Cloro gel Cloralex',1,'bote',23.50],
+      ['Esponja Scotch Brite','Fibra Scotch Brite',1,'pz',18.50]]},
+  {...BASE_9NOV,ticket:'PLASTIDORO-125026',prov:'Plastidoro',
+   notas:'Factura 125026 · 8-nov 10:44 · efectivo. Subtotal $330.50 + IVA $52.88. La tapa ensaladera SBL750 cuesta $2.92 con IVA (antes $1.64).',
+   extra:{factura:'125026'},
+   p:[['Bowl papel kraft 32 oz ×50','Bowl papel kraft 32 oz',50,'pz',129.17],
+      ['Tapa ensaladera SBL750 Inix ×50','Tapa p/bowl kraft',50,'pz',146.17],
+      ['Bolsa semikraft No. 4 blanca ×200','Bolsa semikraft #4',200,'pz',108.04]]},
+  {...BASE_9NOV,ticket:'REMATON-14484',prov:'El Rematón',
+   notas:'Bodega G59 · folio 14484 · 8-nov 09:21.',
+   p:[['Aderezo de mayonesa 5 × $20','Aderezo de mayonesa',5,'pz',100.00]]},
+  {...BASE_9NOV,ticket:'HM-CA160086',prov:'HM Central de Alimentos',
+   notas:'Factura CA 160086 · 8-nov 09:47 · efectivo.',extra:{factura:'CA 160086'},
+   p:[['Chorizo Wunsch pamplona 1 pz','Chorizo pamplona',1000,'g',295.00]]},
+  {...BASE_9NOV,ticket:'COSTCO-ARG5960019',cat:'costco',prov:'Costco',
+   notas:'CFDI ARG 5960019 · Interlomas · 8-nov 15:23 · efectivo. Subtotal $2,551.57 − descuento $56.98 + IVA $30.21. Importes netos.',
+   extra:{factura:'ARG 5960019'},
+   p:[['Mezcla de 4 quesos 2×1.13 kg','Mezcla 4 quesos',2260,'g',329.00],
+      ['Fresas 2.72 kg','Fresa',2720,'g',229.00],
+      ['Ensalada italiana 908 g ×2','Lechuga',1816,'g',107.80],
+      ['Tiras de pechuga de pollo 1.36 kg','Tiras de pollo',1360,'g',359.00],
+      ['KS leche deslactosada light 12 L','Leche deslactosada',12,'L',265.00],
+      ['Totopos horneados Susalia 20 × 50 g','Susalias',20,'pz',299.00],
+      ['Chai latte 700 g','Chai',700,'g',319.00],
+      ['Queso parmesano rallado 908 g','Queso parmesano',908,'g',219.00],
+      ['Caja de almacenamiento 102 L (con IVA)',null,1,'pz',219.00],
+      ['KS crema de almendras 765 g','Crema de almendras',1,'pz',179.00]]},
+  {...BASE_9NOV,ticket:'LACOMER-PAN-09NOV26',prov:'La Comer',metodo:'tarjeta',fechaTicket:'2026-11-09',llegada:'2026-11-09',
+   notas:'150 panes precocidos para panini a $5.80, como el pedido del 25-oct. Iván lo pidió agregar el 9-nov. Método supuesto: tarjeta, como el anterior.',
+   p:[['Pan precocido para panini 150 pz × $5.80','Pan para panini',150,'pz',870.00]]},
+];
+async function migSurtido9Nov(){
+  const migKey='h5surtido_9nov26';
+  if(await migDone(migKey)) return;
+  let nid=Date.now();
+  for(const a of NUEVOS_9NOV) if(!D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(a.nombre))){
+    const nuevo={id:++nid,qty:0,min:0,precio:0,...a}; await fsSet('inventario',nuevo); D.inventario.push(nuevo); }
+  const {precios,hechos}=await registrarLote(SURTIDO_9NOV);
+  logAudit('compras_registradas',{lote:'surtido del 8-nov',precios,inventario:hechos,
+    motivo:'Tickets del domingo 8-nov y pan de La Comer: $7,010.01 contra los $7,000, sin fruta'});
+  toast(`✓ Surtido del 8-nov: ${SURTIDO_9NOV.length} gastos · ${precios.length} precios al día`,6000);
+  await markMig(migKey);
+}
+// 9-nov — Pagos que dio Iván: Banamex (cuota 1) ya se pagó el 3-nov;
+// Renee (40 panes del 21-oct) y el açaí de Vega Life se pagan hoy. El
+// açaí no estaba registrado: $907, el mismo monto de agosto y octubre.
+// La renta sigue pendiente (se paga esta semana).
+async function migPagos9Nov(){
+  const migKey='h5pagos_9nov26';
+  if(await migDone(migKey)) return;
+  const pagar=async(ticket,fechaPago)=>{
+    const g=D.gastos.find(x=>x.ticket===ticket);
+    if(!g||g.pendientePago===false&&g.fechaPago===fechaPago) return null;
+    const upd={...g,pendientePago:false,fechaPago};
+    await fsSet('gastos',upd);
+    const ix=D.gastos.findIndex(x=>x.id===g.id); if(ix>=0) D.gastos[ix]=upd;
+    logAudit('gasto_pagado',{proveedor:g.prov,ticket,monto:g.monto,fechaPago});
+    return `${g.prov} ${g.monto}`;
+  };
+  await pagar('BANAMEX-1de6','2026-11-03');
+  await pagar('RENEE-21OCT26','2026-11-09');
+  await registrarLote([{ticket:'VEGALIFE-09NOV26',prov:'Vega Life',cat:'proveedor',metodo:'transferencia',
+    fecha:'2026-11-09',llegada:'2026-11-09',yaContado:false,
+    notas:'Açaí, pagado el 9-nov. Monto supuesto ($907, igual que agosto y octubre): falta que Iván lo confirme. Sin ticket desglosado.',
+    extra:{fechaPago:'2026-11-09'},
+    p:[['Açaí (pago del 9-nov)',null,1,'pz',907.00]]}]);
   await markMig(migKey);
 }
 // 5-nov — Saca los sueldos de `empleados`. Cada uno se comprueba contra el
