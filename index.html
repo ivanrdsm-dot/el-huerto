@@ -1033,6 +1033,12 @@ nav{padding-top:env(safe-area-inset-top);}
 </div>
 
 <!-- ══ CHECK-IN MODAL ══ -->
+<div id="rc-modal" style="display:none;" class="modal-bg">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head"><span class="modal-title" id="rc-titulo">Recibir</span><button class="btn bs bxs" onclick="$('rc-modal').style.display='none'">✕</button></div>
+    <div id="rc-body"></div>
+  </div>
+</div>
 <div id="tk-modal" style="display:none;" class="modal-bg">
   <div class="modal" style="max-width:780px;">
     <div class="modal-head"><span class="modal-title"><svg class="ic"><use href="#i-receipt"/></svg> Subir ticket</span><button class="btn bs bxs" onclick="tkCerrar()">✕</button></div>
@@ -1875,6 +1881,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div class="card"><div class="ct" id="gcats-titulo">Distribución</div><div id="gcats"></div></div>
   </div>
   <div id="g-faltantes"></div>
+  <div id="g-nosdeben"></div>
   <div id="g-porpagar"></div>
   <div id="g-fijos"></div>
   <div id="g-sinprov"></div>
@@ -2993,7 +3000,7 @@ async function ensureAuth(){
   }
 }
 
-let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[],usuarios:[],fondoAhorro:[],sueldos:[]};
+let D={caja:[],gastos:[],pedidos:[],subs:[],inventario:[],nomPagos:[],ventas:[],productos:[],empleados:[],recetas:[],retiros:[],extras:[],checkins:[],cortes:[],kpiCaptura:[],invDiario:[],auditLog:[],provDir:[],ordenesCompra:[],lealtad:[],prepedidos:[],usuarios:[],fondoAhorro:[],sueldos:[],recepciones:[]};
 let CFG={negocio:'El Huerto',tel:'+52 56 4666 5718',msg:'¡Gracias por tu visita!',
   rfc:'CARI0209052V0', // patrón — sale solo en documentos de admin (registro asistencia)
   ticketAuto:false, // ticket del cliente solo si se activa (ahorro de papel)
@@ -3437,7 +3444,7 @@ function listenAll(){
   // Con el menú QR repartido en toda la universidad eso dejaba de ser
   // teórico. Cada modo baja solo lo suyo y ninguno migra nada.
   // ══════════════════════════════════════════════════════════════
-  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos','usuarios','fondoAhorro','sueldos'];
+  const TODAS=['caja','gastos','pedidos','subs','inventario','nomPagos','ventas','productos','empleados','recetas','retiros','extras','checkins','cortes','kpiCaptura','invDiario','auditLog','provDir','ordenesCompra','lealtad','prepedidos','usuarios','fondoAhorro','sueldos','recepciones'];
   const publico = MODO_MENU || MODO_PANTALLA || !!_tarjetaCode;
   const cols = MODO_PANTALLA ? []
     : MODO_MENU ? ['productos']
@@ -6387,6 +6394,137 @@ async function migSurtido26Oct(){
 }
 // Un lote de tickets: precio (promedio ponderado del lote por artículo),
 // mercancía (una vez, con el ticket como marca) y el gasto si no existe.
+// ═══════════════════════════════════════════════════════════
+// RECIBIR MERCANCÍA Y "NOS DEBEN" (v15.79 · fase 1)
+//
+// El 9-nov el sistema dio por llegados 50 vasos y 25 tapas que nunca
+// entregaron: el ticket dice lo PAGADO, no lo que LLEGÓ. Ahora cada compra
+// que se registra (a mano, por migración o con "Subir ticket") deja una
+// recepción pendiente en `recepciones`, que el personal sí puede leer y
+// escribir (los gastos no). La chica palomea lo que llegó; si falta o
+// sobra algo, el inventario se corrige solo (entrarMercancia con la
+// diferencia, marcada para no repetirse) y lo que falta queda en
+// "Nos deben" con su monto, hasta que el proveedor lo entregue o
+// devuelva el dinero. Al dueño le llega aviso.
+// ═══════════════════════════════════════════════════════════
+const RECIBIR_DIAS=4;   // solo compras frescas: lo viejo ya pasó por los conteos
+async function crearRecepcion(g,partidasArt){
+  if(g.recibir===false||!partidasArt.length) return;
+  const lim=new Date(today()+'T12:00:00'); lim.setDate(lim.getDate()-RECIBIR_DIAS);
+  if((g.llegada||g.fecha||'')<localDate(lim)) return;
+  const id='rec-'+String(g.ticket).replace(/[^A-Za-z0-9_-]/g,'');
+  if((D.recepciones||[]).some(r=>r.id===id)) return;
+  await fsSet('recepciones',{id,ticket:g.ticket,prov:g.prov,fecha:g.llegada||g.fecha,yaContado:!!g.yaContado,
+    estado:'pendiente',creado:Date.now(),partidas:partidasArt});
+}
+const recPendientes=()=>(D.recepciones||[]).filter(r=>r.estado==='pendiente').sort((a,b)=>(a.fecha||'').localeCompare(b.fecha||''));
+const nosDeben=()=>(D.recepciones||[]).filter(r=>r.estado==='faltantes'&&!r.resuelto);
+const recCant=(q,u)=>`${Number.isInteger(q)?q:r2(q)} ${u}`;
+function renderRecibirCard(){
+  const el=$('inv-recibir'); if(!el) return;
+  const P=recPendientes();
+  if(!P.length){el.innerHTML='';return;}
+  el.innerHTML=`<div class="card" style="margin-bottom:12px;border-left:3px solid var(--gold);">
+    <div class="sh"><span class="ct" style="margin-bottom:0;"><svg class="ic"><use href="#i-truck"/></svg> Mercancía por recibir</span>
+      <span style="font-size:11.5px;color:var(--text3);">${P.length} pedido${P.length===1?'':'s'}</span></div>
+    <p style="font-size:12px;color:var(--text2);margin:4px 0 8px;">Revisa lo que llegó contra el ticket antes de guardarlo. Si falta algo, el sistema lo descuenta solo y le avisa a Iván.</p>
+    ${P.map(r=>`<div class="sr" style="align-items:center;gap:8px;"><span style="flex:1;font-size:12.5px;"><b>${esc(r.prov)}</b>
+        <span style="color:var(--text3);">· ${esc(r.fecha||'')} · ${r.partidas.length} artículo${r.partidas.length===1?'':'s'}</span></span>
+      <button class="btn bp bxs" style="flex:none;" onclick="abrirRecibir(${JSON.stringify(r.id).replace(/"/g,'&quot;')})">Recibir</button></div>`).join('')}
+  </div>`;
+}
+let RC=null;
+window.abrirRecibir=id=>{
+  const r=(D.recepciones||[]).find(x=>x.id===id); if(!r) return;
+  RC={id,llego:r.partidas.map(p=>p.qCompra)};
+  const b=$('rc-body'); if(!b) return;
+  $('rc-titulo').textContent=`Recibir · ${r.prov}`;
+  b.innerHTML=`<div style="font-size:12px;color:var(--text2);margin-bottom:10px;">Ticket ${esc(r.ticket)} · ${esc(r.fecha||'')}. Escribe lo que de verdad llegó; si llegó todo, deja el número como está.</div>
+    ${r.partidas.map((p,k)=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="flex:1;min-width:0;font-size:13px;"><b>${esc(p.art)}</b><div style="font-size:11px;color:var(--text3);">${esc(p.c)} · ticket: ${recCant(p.qCompra,p.uCompra)}</div></div>
+      <input type="number" inputmode="decimal" step="any" min="0" value="${p.qCompra}" style="width:84px;margin:0;text-align:right;" oninput="rcSet(${k},this.value)">
+      <span style="font-size:12px;color:var(--text3);width:34px;">${esc(p.uCompra)}</span></div>`).join('')}
+    <div style="display:flex;gap:8px;margin-top:12px;"><button class="btn bs" onclick="$('rc-modal').style.display='none'">Cancelar</button>
+      <button class="btn bp" style="flex:1;" id="rc-ok" onclick="guardarRecibir()">Guardar recepción</button></div>`;
+  $('rc-modal').style.display='flex';
+};
+window.rcSet=(k,v)=>{ if(RC) RC.llego[k]=v===''?null:parseFloat(v); };
+window.guardarRecibir=async()=>{
+  const r=(D.recepciones||[]).find(x=>x.id===RC?.id); if(!r) return;
+  if(RC.llego.some(v=>v==null||!(v>=0))){toast('Falta una cantidad',2500,'err');return;}
+  const btn=$('rc-ok'); if(btn){btn.disabled=true;btn.textContent='Guardando…';}
+  const lineas=[], faltantes=[];
+  try{
+    for(let k=0;k<r.partidas.length;k++){
+      const p=r.partidas[k], llego=RC.llego[k];
+      const inv=D.inventario.find(i=>String(i.id)===String(p.invId))||D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(p.art));
+      const difCompra=r2(llego-p.qCompra);
+      let via=null;
+      if(inv&&Math.abs(difCompra)>0.0001){
+        const difInv=qtyToInvUnit(difCompra,p.uCompra,inv.unit);
+        if(difInv!=null) via=await entrarMercancia(inv,difInv,r.fecha,r.ticket+':recibo',r.yaContado);
+      }
+      lineas.push({...p,llego,dif:difCompra,via});
+      if(difCompra<0){
+        const pu=p.qCompra>0?p.i/p.qCompra:0;
+        faltantes.push({art:p.art,falta:-difCompra,u:p.uCompra,pesos:r2(-difCompra*pu)});
+      }
+    }
+    const quien=SESSION?.nombre||(SESSION?.tipo==='admin'?'Admin':'—');
+    const upd={...r,estado:faltantes.length?'faltantes':'completa',lineas,faltantes,debe:r2(faltantes.reduce((s,f)=>s+f.pesos,0)),
+      recibidoPor:quien,recibidoTs:Date.now()};
+    await fsSet('recepciones',upd);
+    const ix=D.recepciones.findIndex(x=>x.id===r.id); if(ix>=0) D.recepciones[ix]=upd;
+    logAudit('mercancia_recibida',{ticket:r.ticket,proveedor:r.prov,faltantes,por:quien});
+    if(faltantes.length) avisarDueno(`Faltó mercancía · ${r.prov}`,
+      `${quien} recibió el ticket ${r.ticket}: faltan ${faltantes.map(f=>`${recCant(f.falta,f.u)} de ${f.art}`).join(', ')} ≈ ${fmt(upd.debe)}.`,'recibo-'+r.id);
+    toast(faltantes.length?`Guardado · faltan ${faltantes.length} artículo(s), ya se le avisó a Iván`:'✓ Todo llegó completo',4000);
+    $('rc-modal').style.display='none'; RC=null; renderInv(); renderNosDeben();
+  }catch(e){ console.error('recibir',e); toast('No se pudo guardar: '+e.message,4000,'err'); if(btn){btn.disabled=false;btn.textContent='Guardar recepción';} }
+};
+// ── Lo que nos deben los proveedores (solo el dueño) ──
+function renderNosDeben(){
+  const el=$('g-nosdeben'); if(!el) return;
+  const L=nosDeben();
+  if(SESSION?.tipo!=='admin'||!L.length){el.innerHTML='';return;}
+  const total=r2(L.reduce((s,r)=>s+(r.debe||0),0));
+  el.innerHTML=`<div class="card" style="margin-top:10px;border-left:3px solid var(--gold);">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Nos deben</span><span class="mono fw7" style="color:var(--gold);">${fmt(total)}</span></div>
+    <p style="font-size:12px;color:var(--text2);margin:4px 0 8px;">Mercancía pagada que no llegó. Cuando la entreguen, entra sola al inventario; si te regresan el dinero, se descuenta del gasto.</p>
+    ${L.map(r=>`<div style="padding:8px 0;border-bottom:1px solid var(--border);">
+      <div style="display:flex;justify-content:space-between;gap:8px;font-size:12.5px;"><b>${esc(r.prov)}</b><span class="mono fw7">${fmt(r.debe)}</span></div>
+      <div style="font-size:11.5px;color:var(--text3);margin:2px 0 6px;">${esc(r.ticket)} · ${r.faltantes.map(f=>`${recCant(f.falta,f.u)} de ${esc(f.art)}`).join(' · ')}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <button class="btn bp bxs" onclick="resolverDeuda(${JSON.stringify(r.id).replace(/"/g,'&quot;')},'entregado')">Ya lo entregaron</button>
+        <button class="btn bs bxs" onclick="resolverDeuda(${JSON.stringify(r.id).replace(/"/g,'&quot;')},'reembolso')">Me devolvieron el dinero</button>
+        <button class="btn bs bxs" onclick="resolverDeuda(${JSON.stringify(r.id).replace(/"/g,'&quot;')},'perdido')">Ya no</button></div>
+    </div>`).join('')}
+  </div>`;
+}
+window.resolverDeuda=async(id,como)=>{
+  const r=(D.recepciones||[]).find(x=>x.id===id); if(!r) return;
+  const txt={entregado:`¿${r.prov} ya entregó lo que faltaba? Entra al inventario de hoy.`,
+    reembolso:`¿${r.prov} te devolvió ${fmt(r.debe)}? Se descuenta del gasto ${r.ticket}.`,
+    perdido:`¿Dar por perdido lo que debe ${r.prov} (${fmt(r.debe)})? Ya no se seguirá mostrando.`}[como];
+  if(!confirm(txt)) return;
+  if(como==='entregado'){
+    for(const f of r.faltantes||[]){
+      const inv=D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(f.art)); if(!inv) continue;
+      const q=qtyToInvUnit(f.falta,f.u,inv.unit); if(q!=null) await entrarMercancia(inv,q,today(),r.ticket+':repuesto',false);
+    }
+  } else if(como==='reembolso'){
+    const g=D.gastos.find(x=>x.ticket===r.ticket);
+    if(g&&!(g.partidas||[]).some(p=>p.devolucion)){
+      const partidas=[...(g.partidas||[]),{c:'Devolución por mercancía que no llegó',q:1,u:'pz',i:-r.debe,devolucion:true}];
+      await fsSet('gastos',{...g,partidas,monto:r2((g.monto||0)-r.debe)});
+    }
+  }
+  const upd={...r,resuelto:como,resueltoFecha:today()};
+  await fsSet('recepciones',upd);
+  const ix=D.recepciones.findIndex(x=>x.id===id); if(ix>=0) D.recepciones[ix]=upd;
+  logAudit('deuda_proveedor',{ticket:r.ticket,proveedor:r.prov,monto:r.debe,como});
+  toast('✓ Listo',2000); renderNosDeben(); renderGastos();
+};
 async function registrarLote(lote){
   const buscar=n=>D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(n));
   const acum={};
@@ -6423,6 +6561,9 @@ async function registrarLote(lote){
       const monto=r2(partidas.reduce((a,x)=>a+x.i,0));
       await fsSet('gastos',{id:++gid,fecha:g.fecha,...(g.fechaTicket?{fechaTicket:g.fechaTicket}:{}),ticket:g.ticket,
         prov:g.prov,cat:g.cat,tipoEstrategico:'operacion',metodo:g.metodo,monto,partidas,notas:g.notas,...(g.extra||{})});
+      // Y la recepción: que el personal confirme lo que de verdad llegó
+      try{ await crearRecepcion(g,g.p.filter(x=>x[1]).map(([c,art,q,u,imp])=>{
+        const inv=buscar(art); return inv?{c,art:inv.nombre,invId:inv.id,qCompra:q,uCompra:u,i:imp}:null;}).filter(Boolean)); }catch(e){ console.warn('recepción:',e); }
     }
   }
   return {precios,hechos};
@@ -15790,6 +15931,7 @@ function renderGastos(){
   renderGastosSinProv();
   renderGastosFaltantes();
   renderPorPagar();
+  renderNosDeben();
   const td=today();
   const periodo=$('g-periodo')?.value||'semana';
   const fc=$('gfcat')?.value||'';
@@ -17809,6 +17951,7 @@ function renderInvCaptura(){
   const catActiva=productosPorCat.find(c=>c.key===invCategoriaActiva)||productosPorCat[0];
 
   let html=`
+    <div id="inv-recibir"></div>
     <div id="inv-cierre"></div>
     <!-- Tabs de categorías con avance -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
@@ -17879,6 +18022,7 @@ function renderInvCaptura(){
     })()}`;
 
   $('inv-content').innerHTML=html;
+  renderRecibirCard();
   renderCierreDia();
 }
 
