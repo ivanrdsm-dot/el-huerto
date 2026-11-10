@@ -1596,6 +1596,7 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
     <div class="fg"><label>Nota (si pasó algo con el efectivo)</label><input type="text" id="cierre-nota" placeholder="Opcional"></div>
     <button class="btn bp bfull" onclick="guardarCierre()" style="padding:15px;font-size:15px;font-weight:800;">Guardar cierre</button>
+    <button class="btn bs bfull" onclick="abrirMermaModal()" style="margin-top:8px;">Tiré algo hoy (registrar merma)</button>
   </div>
   <!-- Lo que sale o se cambia durante el día: anotado, no es descuadre -->
   <div class="card" style="max-width:520px;margin:12px auto 0;">
@@ -13659,6 +13660,96 @@ function ordHistLinea(v){
   return (v.prep.hist||[]).map(h=>`${ORD_EST[h.e]?.icon||'·'} ${hhmm(h.ts)}`).join(' → ');
 }
 
+// ═══════════════════════════════════════════════════════════
+// FASE 4 (v15.82): porción en la comanda, pedido a Renee y resumen
+// semanal al dueño
+// ═══════════════════════════════════════════════════════════
+// Porción estándar de cada renglón: lo que dice la receta (con lo que
+// eligió la cajera). Servir de más es la merma más común: que la cocina
+// vea los gramos en la misma tarjeta de la orden.
+const CAT_PORCION=new Set(['frutas_verduras','lacteos_proteinas','abarrotes']);
+function porcionesTexto(item){
+  try{
+    const out=[];
+    for(const it of expandirItems([item])){
+      const rid=prodRecetaPorEleccion(it.id,it.prep);
+      const rec=D.recetas.find(r=>r.prodId===rid); if(!rec) continue;
+      const ings=rid!==it.id?[...(rec.ings||[])]:[...(rec.ings||[]),...ingsDeToppings(it.id,it.prep).ings];
+      for(const ing of ings){
+        const inv=D.inventario.find(i=>i.id==ing.invId)||(ing.nombre&&D.inventario.find(i=>normInvNombre(i.nombre)===normInvNombre(ing.nombre)));
+        if(!inv||!CAT_PORCION.has(inv.catOf)) continue;
+        const u=normUnit(ing.unit||inv.unit); if(!['g','ml','kg','l'].includes(u)) continue;
+        const q=parseFloat(ing.qty); if(!(q>0)) continue;
+        out.push(`${r2(q)} ${ing.unit||inv.unit} ${inv.nombre.replace(/^Queso /,'').toLowerCase()}`);
+      }
+    }
+    return [...new Set(out)].slice(0,8).join(' · ');
+  }catch(e){ return ''; }
+}
+// ── Pedido sugerido a la Tía Renee ──
+// Por sabor: el nivel con el que debe arrancar la semana (consumo real
+// + stock de seguridad, pestaña Control) menos lo que hay, de 5 en 5.
+const RENEE_PREFIJO='Pan Tía Renee — ';
+function pedidoRenee(){
+  const C=controlInv();
+  return D.inventario.filter(i=>(i.nombre||'').startsWith(RENEE_PREFIJO)).map(inv=>{
+    const f=C.porId[String(inv.id)], hay=Math.max(0,invStockHoy(inv.id)??inv.qty??0);
+    // El stock de seguridad de un sabor que se vende poco sale enorme (varía
+    // mucho de un día a otro): tope de semana y media de venta.
+    const meta=f?Math.min(f.max,f.d*(DIAS_OPERACION.length||5)*1.5):0;
+    const pedir=f?Math.max(0,Math.ceil((meta-hay)/5)*5):0;
+    return {inv,sabor:inv.nombre.slice(RENEE_PREFIJO.length),hay,pedir,porSem:f?r2(f.d*(DIAS_OPERACION.length||5)):null};
+  }).sort((a,b)=>b.pedir-a.pedir);
+}
+window.porcionesTexto=porcionesTexto;
+function renderReneeCard(){
+  const P=pedidoRenee(); if(!P.length) return '';
+  const total=P.reduce((s,x)=>s+x.pedir,0);
+  return `<div class="card" style="margin-bottom:12px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Pedido a la Tía Renee</span>
+      ${total?`<button class="btn bs bsm" onclick="copiarPedidoRenee()">Copiar para WhatsApp</button>`:''}</div>
+    <p style="font-size:11.5px;color:var(--text3);margin:4px 0 8px;">Lo que se vende por semana de cada sabor, más el stock de seguridad, menos lo que hay. De 5 en 5. ${total?`Total: <b>${total} panes</b> ≈ ${fmt(total*46.75)}.`:'Hoy alcanza con lo que hay.'}</p>
+    ${P.map(x=>`<div class="sr" style="font-size:12.5px;"><span>${esc(x.sabor)} <span style="color:var(--text3);">· hay ${x.hay}${x.porSem!=null?` · se venden ~${Math.round(x.porSem)}/sem`:''}</span></span>
+      <span class="mono fw7">${x.pedir?x.pedir:'—'}</span></div>`).join('')}
+  </div>`;
+}
+window.copiarPedidoRenee=async()=>{
+  const P=pedidoRenee().filter(x=>x.pedir>0);
+  const txt=`Hola Grace, el pedido de El Huerto:\n`+P.map(x=>`• ${x.pedir} pan con queso de ${x.sabor.toLowerCase()}`).join('\n')+`\nTotal: ${P.reduce((s,x)=>s+x.pedir,0)} panes. ¡Gracias!`;
+  try{ await navigator.clipboard.writeText(txt); toast('✓ Pedido copiado: pégalo en WhatsApp',3000); }
+  catch(e){ prompt('Copia el pedido:',txt); }
+};
+// ── Resumen de la semana al teléfono del dueño ──
+// Lo manda el primer aparato del personal que cuenta el lunes (el del
+// dueño ya ve el Panel). Con lo que el personal puede leer: ventas,
+// food cost de las ventas y lo que faltó en los conteos. Una vez por
+// semana para todo el equipo: la marca vive en sistema/resumenSemana.
+async function resumenSemanalAlDueno(){
+  try{
+    if(SESSION?.tipo!=='emp') return;
+    const td=today(); if(new Date(td+'T12:00:00').getDay()!==1) return;
+    const lunes=getMonday(td), k='h5resumen-'+lunes;
+    if(localStorage.getItem(k)) return; localStorage.setItem(k,'1');
+    const ref=doc(db,'sistema','resumenSemana');
+    const s=await getDocFromServer(ref).catch(()=>null);
+    if(s?.exists()&&s.data().semana===lunes) return;
+    await setDoc(ref,{semana:lunes,ts:Date.now(),por:SESSION?.nombre||''});
+    const sem=d=>{const x=new Date(lunes+'T12:00:00');x.setDate(x.getDate()-d);return getWDays(localDate(x));};
+    const pas=sem(7), ant=sem(14);
+    const vs=dias=>D.ventas.filter(v=>dias.includes(v.fecha)&&!v.anulada);
+    const tot=a=>r2(a.reduce((s,v)=>s+(v.total||0),0));
+    const vP=vs(pas), vA=vs(ant), tP=tot(vP), tA=tot(vA);
+    const cc=vP.filter(v=>v.foodCostCompleto&&v.foodCost!=null), base=tot(cc);
+    const fc=base>0?Math.round(cc.reduce((s,v)=>s+v.foodCost,0)/base*100):null;
+    let falta=0;
+    for(const c of D.invDiario){ if(!pas.includes(c.fecha)||c.diferencia==null||c.esperado==null||c.diferencia>=0) continue;
+      const inv=D.inventario.find(i=>i.id===c.productoId); const p=c.diferencia*(c.precioUnit??inv?.precio??0); if(p>-5000) falta+=p; }
+    const cambio=tA>0?Math.round((tP-tA)/tA*100):null;
+    avisarDueno(`Tu semana: ${fmt(tP)} vendidos`,
+      `${pas[0].slice(8)}–${pas[4].slice(8)}: ${vP.length} tickets${cambio!=null?` (${cambio>=0?'+':''}${cambio}% vs la anterior)`:''}`+
+      `${fc!=null?` · food cost ${fc}%`:''} · faltó ${fmt(-r2(falta))} en conteos. Abre el Panel para el detalle.`,'resumen-semana');
+  }catch(e){ console.warn('resumen semana:',e); }
+}
 function ordCard(v){
   const min=(Date.now()-(v.tsCobro||v.id))/60000;
   const done=v.prep.estado==='entregada';
@@ -13666,7 +13757,8 @@ function ordCard(v){
   const est=ORD_EST[v.prep.estado]||ORD_EST.cobrada;
   const items=v.items.map(i=>{
     const prep=prepTexto(i);
-    return `<b>${i.qty}×</b> ${i.nombre}${prep?`<br><span style="font-size:11px;color:var(--accent);padding-left:14px;">${prep}</span>`:''}${i.nota?` <span style="color:var(--gold);"><svg class="ic"><use href="#i-receipt"/></svg> ${i.nota}</span>`:''}`;
+    const porc=done?'':porcionesTexto(i);
+    return `<b>${i.qty}×</b> ${i.nombre}${prep?`<br><span style="font-size:11px;color:var(--accent);padding-left:14px;">${prep}</span>`:''}${porc?`<br><span style="font-size:10.5px;color:var(--text3);padding-left:14px;">Porción: ${esc(porc)}</span>`:''}${i.nota?` <span style="color:var(--gold);"><svg class="ic"><use href="#i-receipt"/></svg> ${i.nota}</span>`:''}`;
   }).join('<br>');
   const totalMin=done?Math.round((v.prep.tsEntrega-(v.tsCobro||v.id))/60000):null;
   return `<div class="ord-card ${cls} ${_ordSeen.has(String(v.id))?'':'ord-nueva'}" data-oid="${v.id}">
@@ -17785,6 +17877,7 @@ window.invGuardarCantidad=async(productoId,qty)=>{
       avisarDueno(`Faltante en el conteo: ${inv.nombre}`,
         `${empNombre} contó ${valor} ${inv.unidadOf||inv.unit}; el sistema esperaba ${esperado}. Faltan ${r2(-diferencia)} ${inv.unit} ≈ ${fmt(-pesos)}.`,'conteo-'+productoId);
   }catch(e){}
+  resumenSemanalAlDueno();
   // Conteo del día completo: resumen al teléfono del dueño, una vez.
   try{
     if(SESSION?.tipo==='emp'){
@@ -17996,6 +18089,8 @@ function renderInvCaptura(){
       <div style="height:8px;background:var(--surface2);border-radius:6px;overflow:hidden;margin:8px 0;"><div style="height:100%;width:${pctHoy}%;background:var(--accent);transition:width .3s;"></div></div>
       <div style="font-size:11.5px;color:var(--text3);line-height:1.45;">Lo caro se cuenta diario, lo de en medio lunes y jueves, lo barato los lunes. Siempre sale lo que está bajo o acaba de llegar.
         ${noToca>0?`<a href="#" onclick="invVerTodo();return false;">${INV_VER_TODO?'Mostrar solo lo de hoy':`Ver también los ${noToca} que no tocan hoy`}</a>`:''}</div>
+      <button class="btn bs bsm" style="margin-top:10px;" onclick="abrirMermaModal()">Tiré algo (registrar merma)</button>
+      <div style="font-size:11px;color:var(--text3);margin-top:4px;">Si algo se echó a perder o se cayó, regístralo antes de contar: así no sale como faltante.</div>
     </div>
     <div id="inv-cierre"></div>
     <!-- Tabs de categorías con avance -->
@@ -18131,6 +18226,7 @@ function renderInvDashboard(){
   }
 
   html+=renderSurtidoCard();
+  html+=renderReneeCard();
   html+=renderMermaCard();
 
   // A7: PREDICCIÓN DE FALTANTES — días restantes según consumo real

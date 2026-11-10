@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.81'; // Fase 3: Panel en 10 segundos
+const CACHE_NAME = 'el-huerto-v15.82'; // Fase 4: porciones, Renee, merma, resumen semanal
 const ASSETS = [
   '/',
   '/index.html',
