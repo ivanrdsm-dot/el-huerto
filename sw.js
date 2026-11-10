@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.79'; // Fase 1: recibir mercancía y Nos deben
+const CACHE_NAME = 'el-huerto-v15.80'; // Fase 2: conteo por importancia
 const ASSETS = [
   '/',
   '/index.html',

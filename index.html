@@ -16913,6 +16913,30 @@ let invCategoriaActiva='frutas_verduras';
 // ═══════════════════════════════════════════════════════════
 const seCuentaDiario=i=> i.noContar===undefined ? i.catOf!=='equipo' : !i.noContar;
 const invConteo=()=>D.inventario.filter(seCuentaDiario);
+// ══ CONTEO POR IMPORTANCIA (v15.80 · fase 2) ══
+// Contar 112 artículos diario cansa y el cansancio cuenta mal. Lo caro
+// (A, el 80% del dinero) se cuenta diario; lo de en medio (B) lunes y
+// jueves; lo barato (C) los lunes. Siempre se cuenta, toque o no: lo que
+// está bajo, lo que acaba de llegar, lo que nunca se ha contado y lo que
+// lleva una semana sin contarse. La clase la pone cada semana la pestaña
+// Control (claseABC en el artículo); sin clase, diario.
+const CONTEO_DIAS={A:[1,2,3,4,5],B:[1,4],C:[1]};
+function tocaContar(inv,fecha){
+  fecha=fecha||today();
+  const dias=CONTEO_DIAS[inv.claseABC];
+  if(!dias) return true;
+  if(dias.includes(new Date(fecha+'T12:00:00').getDay())) return true;
+  if(invStockHoy(inv.id,fecha)!=null) return true;            // ya lo contaron hoy: cuenta en el avance
+  const ult=invStockUltimo(inv.id,fecha); if(!ult) return true;
+  if((new Date(fecha+'T12:00:00')-new Date(ult.fecha+'T12:00:00'))/864e5>=7) return true;
+  const st=inv.qty??ult.qty??0;
+  if(inv.min>0&&st<=inv.min*1.5) return true;
+  if((D.recepciones||[]).some(r=>r.fecha>=ult.fecha&&(r.partidas||[]).some(p=>String(p.invId)===String(inv.id)))) return true;
+  return false;
+}
+const invTocaHoy=()=>invConteo().filter(i=>tocaContar(i));
+let INV_VER_TODO=false;
+window.invVerTodo=()=>{INV_VER_TODO=!INV_VER_TODO;renderInv();};
 const CAT_OFICIALES=[
   {key:'frutas_verduras',nombre:'🍎 Frutas y Verduras',color:'#43a047'},
   {key:'lacteos_proteinas',nombre:'🧀 Lácteos y Proteínas',color:'#5ab4e8'},
@@ -17500,10 +17524,11 @@ function fugaPorPersona(C){
 function ctrlCambiosMinimos(){
   const C=controlInv(), out=[];
   for(const inv of invConteo()){
-    if(inv.minManual||inv.catOf==='equipo') continue;
+    if(inv.catOf==='equipo') continue;
     const f=C.porId[String(inv.id)];
-    const min=f&&f.rop>0?Math.ceil(f.rop*100)/100:0;
-    if(Math.abs((inv.min||0)-min)>0.009) out.push({inv,min});
+    const clase=f?.clase||'C';
+    const min=inv.minManual?(inv.min||0):(f&&f.rop>0?Math.ceil(f.rop*100)/100:0);
+    if(Math.abs((inv.min||0)-min)>0.009||inv.claseABC!==clase) out.push({inv,min,clase});
   }
   return out;
 }
@@ -17511,7 +17536,7 @@ window.ctrlUsarMinimos=async auto=>{
   const cambios=ctrlCambiosMinimos();
   if(!cambios.length){ if(!auto) toast('Los mínimos ya son el punto de reorden',2500); return 0; }
   if(!auto&&!confirm(`Poner como mínimo de ${cambios.length} artículos su punto de reorden.\n\nEl semáforo del inventario (BAJO / MEDIO) usará esos números. Los que pusiste a mano no se tocan. ¿Seguir?`)) return 0;
-  for(const {inv,min} of cambios){ await fsSet('inventario',{...inv,min}); }
+  for(const {inv,min,clase} of cambios){ await fsSet('inventario',{...inv,min,claseABC:clase}); }
   logAudit('minimos_reorden',{articulos:cambios.length,automatico:!!auto,motivo:'Mínimo = punto de reorden (d·L + z·σ·√L) de la pestaña Control'});
   if(!auto){ toast(`✓ ${cambios.length} mínimos actualizados`,3000); renderInv(); }
   return cambios.length;
@@ -17757,8 +17782,8 @@ window.invGuardarCantidad=async(productoId,qty)=>{
     if(SESSION?.tipo==='emp'){
       const td=today(), k='h5conteoAvisado-'+td;
       const hechos=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId)); hechos.add(productoId);
-      const total=invConteo().length;
-      if(total&&hechos.size>=total&&!localStorage.getItem(k)){
+      const tocan=invTocaHoy(), total=tocan.length;
+      if(total&&tocan.every(i=>hechos.has(i.id))&&!localStorage.getItem(k)){
         localStorage.setItem(k,'1');
         const R=calcCierreDia(td);
         const top=R.descuadres.filter(x=>x.dif<0&&x.pesos!=null).sort((a,b)=>a.pesos-b.pesos).slice(0,3)
@@ -17826,7 +17851,7 @@ function renderInvFiltroRes(){
   const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
   const etiquetas={pendiente:'📝 Sin capturar hoy',bajo:'🔴 Stock bajo o agotado',medio:'🟡 Stock medio',ok:'🟢 Stock OK'};
   let items;
-  if(invFiltroEstado==='pendiente') items=invConteo().filter(i=>!capturadosHoy.has(i.id));
+  if(invFiltroEstado==='pendiente') items=invTocaHoy().filter(i=>!capturadosHoy.has(i.id));
   else items=invConteo().filter(i=>{
     const e=invEstadoStock(i).estado;
     return invFiltroEstado==='bajo'?(e==='bajo'||e==='agotado'):e===invFiltroEstado;
@@ -17866,7 +17891,7 @@ function renderInv(){
 
   // KPIs rápidos
   if($('inv-kpis')){
-    const contables=new Set(invConteo().map(i=>i.id));
+    const contables=new Set(invTocaHoy().map(i=>i.id));
     const totalProd=contables.size;
     const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===today()&&contables.has(c.productoId)).map(c=>c.productoId)).size;
     const pctCapturado=totalProd>0?Math.round(capturadosHoy/totalProd*100):0;
@@ -17920,12 +17945,14 @@ function renderInv(){
 function renderInvCaptura(){
   const isAdmin=SESSION?.tipo==='admin';
   // Tabs de categoría
+  const listaConteo=INV_VER_TODO?invConteo():invTocaHoy();
+  const noToca=invConteo().length-invTocaHoy().length;
   const productosPorCat=CAT_OFICIALES.map(c=>({
     ...c,
-    productos:invConteo().filter(p=>p.catOf===c.key).sort((a,b)=>a.nombre.localeCompare(b.nombre))
+    productos:listaConteo.filter(p=>p.catOf===c.key).sort((a,b)=>a.nombre.localeCompare(b.nombre))
   })).filter(c=>c.productos.length);   // la pestaña de Equipo ya no tiene nada que contar
   // Si no hay categorías oficiales en datos, mostrar todos como "otros"
-  const sinCatOf=invConteo().filter(p=>!p.catOf);
+  const sinCatOf=listaConteo.filter(p=>!p.catOf);
   if(sinCatOf.length>0){
     productosPorCat.push({key:'otros',nombre:'📦 Otros',color:'#999',productos:sinCatOf});
   }
@@ -17950,8 +17977,18 @@ function renderInvCaptura(){
   }
   const catActiva=productosPorCat.find(c=>c.key===invCategoriaActiva)||productosPorCat[0];
 
+  const capHoy=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
+  const tocan=invTocaHoy(), hechosHoy=tocan.filter(i=>capHoy.has(i.id)).length;
+  const pctHoy=tocan.length?Math.round(hechosHoy/tocan.length*100):0;
   let html=`
     <div id="inv-recibir"></div>
+    <div class="card" style="margin-bottom:12px;">
+      <div class="sh"><span class="ct" style="margin-bottom:0;">Hoy toca contar ${tocan.length} artículos</span>
+        <span class="mono fw7" style="color:${pctHoy===100?'var(--accent)':'var(--text2)'};">${hechosHoy} de ${tocan.length}</span></div>
+      <div style="height:8px;background:var(--surface2);border-radius:6px;overflow:hidden;margin:8px 0;"><div style="height:100%;width:${pctHoy}%;background:var(--accent);transition:width .3s;"></div></div>
+      <div style="font-size:11.5px;color:var(--text3);line-height:1.45;">Lo caro se cuenta diario, lo de en medio lunes y jueves, lo barato los lunes. Siempre sale lo que está bajo o acaba de llegar.
+        ${noToca>0?`<a href="#" onclick="invVerTodo();return false;">${INV_VER_TODO?'Mostrar solo lo de hoy':`Ver también los ${noToca} que no tocan hoy`}</a>`:''}</div>
+    </div>
     <div id="inv-cierre"></div>
     <!-- Tabs de categorías con avance -->
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px;">
@@ -18028,7 +18065,7 @@ function renderInvCaptura(){
 
 window.invFinalizarConteo=()=>{
   const td=today();
-  const contables=new Set(invConteo().map(i=>i.id));
+  const contables=new Set(invTocaHoy().map(i=>i.id));
   const total=contables.size;
   const capturados=new Set(D.invDiario.filter(c=>c.fecha===td&&contables.has(c.productoId)).map(c=>c.productoId)).size;
   const pendientes=total-capturados;
