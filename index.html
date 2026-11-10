@@ -15935,7 +15935,10 @@ function renderFondoAhorro(mon){
 // pantallas. Solo el dueño: fondoAhorro y gastos son suyos.
 const AHORRO_CONTROL_DESDE='2026-10-26';   // antes de esto va en el saldo inicial
 // Lo que Iván dijo que ya pagó sin registro: de la semana del 3-ago a la del 26-oct
-const IMSS_PREVIO={semanas:13,desde:'agosto'};
+// Iván (10-nov): el seguro social se va APARTANDO, $1,000 por semana, y
+// al 10-nov hay $3,000 guardados contando el del 2-nov (ya marcado). Lo
+// que se ve es lo guardado: 2 semanas previas + cada pago marcado.
+const IMSS_PREVIO={semanas:2,desde:'guardado'};
 function ahorroPendientes(x){
   const out=[], hoyMon=getMonday(today());
   const d=new Date(AHORRO_CONTROL_DESDE+'T12:00:00');
@@ -15999,8 +16002,8 @@ function renderFijosPanel(){
           :`<span style="font-size:12px;color:var(--teal);font-weight:600;">✓ Pagado</span>`)
           :`<span style="font-size:12px;color:var(--text3);">Sin programar</span>`}
       </div>
-      <div class="sr"><span style="font-size:13px;">Desde ${IMSS_PREVIO.desde}</span><span class="mono fw7">${fmt(semanasImss*1000)}</span></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:6px;">${semanasImss} semanas</div>
+      <div class="sr"><span style="font-size:13px;">Guardado para el seguro</span><span class="mono fw7">${fmt(semanasImss*1000)}</span></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;">$1,000 por semana · sube al marcar el pago de cada semana</div>
     </div>
     <div class="card">
       <div class="sh"><span class="ct" style="margin-bottom:0;">Por pagar</span>

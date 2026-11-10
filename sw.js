@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.85'; // Ingeniería de menú
+const CACHE_NAME = 'el-huerto-v15.86'; // Seguro social como guardado
 const ASSETS = [
   '/',
   '/index.html',
