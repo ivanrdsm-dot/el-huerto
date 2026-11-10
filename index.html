@@ -624,6 +624,7 @@ body.modo-pantalla nav,body.modo-pantalla .mnav,body.modo-pantalla #lock-screen,
   .db-periodo-wrap{flex:1 0 100%;flex-wrap:wrap;}
   .db-periodo-wrap>#db-periodo{flex:1 0 100%;margin-bottom:4px;}
 }
+.mnav.pocos .mnbtn{flex:1 1 0!important;min-width:0!important;}
 .mnbtn{background:none;border:none;color:var(--text3);font-size:9.5px;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;padding:4px 2px;font-family:var(--ui);transition:color .12s;}
 .mnbtn.active{color:var(--accent);font-weight:700;}
 .mni{font-size:19px;line-height:1;}
@@ -1192,6 +1193,13 @@ nav{padding-top:env(safe-area-inset-top);}
   <button class="mnbtn" onclick="go('miperfil')"><span class="mni"><svg class="ic"><use href="#i-user"/></svg></span>Perfil</button>
   <button class="mnbtn" onclick="go('nomina')"><span class="mni"><svg class="ic"><use href="#i-people"/></svg></span>Nómina</button>
   <button class="mnbtn" onclick="go('ajustes')"><span class="mni"><svg class="ic"><use href="#i-wrench"/></svg></span>Ajustes</button>
+  <button class="mnbtn" id="mnav-mas" onclick="abrirMas()" style="display:none;"><span class="mni"><svg class="ic"><use href="#i-list"/></svg></span>Más</button>
+</div>
+<div id="mas-sheet" class="modal-bg" style="display:none;" onclick="if(event.target===this)this.style.display='none'">
+  <div class="modal" style="max-width:520px;">
+    <div class="modal-head"><span class="modal-title">Menú</span><button class="btn bs bxs" onclick="$('mas-sheet').style.display='none'">✕</button></div>
+    <div id="mas-body"></div>
+  </div>
 </div>
 
 <main>
@@ -10563,7 +10571,50 @@ function updateNavForSession(){
   } else {
     if(badge) badge.style.display='none';
   }
+  try{ ajustarNavMovil(); }catch(e){ console.warn('nav móvil:',e); }
 }
+// ═══════════════════════════════════════════════════════════
+// MENÚ EN 4 SECCIONES (v15.83 · fase 5)
+// En el teléfono la barra tenía 11 botones que se deslizaban de lado.
+// Ahora: 4 fijos según quién entra (lo que más usa) y "Más", que abre
+// todo lo demás agrupado en Vender · Caja · Inventario · Dueño. Lo que
+// la persona no puede abrir (canAccess) no aparece.
+// ═══════════════════════════════════════════════════════════
+const MENU_SECCIONES=[
+  ['Vender',[['pos','Ventas','cart'],['ordenes','Órdenes','bell'],['cierre','Cierre de caja','coins'],['clientes','Clientes','people']]],
+  ['Caja',[['caja','Caja','cash'],['compras','Compras y gastos','basket'],['nomina','Nómina','people'],['reloj','Reloj','clock']]],
+  ['Inventario',[['inventario','Inventario','box'],['recetas','Recetas','book']]],
+  ['Dueño',[['dashboard','Inicio','home'],['reportes','Reportes','chart'],['kpis','KPIs','trend'],['vendedores','Vendedores','trophy'],
+    ['suscriptores','Suscriptores','leaf'],['historial','Historial','list'],['config','Configuración','gear'],['ajustes','Ajustes','wrench'],['miperfil','Mi perfil','user']]],
+];
+const MENU_FIJOS={admin:['dashboard','pos','caja','inventario'],emp:['pos','ordenes','inventario','cierre']};
+const puedeMenu=p=>p==='compras'?COMPRAS_SUB.some(([k])=>canAccess(k)):canAccess(p);
+function ajustarNavMovil(){
+  const mas=$('mnav-mas'); if(!mas) return;
+  if(!SESSION){ mas.style.display='none'; return; }
+  const fijos=(SESSION.tipo==='admin'?MENU_FIJOS.admin:MENU_FIJOS.emp).filter(puedeMenu);
+  document.querySelectorAll('.mnav .mnbtn').forEach(el=>{
+    if(el===mas) return;
+    const pg=el.dataset.compras?'compras':el.onclick?.toString().match(/go\('(\w+)'\)/)?.[1];
+    if(!pg) return;
+    const ok=puedeMenu(pg)&&fijos.includes(pg);
+    el.style.display=ok?'':'none';
+    el.style.order=ok?fijos.indexOf(pg):99;
+  });
+  mas.style.display=''; mas.style.order=50;
+  document.querySelector('.mnav')?.classList.add('pocos');
+}
+window.abrirMas=()=>{
+  const b=$('mas-body'); if(!b) return;
+  b.innerHTML=MENU_SECCIONES.map(([sec,items])=>{
+    const vis=items.filter(([p])=>puedeMenu(p)); if(!vis.length) return '';
+    return `<div style="font-size:12px;font-weight:650;color:var(--text3);margin:12px 0 6px;">${sec}</div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(min(140px,100%),1fr));gap:8px;">
+      ${vis.map(([p,l,i])=>`<button class="btn bs" style="justify-content:flex-start;gap:8px;padding:12px;" onclick="$('mas-sheet').style.display='none';${p==='compras'?'goCompras()':`go('${p}')`}">
+        <svg class="ic"><use href="#i-${i}"/></svg> ${l}</button>`).join('')}</div>`;
+  }).join('');
+  $('mas-sheet').style.display='flex';
+};
 
 // ═══════════════════════════════════════════════════════════
 // COMPRAS Y GASTOS: UNA SOLA PUERTA (Iván, 14-oct)
@@ -13802,7 +13853,7 @@ function renderOrdenesGrid(){
   list=[...list].sort((a,b)=>(a.tsCobro||a.id)-(b.tsCobro||b.id)); // más antigua primero
   if(ordFiltro==='entregadas') list.reverse(); // entregadas: recientes primero
   g.innerHTML=list.length===0
-    ?`<div class="card" style="grid-column:1/-1;text-align:center;padding:26px;color:var(--text3);">${ordFiltro==='entregadas'?'Sin órdenes entregadas hoy':'🎉 No hay órdenes pendientes'}</div>`
+    ?`<div class="card" style="grid-column:1/-1;text-align:center;padding:26px;color:var(--text3);">${ordFiltro==='entregadas'?'Sin órdenes entregadas hoy':'No hay órdenes pendientes'}</div>`
     :list.map(ordCard).join('');
   // Registrar ids ya pintados: la animación de entrada es solo para nuevas
   list.forEach(v=>_ordSeen.add(String(v.id)));
@@ -17038,12 +17089,12 @@ const invTocaHoy=()=>invConteo().filter(i=>tocaContar(i));
 let INV_VER_TODO=false;
 window.invVerTodo=()=>{INV_VER_TODO=!INV_VER_TODO;renderInv();};
 const CAT_OFICIALES=[
-  {key:'frutas_verduras',nombre:'🍎 Frutas y Verduras',color:'#43a047'},
-  {key:'lacteos_proteinas',nombre:'🧀 Lácteos y Proteínas',color:'#5ab4e8'},
-  {key:'abarrotes',nombre:'🛒 Abarrotes',color:'#e8c96a'},
-  {key:'interna_ivan',nombre:'🏠 Lista Interna',color:'#a87ee8'},
-  {key:'desechables',nombre:'🧴 Desechables',color:'#7ec850'},
-  {key:'equipo',nombre:'🛠 Equipo y Utensilios',color:'#8d6e63'},
+  {key:'frutas_verduras',nombre:'Frutas y verduras',color:'#43a047'},
+  {key:'lacteos_proteinas',nombre:'Lácteos y proteínas',color:'#5ab4e8'},
+  {key:'abarrotes',nombre:'Abarrotes',color:'#e8c96a'},
+  {key:'interna_ivan',nombre:'Lista interna',color:'#a87ee8'},
+  {key:'desechables',nombre:'Desechables',color:'#7ec850'},
+  {key:'equipo',nombre:'Equipo y utensilios',color:'#8d6e63'},
 ];
 
 // ─── Helpers de stock ───
@@ -17461,9 +17512,9 @@ function renderSurtidoCard(){
   return `<div class="card" style="margin-bottom:12px;border:2px solid var(--accent);">
     <div class="sh"><span class="ct" style="margin-bottom:0;">Orden de compra de la semana</span>
       <div style="display:flex;gap:5px;flex-wrap:wrap;">
-        <button class="btn bp bsm" onclick="ordenCompraPDF()">🖨 Imprimir orden</button>
-        <button class="btn bs bsm" onclick="surtidoACompras()">🧺 Pasar a Compras</button>
-        <button class="btn bs bsm" onclick="surtidoCopiar()">📋 WhatsApp</button>
+        <button class="btn bp bsm" onclick="ordenCompraPDF()"><svg class="ic"><use href="#i-printer"/></svg> Imprimir orden</button>
+        <button class="btn bs bsm" onclick="surtidoACompras()"><svg class="ic"><use href="#i-basket"/></svg> Pasar a Compras</button>
+        <button class="btn bs bsm" onclick="surtidoCopiar()"><svg class="ic"><use href="#i-list"/></svg> WhatsApp</button>
       </div></div>
     <p style="font-size:11px;color:var(--text3);margin:4px 0 8px;"><b>Se usa/semana</b> = consumo REAL de los conteos (lo que había + lo que llegó − lo que quedó, ${S.desde} a ${S.hasta}); si un artículo no tiene suficientes conteos, se usa la receta. Se compra lo de la semana + stock de seguridad (según cuánto varía el consumo; ve la pestaña Control) − lo que hay. ≈ <b>${fmt(S.total)}</b> a los últimos precios.</p>
     ${S.filas.length?`<div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Artículo</th><th style="text-align:right;">Se usa / sem</th><th style="text-align:right;">Receta</th><th style="text-align:right;">Compras</th><th style="text-align:right;">Hay</th><th style="text-align:right;">Comprar</th><th style="text-align:right;">≈ $</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`:'<p style="font-size:12px;color:var(--accent);">Hay de todo para la semana.</p>'}
@@ -17950,14 +18001,14 @@ function renderInvFiltroRes(){
   if(!invFiltroEstado){el.innerHTML='';return;}
   const td=today();
   const capturadosHoy=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
-  const etiquetas={pendiente:'📝 Sin capturar hoy',bajo:'🔴 Stock bajo o agotado',medio:'🟡 Stock medio',ok:'🟢 Stock OK'};
+  const etiquetas={pendiente:'Sin capturar hoy',bajo:'Stock bajo o agotado',medio:'Stock medio',ok:'Stock OK'};
   let items;
   if(invFiltroEstado==='pendiente') items=invTocaHoy().filter(i=>!capturadosHoy.has(i.id));
   else items=invConteo().filter(i=>{
     const e=invEstadoStock(i).estado;
     return invFiltroEstado==='bajo'?(e==='bajo'||e==='agotado'):e===invFiltroEstado;
   });
-  const catL=k=>CAT_OFICIALES.find(c=>c.key===k)?.nombre||'🏷 Sin categoría';
+  const catL=k=>CAT_OFICIALES.find(c=>c.key===k)?.nombre||'Sin categoría';
   el.innerHTML=`<div class="card" style="padding:12px;border:1.5px solid var(--accent2);">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
       <span style="font-weight:800;font-size:13px;">${etiquetas[invFiltroEstado]} — ${items.length} producto(s)</span>
@@ -18055,7 +18106,7 @@ function renderInvCaptura(){
   // Si no hay categorías oficiales en datos, mostrar todos como "otros"
   const sinCatOf=listaConteo.filter(p=>!p.catOf);
   if(sinCatOf.length>0){
-    productosPorCat.push({key:'otros',nombre:'📦 Otros',color:'#999',productos:sinCatOf});
+    productosPorCat.push({key:'otros',nombre:'Otros',color:'#999',productos:sinCatOf});
   }
 
   // Calcular avance por categoría
@@ -18135,7 +18186,7 @@ function renderInvCaptura(){
               ${(()=>{const desde=ultimo?.fecha||'0000';const ll=llegadasDe(p.id,desde);
                 if(!ll.length) return '';
                 const tot=r2(ll.reduce((a,x)=>a+x.q,0));
-                return `<div style="font-size:11px;margin-top:3px;color:var(--blue,#1565c0);font-weight:560;">📦 Llegó +${tot} ${p.unidadOf||p.unit||''} (${[...new Set(ll.map(x=>x.fecha.slice(8)+'/'+x.fecha.slice(5,7)))].join(', ')}) — cuéntalo aunque esté guardado</div>`;})()}
+                return `<div style="font-size:11px;margin-top:3px;color:var(--blue,#1565c0);font-weight:560;"><svg class="ic"><use href="#i-truck"/></svg> Llegó +${tot} ${p.unidadOf||p.unit||''} (${[...new Set(ll.map(x=>x.fecha.slice(8)+'/'+x.fecha.slice(5,7)))].join(', ')}) — cuéntalo aunque esté guardado</div>`;})()}
               ${capturado?'':`<div style="font-size:10px;color:var(--orange);margin-top:3px;">Pendiente de capturar</div>`}
             </div>
             <div style="display:flex;gap:6px;align-items:center;">

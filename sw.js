@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.82'; // Fase 4: porciones, Renee, merma, resumen semanal
+const CACHE_NAME = 'el-huerto-v15.83'; // Fase 5: menú en 4 secciones e íconos
 const ASSETS = [
   '/',
   '/index.html',
