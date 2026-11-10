@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.77'; // Recosteo por recetas corregidas
+const CACHE_NAME = 'el-huerto-v15.78'; // Celular: depósitos plegados, carrito solo en Ventas
 const ASSETS = [
   '/',
   '/index.html',
