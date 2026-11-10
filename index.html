@@ -1536,6 +1536,13 @@ nav{padding-top:env(safe-area-inset-top);}
     <span class="st"><svg class="ic"><use href="#i-basket"/></svg> Compras</span>
     <span style="font-size:11px;color:var(--text3);">captura en el mercado → sube gasto + inventario + costos</span>
   </div>
+  <div class="card" id="mc-tk-card" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:200px;">
+      <div class="ct" style="margin-bottom:3px;"><svg class="ic"><use href="#i-receipt"/></svg> ¿Tienes el ticket?</div>
+      <div style="font-size:12.5px;color:var(--text2);line-height:1.45;">Toma la foto o sube el PDF y el sistema lo captura por ti.</div>
+    </div>
+    <button class="btn bp" onclick="tkAbrir()">Subir foto o PDF</button>
+  </div>
   <div class="card" style="padding:12px;margin-bottom:10px;">
     <div style="display:grid;grid-template-columns:1fr 130px;gap:8px;">
       <div class="fg" style="margin:0;"><label>Proveedor</label><input id="mc-prov" placeholder="Ej: El Zorro" list="pvdl" oninput="mcSetProv(this.value)"></div>
@@ -11733,6 +11740,7 @@ window.renderMercadoSug=()=>{
   if($('mc-busq'))$('mc-busq').innerHTML=res.map(i=>`<button class="prep-chip" onclick="mcAddInv(${i.id})">${i.nombre} <span style="font-weight:400;color:var(--text3);">(${i.qty||0} ${i.unit})</span></button>`).join('');
 };
 function renderMercado(){
+  { const c=$('mc-tk-card'); if(c) c.style.display=SESSION?.tipo==='admin'?'flex':'none'; }
   if($('mc-prov')&&document.activeElement!==$('mc-prov'))$('mc-prov').value=MC.prov||'';
   if($('mc-metodo'))$('mc-metodo').value=MC.metodo||'efectivo';
   if($('mc-llegada')){ $('mc-llegada').max=today(); $('mc-llegada').value=MC.llegada||today(); }
