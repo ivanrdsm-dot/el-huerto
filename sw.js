@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.84'; // Subir ticket también en Compras
+const CACHE_NAME = 'el-huerto-v15.85'; // Ingeniería de menú
 const ASSETS = [
   '/',
   '/index.html',

@@ -2232,6 +2232,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <button class="rp-tab-btn activa" data-rt="resumen" onclick="setRpTab('resumen')"><svg class="ic"><use href="#i-chart"/></svg> Resumen</button>
     <button class="rp-tab-btn" data-rt="crecer" onclick="setRpTab('crecer')"><svg class="ic"><use href="#i-trend"/></svg> Crecimiento</button>
     <button class="rp-tab-btn" data-rt="prods" onclick="setRpTab('prods')"><svg class="ic"><use href="#i-basket"/></svg> Productos</button>
+    <button class="rp-tab-btn" data-rt="menu" onclick="setRpTab('menu')"><svg class="ic"><use href="#i-target"/></svg> Menú</button>
     <button class="rp-tab-btn" data-rt="salud" onclick="setRpTab('salud')"><svg class="ic"><use href="#i-heart"/></svg> Salud</button>
     <button class="rp-tab-btn" data-rt="descargas" onclick="setRpTab('descargas')"><svg class="ic"><use href="#i-download"/></svg> Descargas</button>
   </div>
@@ -2288,6 +2289,7 @@ nav{padding-top:env(safe-area-inset-top);}
     <div id="rp-salud"></div>
   </div>
   </div>
+  <div class="rp-panel" data-rt="menu" style="display:none;"><div id="rp-menu"></div></div>
   <div class="rp-panel" data-rt="descargas" style="display:none;">
   <div class="card" style="margin-bottom:10px;">
     <div class="sh">
@@ -21982,10 +21984,145 @@ window.cobrarDividido=async()=>{
 // ── Pestañas de Reportes ──
 // La última pestaña abierta se recuerda: si Iván vive en "Salud", no
 // tiene que volver a buscarla cada vez que entra.
+// ═══════════════════════════════════════════════════════════
+// INGENIERÍA DE MENÚ (v15.85)
+//
+// Con los costos ya reales (recetas corregidas y recosteo del 9-nov),
+// cada producto se mide en dos ejes, dentro de su categoría:
+//   · popularidad: cuántas piezas vende contra lo esperado si todos
+//     vendieran igual (alto si llega al 70% de su parte justa);
+//   · margen de contribución: lo que deja cada pieza (precio cobrado −
+//     costo de insumos) contra el promedio ponderado de su categoría.
+// Así salen las cuatro clases de la matriz de Kasavana y Smith:
+//   Estrella (vende y deja) · Caballo (vende, deja poco) ·
+//   Rompecabezas (deja, vende poco) · Perro (ni vende ni deja).
+// Precio sugerido: el que lleva el food cost a la meta (35%), terminado
+// en 5 o 9 como el resto del menú. El simulador suma lo que dejaría
+// subir precios con el mismo volumen y con 10% menos de venta.
+// ═══════════════════════════════════════════════════════════
+const MENU_FC_META=0.35, MENU_DIAS=28;
+const MENU_CLASE={
+  estrella:{t:'Estrella',c:'var(--accent)',r:'Vende mucho y deja bien. Cuídalo: que nunca falte y que salga siempre igual.'},
+  caballo:{t:'Caballo de batalla',c:'var(--gold)',r:'Se vende mucho pero deja poco. Súbele poco a poco o ajusta la porción más cara.'},
+  rompe:{t:'Rompecabezas',c:'#1565c0',r:'Deja bien pero se vende poco. Promuévelo: que la cajera lo ofrezca o métele a un combo.'},
+  perro:{t:'Perro',c:'var(--red)',r:'Ni se vende ni deja. Rediséñalo o sácalo del menú.'},
+};
+function precioRedondo(v){ // al siguiente número que termine en 5 o 9
+  let x=Math.ceil(v); while(!(x%10===5||x%10===9)) x++; return x;
+}
+let _menuMemo=null;
+function menuIngenieria(){
+  const llave=[today(),D.ventas.length,D.recetas.length,D.inventario.length,D.productos.length].join('|');
+  if(_menuMemo&&_menuMemo.llave===llave) return _menuMemo.r;
+  const ini=new Date(today()+'T12:00:00'); ini.setDate(ini.getDate()-MENU_DIAS); const desde=localDate(ini);
+  const cache=new Map(), por={};
+  for(const v of D.ventas){
+    if(v.anulada||!v.fecha||v.fecha<desde||v.fecha>today()) continue;
+    for(const it of v.items||[]){
+      const p=D.productos.find(x=>x.id===it.id); if(!p||p.cat==='otro') continue;
+      const k=it.id+'|'+(it.prep||[]).join(',');
+      if(!cache.has(k)){ const r=costoRenglonVenta(it); cache.set(k,r.completo&&r.costo!=null?r.costo:null); }
+      const c=cache.get(k), q=it.qty||1;
+      const a=(por[it.id]??={p,n:0,venta:0,costo:0,nCosto:0});
+      a.n+=q; a.venta+=(it.precio??p.precio??0)*q;
+      if(c!=null){ a.costo+=c*q; a.nCosto+=q; }
+    }
+  }
+  const filas=Object.values(por).filter(a=>a.n>0&&a.nCosto>0).map(a=>{
+    const precio=a.venta/a.n, costo=a.costo/a.nCosto, mc=precio-costo, fc=precio>0?costo/precio:null;
+    // Precio para llegar a la meta, pero en un solo paso nunca más de 15%:
+    // un brinco de $89 a $145 espanta al cliente. Lo que falte se cubre
+    // con la porción o con otro ajuste más adelante.
+    const meta=fc!=null&&fc>MENU_FC_META?precioRedondo(costo/MENU_FC_META):null;
+    const sugerido=meta?Math.min(meta,precioRedondo((a.p.precio||precio)*1.15)):null;
+    return {p:a.p,cat:a.p.cat,n:a.n,precio,costo,mc,fc,porSem:a.n/MENU_DIAS*7,dejaSem:mc*a.n/MENU_DIAS*7,precioActual:a.p.precio,sugerido,meta};
+  });
+  // Clasificación dentro de su categoría (o contra todo el menú si está sola)
+  const cats={}; filas.forEach(f=>(cats[f.cat]??=[]).push(f));
+  for(const arr of Object.values(cats)){
+    const grupo=arr.length>=2?arr:filas;
+    const tot=grupo.reduce((s,f)=>s+f.n,0), umbralPop=0.7*tot/grupo.length;
+    const mcProm=grupo.reduce((s,f)=>s+f.mc*f.n,0)/(tot||1);
+    for(const f of arr){
+      const pop=f.n>=umbralPop, mar=f.mc>=mcProm;
+      f.clase=pop&&mar?'estrella':pop?'caballo':mar?'rompe':'perro';
+      f.mcProm=mcProm;
+    }
+  }
+  filas.sort((a,b)=>b.dejaSem-a.dejaSem);
+  const venta=filas.reduce((s,f)=>s+f.precio*f.n,0), costo=filas.reduce((s,f)=>s+f.costo*f.n,0);
+  const r={filas,desde,fc:venta>0?costo/venta:null,dejaSem:filas.reduce((s,f)=>s+f.dejaSem,0)};
+  _menuMemo={llave,r}; return r;
+}
+const MENU_SIM={};   // prodId → pesos de aumento
+window.menuSim=(id,v)=>{ const n=parseFloat(v); if(n>0) MENU_SIM[id]=n; else delete MENU_SIM[id]; pintarMenuSim(); };
+function pintarMenuSim(){
+  const el=$('menu-sim-res'); if(!el) return;
+  const M=menuIngenieria(); let mes=0, mes90=0, n=0;
+  for(const f of M.filas){ const d=MENU_SIM[f.p.id]; if(!d) continue; n++;
+    const pzMes=f.n/MENU_DIAS*30; mes+=d*pzMes; mes90+=(f.mc+d)*pzMes*0.9-f.mc*pzMes; }
+  el.innerHTML=n?`Con ${n} producto${n===1?'':'s'} más caro${n===1?'':'s'}: <b>${fmt(r2(mes))} más al mes</b> si se vende lo mismo; <b>${fmt(r2(mes90))}</b> si esos bajan 10%.`
+    :'Escribe cuánto subirías a cada producto para ver cuánto te deja.';
+}
+window.menuSugeridos=()=>{
+  for(const f of menuIngenieria().filas) if(f.sugerido&&f.sugerido>f.precioActual) MENU_SIM[f.p.id]=f.sugerido-f.precioActual;
+  renderMenuIng();
+};
+window.menuLimpiarSim=()=>{ for(const k of Object.keys(MENU_SIM)) delete MENU_SIM[k]; renderMenuIng(); };
+function renderMenuIng(){
+  const el=$('rp-menu'); if(!el) return;
+  const M=menuIngenieria();
+  if(!M.filas.length){ el.innerHTML='<div class="card"><p style="color:var(--text3);margin:0;">Todavía no hay ventas costeadas para analizar.</p></div>'; return; }
+  const cnt=k=>M.filas.filter(f=>f.clase===k);
+  const pct=v=>v==null?'—':Math.round(v*100)+'%';
+  const fila=f=>`<tr>
+    <td><b>${esc(f.p.nombre)}</b><div style="font-size:10.5px;color:${MENU_CLASE[f.clase].c};font-weight:650;">${MENU_CLASE[f.clase].t}</div></td>
+    <td class="mono" style="text-align:right;">${Math.round(f.porSem)}</td>
+    <td class="mono" style="text-align:right;">${fmt(f.precioActual)}</td>
+    <td class="mono" style="text-align:right;">${fmt(r2(f.costo))}</td>
+    <td class="mono" style="text-align:right;color:${f.fc>MENU_FC_META?'var(--red)':'inherit'};">${pct(f.fc)}</td>
+    <td class="mono" style="text-align:right;">${fmt(r2(f.mc))}</td>
+    <td class="mono fw7" style="text-align:right;">${fmt(r2(f.dejaSem))}</td>
+    <td class="mono" style="text-align:right;" title="${f.meta?`Para food cost de ${Math.round(MENU_FC_META*100)}%: ${fmt(f.meta)}`:''}">${f.sugerido&&f.sugerido>f.precioActual?fmt(f.sugerido)+(f.meta>f.sugerido?' <span style="color:var(--text3);font-size:10px;">(meta '+fmt(f.meta)+')</span>':''):'—'}</td>
+    <td><input type="number" min="0" step="1" placeholder="+$" value="${MENU_SIM[f.p.id]||''}" style="width:62px;margin:0;padding:4px 6px;font-size:12px;" oninput="menuSim(${f.p.id},this.value)"></td></tr>`;
+  const acc=[];
+  M.filas.filter(f=>f.clase==='caballo'&&f.sugerido&&f.sugerido>f.precioActual).sort((a,b)=>b.porSem-a.porSem).slice(0,3).forEach(f=>{
+    const extra=(f.sugerido-f.precioActual)*f.n/MENU_DIAS*30;
+    acc.push(`<b>${esc(f.p.nombre)}</b>: de ${fmt(f.precioActual)} a ${fmt(f.sugerido)}. Vendes ${Math.round(f.porSem)} a la semana: unos <b>${fmt(r2(extra))} más al mes</b>.${f.meta>f.sugerido?` Su food cost sigue alto (${Math.round(f.costo/f.sugerido*100)}%): revisa la porción de lo más caro.`:''}`);
+  });
+  M.filas.filter(f=>f.clase==='rompe'&&f.mc>=f.mcProm).sort((a,b)=>b.mc-a.mc).slice(0,1).forEach(f=>
+    acc.push(`<b>${esc(f.p.nombre)}</b> deja ${fmt(r2(f.mc))} por pieza y casi no se vende: que la cajera lo recomiende.`));
+  const sosp=M.filas.filter(f=>f.fc!=null&&f.fc<0.12&&f.porSem>=5);
+  if(sosp.length) acc.push(`Revisa la receta de ${sosp.map(f=>`<b>${esc(f.p.nombre)}</b> (${Math.round(f.fc*100)}%)`).join(', ')}: un food cost tan bajo casi siempre es porción subestimada. Pésala para que el costo sea real.`);
+  el.innerHTML=`
+  ${acc.length?`<div class="card" style="margin-bottom:10px;border-left:3px solid var(--accent);"><div class="ct">Lo que yo haría</div>
+    ${acc.map(a=>`<div style="font-size:12.5px;line-height:1.5;padding:6px 0;border-top:1px solid var(--border);">${a}</div>`).join('')}</div>`:''}
+  <div class="g4" style="margin-bottom:10px;">
+    ${[['estrella'],['caballo'],['rompe'],['perro']].map(([k])=>`<div class="card" style="padding:12px 14px;border-top:3px solid ${MENU_CLASE[k].c};">
+      <div style="font-size:12px;font-weight:700;color:${MENU_CLASE[k].c};">${MENU_CLASE[k].t} · ${cnt(k).length}</div>
+      <div style="font-size:11.5px;color:var(--text2);margin-top:4px;line-height:1.4;">${MENU_CLASE[k].r}</div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px;">${cnt(k).slice(0,4).map(f=>esc(f.p.nombre)).join(' · ')||'—'}</div></div>`).join('')}
+  </div>
+  <div class="card" style="margin-bottom:10px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Rentabilidad por producto</span>
+      <span style="font-size:11.5px;color:var(--text3);">últimos ${MENU_DIAS} días · food cost del menú ${pct(M.fc)} · dejan ${fmt(r2(M.dejaSem))}/sem</span></div>
+    <p style="font-size:11.5px;color:var(--text3);margin:4px 0 8px;"><b>Deja/sem</b> = lo que queda después de insumos por las piezas que vendes a la semana (ordenado de más a menos). <b>Precio sugerido</b>: el que deja el food cost en ${Math.round(MENU_FC_META*100)}% (solo si hoy está arriba). La clase se mide contra los demás de su categoría.</p>
+    <div style="overflow-x:auto;"><table class="tbl" style="font-size:12px;"><thead><tr><th>Producto</th><th style="text-align:right;">Pzas/sem</th><th style="text-align:right;">Precio</th><th style="text-align:right;">Costo</th><th style="text-align:right;">Food cost</th><th style="text-align:right;">Deja c/u</th><th style="text-align:right;">Deja/sem</th><th style="text-align:right;">Sugerido</th><th>Subir</th></tr></thead>
+    <tbody>${M.filas.map(fila).join('')}</tbody></table></div>
+  </div>
+  <div class="card" style="margin-bottom:10px;">
+    <div class="sh"><span class="ct" style="margin-bottom:0;">Simulador de precios</span>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn bs bsm" onclick="menuSugeridos()">Usar precios sugeridos</button><button class="btn bs bsm" onclick="menuLimpiarSim()">Limpiar</button></div></div>
+    <div id="menu-sim-res" style="font-size:13px;margin-top:6px;line-height:1.5;"></div>
+    <p style="font-size:11px;color:var(--text3);margin:8px 0 0;">Es una simulación: no cambia ningún precio. Para cambiarlo de verdad, en Recetas o en Configuración del menú.</p>
+  </div>`;
+  pintarMenuSim();
+}
 window.setRpTab=t=>{
   document.querySelectorAll('#page-reportes .rp-panel').forEach(p=>{p.style.display=p.dataset.rt===t?'':'none';});
   document.querySelectorAll('#page-reportes .rp-tab-btn').forEach(b=>b.classList.toggle('activa',b.dataset.rt===t));
   try{localStorage.setItem('h5rptab',t);}catch(e){}
+  if(t==='menu') try{ renderMenuIng(); }catch(e){ console.warn('menú:',e); }
 };
 function restaurarRpTab(){
   let t='resumen';
