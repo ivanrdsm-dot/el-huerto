@@ -1215,8 +1215,14 @@ nav{padding-top:env(safe-area-inset-top);}
     </div>
   </div>
   <div id="db-rango" style="font-size:12.5px;color:var(--text2);margin:-6px 0 12px;"></div>
-  <!-- Fondos y costos fijos: no dependen del período, siempre a la vista -->
-  <div class="g3" style="margin-bottom:10px;" id="db-fijos"></div>
+  <!-- En 10 segundos: los 4 números de hoy y lo que pide decisión -->
+  <div id="db-hoy" style="margin-bottom:10px;"></div>
+  <!-- Fondos y costos fijos: no dependen del período, siempre a la vista
+       (en el teléfono arrancan plegados: la atención ya los resume) -->
+  <details id="db-fijos-det" open style="margin-bottom:10px;">
+    <summary style="font-size:12.5px;font-weight:650;color:var(--text2);cursor:pointer;margin-bottom:8px;">Fondo de ahorro, seguro social y pagos</summary>
+    <div class="g3" id="db-fijos"></div>
+  </details>
   <!-- El dinero del período: lo que entró, lo que salió y lo que quedó -->
   <div class="g4" style="margin-bottom:10px;" id="db-dinero"></div>
   <!-- Salud del negocio: los números que dicen si el modelo aguanta -->
@@ -13873,6 +13879,7 @@ function renderDbPeriodo(){
   // nómina y el opex —renta, servicios, mantenimiento—, igual que en
   // Reportes, para que los dos números digan lo mismo.
   const equil=mBruta>0?r2((nom+opexDev)/diasCorridos/mBruta):null;
+  if(equil!=null) window._equilDia=equil;
   const vtaDia=r2(ing/diasCorridos);
   const ticket=ventas.length?r2(ing/ventas.length):0;
   const sem=(ok,txt)=>`<div style="font-size:10.5px;margin-top:4px;color:${ok?'var(--accent)':'var(--red)'};font-weight:560;">${txt}</div>`;
@@ -15799,6 +15806,7 @@ function fijosEstado(){
 }
 function renderFijosPanel(){
   const caja=$('db-fijos'); if(!caja) return;
+  const det=$('db-fijos-det'); if(det) det.style.display=SESSION?.tipo==='admin'?'':'none';
   if(SESSION?.tipo!=='admin'){caja.innerHTML='';caja.style.display='none';return;}
   caja.style.display='';
   if(_avisoActivo===null) estadoAvisos().then(e=>{_avisoActivo=e;renderFijosPanel();});
@@ -20640,6 +20648,7 @@ function renderDashboard(){
   try{renderFijosPanel();}catch(e){console.warn('fijos:',e);}
   renderEventosAtencion();
   renderDbPeriodo();
+  try{renderDbHoy();}catch(e){console.warn('hoy:',e);}
   const td=today(); const cm=curM();
 
   // ══ PULSO DE HOY: dinero + servicio + estado de caja en una fila ══
@@ -21614,7 +21623,8 @@ function renderEventosAtencion(){
   if(!esAdminOGerente()){ el.style.display='none'; return; }
   const ev=calcEventosAtencion();
   if(!ev.length){ el.style.display='none'; _evFirma=''; return; }
-  el.style.display='block';
+  // El Panel "en 10 segundos" ya muestra estos eventos arriba (db-hoy)
+  el.style.display=$('db-hoy')?'none':'block';
   const col=s=>s==='alta'?'var(--red)':'var(--orange)';
   el.innerHTML=`<div class="ct">Necesita tu atención — ${today()}</div>`+
     ev.map(e=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--border);">
@@ -21635,6 +21645,84 @@ function renderEventosAtencion(){
   }
 }
 window.renderEventosAtencion=renderEventosAtencion;
+// ═══════════════════════════════════════════════════════════
+// PANEL EN 10 SEGUNDOS (v15.81 · fase 3)
+// Lo primero que ve el dueño en el teléfono: cuánto lleva vendido hoy
+// contra lo que necesita vender, cuánto efectivo debe haber en la caja,
+// el food cost de la semana y una sola lista de lo que pide decisión
+// (máximo 6, lo grave primero). El detalle sigue abajo.
+// ═══════════════════════════════════════════════════════════
+function atencionDueno(){
+  const out=[], td=today();
+  try{ for(const e of calcEventosAtencion()) out.push({sev:e.sev==='alta'?0:1,txt:e.txt,det:(e.det||[]).slice(0,2).join(' · '),ir:e.ir}); }catch(e){}
+  try{ const e=fijosEstado();
+    if(e.debe.length) out.push({sev:1,txt:`Por pagar: ${fmt(e.totalDebe)}`,det:e.debe.slice(0,3).map(g=>`${g.fijo==='imss'?'Seguro social':g.fijo==='renta'?'Renta':g.fijo==='banamex'?'Banamex':g.prov} ${fmt(g.monto)}`).join(' · '),ir:'gastos'});
+    if(e.nDepositos) out.push({sev:2,txt:`${e.nDepositos} depósito${e.nDepositos===1?'':'s'} del fondo de ahorro por registrar`,det:'Toca para registrarlos',ir:'fijos'});
+  }catch(e){}
+  const nd=nosDeben(); if(nd.length) out.push({sev:1,txt:`Te deben ${fmt(r2(nd.reduce((s,r)=>s+(r.debe||0),0)))} de mercancía que no llegó`,det:nd.map(r=>r.prov).join(' · '),ir:'gastos'});
+  const pr=recPendientes(); if(pr.length) out.push({sev:2,txt:`${pr.length} pedido${pr.length===1?'':'s'} sin recibir`,det:pr.map(r=>r.prov).join(' · '),ir:'inventario'});
+  try{ const C=controlInv();
+    const ped=C.filas.filter(f=>f.estado==='pedir'&&f.clase!=='C');
+    if(ped.length) out.push({sev:1,txt:`Pedir ya: ${ped.length} artículo${ped.length===1?'':'s'} no llega${ped.length===1?'':'n'} al domingo`,det:ped.slice(0,4).map(f=>f.inv.nombre).join(' · '),ir:'inventario'});
+    // Solo la última semana: lo de antes arrastra recetas que ya se corrigieron
+    const ini=new Date(td+'T12:00:00'); ini.setDate(ini.getDate()-7); const desde=localDate(ini);
+    const caros=new Set(C.filas.filter(f=>f.clase==='A'||f.clase==='B').map(f=>f.inv.id)), porArt={};
+    for(const c of D.invDiario){
+      if(c.fecha<=desde||!caros.has(c.productoId)||c.diferencia==null||c.esperado==null) continue;
+      const inv=D.inventario.find(i=>i.id===c.productoId); const p=c.diferencia*(c.precioUnit??inv?.precio??0);
+      if(Math.abs(p)>5000) continue;
+      const a=(porArt[c.productoId]??={inv,n:0,falta:0,pesos:0}); a.n++; a.pesos+=p; if(c.diferencia<-DESCUADRE_MIN) a.falta++;
+    }
+    const fu=Object.values(porArt).filter(a=>a.n>=3&&a.falta>=Math.ceil(a.n*0.6)&&a.pesos<=-50).sort((a,b)=>a.pesos-b.pesos).slice(0,2);
+    if(fu.length) out.push({sev:1,txt:`Fuga esta semana: ${fu.map(a=>a.inv.nombre).join(' y ')}`,det:fu.map(a=>`faltó ${a.falta} de ${a.n} conteos · ${fmt(Math.abs(r2(a.pesos)))}`).join(' · '),ir:'inventario'});
+  }catch(e){}
+  const h=new Date().getHours();
+  if(h>=14&&!esDiaDescanso(td)){
+    const toca=invTocaHoy(), cap=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
+    const faltan=toca.filter(i=>!cap.has(i.id)).length;
+    if(faltan) out.push({sev:1,txt:`Conteo de hoy incompleto: faltan ${faltan} de ${toca.length}`,det:'Sin conteo no se detectan fugas',ir:'inventario'});
+  }
+  return out.sort((a,b)=>a.sev-b.sev).slice(0,6);
+}
+window.dbIr=ir=>{
+  if(ir==='fijos'){ const d=$('db-fijos-det'); if(d){ d.open=true; d.scrollIntoView({behavior:'smooth',block:'start'}); } return; }
+  go(ir);
+};
+function renderDbHoy(){
+  const el=$('db-hoy'); if(!el) return;
+  if(SESSION?.tipo!=='admin'){el.innerHTML='';return;}
+  const td=today();
+  const vHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  const venta=r2(vHoy.reduce((s,v)=>s+(v.total||0),0));
+  const meta=window._equilDia||null;
+  const pct=meta?Math.min(100,Math.round(venta/meta*100)):null;
+  const rets=D.retiros.filter(r=>r.fecha===td);
+  const caja=r2(rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0)+sumaEf(vHoy)
+    +rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0)-rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0));
+  const sem=getWDays(td), vSem=D.ventas.filter(v=>sem.includes(v.fecha)&&!v.anulada&&v.foodCostCompleto&&v.foodCost!=null);
+  const vt=vSem.reduce((s,v)=>s+(v.total||0),0), fc=vt>0?Math.round(vSem.reduce((s,v)=>s+v.foodCost,0)/vt*100):null;
+  const A=atencionDueno();
+  const n=(t,v,sub,c)=>`<div class="card" style="padding:12px 14px;"><div style="font-size:11px;color:var(--text3);font-weight:600;">${t}</div>
+    <div class="mono" style="font-size:22px;font-weight:700;color:${c||'var(--text)'};margin-top:2px;">${v}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">${sub}</div></div>`;
+  el.innerHTML=`<div class="g4" style="margin-bottom:10px;">
+      ${n('Venta de hoy',fmt(venta),meta?`${pct}% de ${fmt(meta)} (equilibrio)`:`${vHoy.length} tickets`,meta&&venta>=meta?'var(--accent)':'var(--text)')}
+      ${n('Efectivo en caja',fmt(caja),'lo que debe haber ahorita')}
+      ${n('Food cost semana',fc!=null?fc+'%':'—',fc!=null?(fc<=35?'✓ meta ≤35%':'⚠ arriba de 35%'):'sin ventas costeadas',fc!=null&&fc>35?'var(--red)':'var(--text)')}
+      ${n('Tickets hoy',vHoy.length,vHoy.length?`promedio ${fmt(r2(venta/vHoy.length))}`:'—')}
+    </div>
+    <div class="card">
+      <div class="ct" style="margin-bottom:4px;">${A.length?'Necesita tu atención':'Todo en orden'}</div>
+      ${A.length?A.map(a=>`<div onclick="dbIr('${a.ir}')" style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-top:1px solid var(--border);cursor:pointer;">
+        <span style="width:8px;height:8px;border-radius:50%;margin-top:5px;flex:none;background:${a.sev===0?'var(--red)':a.sev===1?'var(--gold)':'var(--text3)'};"></span>
+        <div style="flex:1;min-width:0;"><div style="font-size:13px;font-weight:650;">${esc(a.txt)}</div>${a.det?`<div style="font-size:11.5px;color:var(--text3);margin-top:2px;">${esc(a.det)}</div>`:''}</div>
+        <span style="color:var(--text3);font-size:14px;">›</span></div>`).join('')
+        :'<div style="font-size:12.5px;color:var(--accent);">Nada pendiente. Las ventas, la caja y el inventario van bien.</div>'}
+    </div>`;
+  // En el teléfono, los fijos arrancan plegados (una sola vez por sesión)
+  const det=$('db-fijos-det');
+  if(det&&!det.dataset.ajustado){ det.dataset.ajustado='1'; if(innerWidth<=700) det.open=false; }
+}
+
 
 // ══════════════════════════════════════════════════════════════
 // DIVIDIR CUENTA / PAGO MIXTO
