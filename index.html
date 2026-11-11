@@ -21904,9 +21904,18 @@ window.dbIr=ir=>{
 // Mes por mes desde la primera venta: venta, tickets, ticket promedio,
 // food cost y utilidad con el MISMO cálculo del Panel (utilidadPeriodo).
 // La venta del mes suma TODOS los días, también sábados y domingos.
+// Todos los meses desde la primera venta, aunque no haya vendido (junio
+// y julio de 2026 se cerró por vacaciones: Iván, 11-nov).
 function mesesConVenta(){
-  return [...new Set(D.ventas.filter(v=>!v.anulada&&v.fecha).map(v=>v.fecha.slice(0,7)))].sort();
+  const ms=[...new Set(D.ventas.filter(v=>!v.anulada&&v.fecha).map(v=>v.fecha.slice(0,7)))].sort();
+  if(!ms.length) return ms;
+  const out=[]; let [y,m]=ms[0].split('-').map(Number); const fin=curM();
+  while(true){ const k=`${y}-${String(m).padStart(2,'0')}`; out.push(k); if(k>=fin) break; m++; if(m>12){m=1;y++;} }
+  return out;
 }
+// Un mes con menos de 20 tickets se trata como cerrado (vacaciones):
+// no entra en el promedio mensual ni compite por "mejor mes".
+const MES_CERRADO_TICKETS=20;
 function resumenMes(m){
   const vs=D.ventas.filter(v=>!v.anulada&&v.fecha&&v.fecha.startsWith(m));
   const venta=r2(vs.reduce((s,v)=>s+(v.total||0),0));
@@ -21916,7 +21925,8 @@ function resumenMes(m){
   const dias=diasDelMes(m);
   let U=null; try{ U=utilidadPeriodo({p:'mes',mes:m,vent:dias,gast:dias}); }catch(e){}
   return {m,venta,tickets:vs.length,prom:vs.length?r2(venta/vs.length):0,fc,cob,
-    diasV:new Set(vs.map(v=>v.fecha)).size,util:U?U.util:null,margen:U?U.margen:null,enCurso:m===curM()};
+    diasV:new Set(vs.map(v=>v.fecha)).size,util:vs.length>=MES_CERRADO_TICKETS||m===curM()?(U?U.util:null):null,margen:vs.length>=MES_CERRADO_TICKETS||m===curM()?(U?U.margen:null):null,enCurso:m===curM(),
+    cerrado:m!==curM()&&vs.length<MES_CERRADO_TICKETS};
 }
 const MESES_ES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
 const mesTxt=m=>{const [y,mm]=m.split('-');return `${MESES_ES[+mm-1]} ${y}`;};
@@ -21926,15 +21936,15 @@ function renderDbHistorico(){
   const filas=mesesConVenta().map(resumenMes).reverse();
   if(!filas.length){el.style.display='none';return;}
   const tot=filas.reduce((a,f)=>({venta:a.venta+f.venta,tickets:a.tickets+f.tickets,util:a.util+(f.util||0)}),{venta:0,tickets:0,util:0});
-  const cerr=filas.filter(f=>!f.enCurso);
+  const cerr=filas.filter(f=>!f.enCurso&&!f.cerrado);
   const prom=cerr.length?r2(cerr.reduce((s,f)=>s+f.venta,0)/cerr.length):null;
   const mx=Math.max(...filas.map(f=>f.venta),1);
   el.style.display='';
   el.innerHTML=`<div class="sh" style="margin-bottom:6px;"><span class="ct" style="margin-bottom:0;">Histórico mes por mes</span>
-      <span style="font-size:11.5px;color:var(--text3);">${filas.length} meses · ${fmt(r2(tot.venta))} vendidos · ${tot.tickets.toLocaleString('es-MX')} tickets${prom?` · promedio ${fmt(prom)} al mes`:''}</span></div>
+      <span style="font-size:11.5px;color:var(--text3);">${cerr.length+(filas.some(f=>f.enCurso)?1:0)} meses abiertos · ${fmt(r2(tot.venta))} vendidos · ${tot.tickets.toLocaleString('es-MX')} tickets${prom?` · promedio ${fmt(prom)} al mes`:''}</span></div>
     <div class="tw"><table><thead><tr><th>Mes</th><th style="text-align:right;">Venta</th><th></th><th style="text-align:right;">Tickets</th><th style="text-align:right;">Ticket prom.</th><th style="text-align:right;">Food cost</th><th style="text-align:right;">Utilidad</th></tr></thead><tbody>
     ${filas.map(f=>`<tr${f.enCurso?' style="background:var(--bg2,rgba(0,0,0,.03));"':''}>
-      <td style="white-space:nowrap;font-weight:600;">${mesTxt(f.m)}${f.enCurso?' <span style="font-size:10.5px;color:var(--text3);font-weight:500;">en curso</span>':''}</td>
+      <td style="white-space:nowrap;font-weight:600;${f.cerrado?'color:var(--text3);':''}">${mesTxt(f.m)}${f.enCurso?' <span style="font-size:10.5px;color:var(--text3);font-weight:500;">en curso</span>':''}${f.cerrado?' <span style="font-size:10.5px;font-weight:500;">cerrado · vacaciones</span>':''}</td>
       <td class="mono" style="text-align:right;font-weight:650;">${fmt(f.venta)}</td>
       <td style="width:28%;min-width:60px;"><div style="height:7px;border-radius:4px;background:var(--accent);opacity:.75;width:${Math.max(2,Math.round(f.venta/mx*100))}%;"></div></td>
       <td class="mono" style="text-align:right;">${f.tickets}</td>
@@ -21952,16 +21962,17 @@ function renderDbTodo(){
   const fc=vc>0?Math.round(vs.reduce((s,v)=>s+v.foodCost,0)/vc*100):null;
   const dias=new Set(D.ventas.filter(v=>!v.anulada).map(v=>v.fecha)).size||1;
   const mejor=filas.slice().sort((a,b)=>b.venta-a.venta)[0];
+  const abiertos=filas.filter(f=>!f.cerrado&&!f.enCurso);
   const kc=(l,v,sub,c)=>`<div class="card" style="text-align:center;"><div class="ct">${l}</div><div class="kv" style="color:${c};">${v}</div><div style="font-size:11px;color:var(--text3);margin-top:3px;">${sub}</div></div>`;
   if($('db-dinero'))$('db-dinero').innerHTML=
-    kc('Ventas totales',fmt(venta),`${tk.toLocaleString('es-MX')} tickets · ${filas.length} meses`,'var(--accent)')+
+    kc('Ventas totales',fmt(venta),`${tk.toLocaleString('es-MX')} tickets · ${filas.filter(f=>!f.cerrado).length} meses abiertos`,'var(--accent)')+
     kc('Venta por día',fmt(r2(venta/dias)),`${dias} días con venta`,'var(--text)')+
     kc('Food cost histórico',fc!=null?fc+'%':'—',vc<venta*0.9?`costeado ${Math.round(vc/venta*100)}% de la venta`:'meta ≤35%',fc!=null&&fc>35?'var(--red)':'var(--text)')+
     kc('Utilidad acumulada',fmt(util),venta>0?`margen ${Math.round(util/venta*100)}%`:'',util>=0?'var(--teal)':'var(--red)');
   if($('db-salud'))$('db-salud').innerHTML=
     kc('Ticket promedio',fmt(tk?r2(venta/tk):0),`${Math.round(tk/dias)} tickets por día`,'var(--text)')+
     kc('Mejor mes',mejor?mesTxt(mejor.m):'—',mejor?fmt(mejor.venta):'','var(--text)')+
-    kc('Promedio al mes',fmt(r2(venta/(filas.length||1))),'incluye el mes en curso','var(--text)')+
+    kc('Promedio al mes',abiertos.length?fmt(r2(abiertos.reduce((s,f)=>s+f.venta,0)/abiertos.length)):'—',`${abiertos.length} meses completos · sin vacaciones`,'var(--text)')+
     kc('Primera venta',fmtFecha([...D.ventas].filter(v=>v.fecha).sort((a,b)=>a.fecha<b.fecha?-1:1)[0]?.fecha||today()),'desde que hay sistema','var(--text)');
 }
 function renderDbHoy(){
