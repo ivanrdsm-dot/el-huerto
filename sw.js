@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.89'; // Recosteo automático con pesos del 11-nov
+const CACHE_NAME = 'el-huerto-v15.90'; // Carga rápida: 45 días de conteos, recosteo sin congelar
 const ASSETS = [
   '/',
   '/index.html',

@@ -2969,7 +2969,7 @@ nav{padding-top:env(safe-area-inset-top);}
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, getDocsFromServer, limit, query, where } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, getDocsFromServer, limit, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
@@ -3453,8 +3453,15 @@ let _unsubs=[];
 const VENTANA_PERSONAL={ventas:35,invDiario:21};
 const GERENTES_CON_HISTORIA=[2006];   // Vale: sus KPIs sí ocupan la historia
 const sesionDePersonal=()=>typeof AUTH_PERFIL?.quien==='number'&&!GERENTES_CON_HISTORIA.includes(AUTH_PERFIL.quien);
+// 11-nov: abrir la app como dueño bajaba 25,800 documentos (12 mil de
+// conteos y 6 mil de bitácora que nadie mira enteros). El dueño baja
+// 45 días de conteos (Control usa 35) y 21 días de bitácora (se ven 60
+// renglones). Las ventas se bajan completas: los reportes las ocupan.
+const VENTANA_DUENO={invDiario:45};
+const BITACORA_DIAS=21;
 function refEscucha(col){
-  const dias=sesionDePersonal()?VENTANA_PERSONAL[col]:null;
+  if(col==='auditLog') return query(colRef(col),where('ts','>=',Date.now()-BITACORA_DIAS*864e5));
+  const dias=sesionDePersonal()?VENTANA_PERSONAL[col]:VENTANA_DUENO[col];
   if(!dias) return colRef(col);
   return query(colRef(col),where('fecha','>=',localDate(new Date(Date.now()-dias*864e5))));
 }
@@ -7050,8 +7057,7 @@ async function migRecosteo11Nov(){
   setTimeout(async()=>{
     try{
       const r=await window.recostearConRecetas('2026-10-12','recetas-11nov');
-      logAudit('ventas_recosteadas',{...r,motivo:'Pesos reales de Claudia 11-nov y porción de coctel del 10-nov'});
-      await markMig(migKey);
+      if(r&&r.ok>=0) await markMig(migKey);
     }catch(e){ console.warn('migRecosteo11Nov:',e.code||e.message); }
   },8000);
 }
@@ -20387,24 +20393,37 @@ window.recostearVentas=async(semanas)=>{
 window.recostearConRecetas=async(desde,marca)=>{
   const vs=D.ventas.filter(v=>!v.anulada&&v.fecha>=desde&&v.fecha<=today()&&v.fcRecetas!==marca);
   if(!vs.length){toast('No hay ventas por recostear',2500);return {ok:0,siguen:0};}
-  let ok=0, siguen=0, lote=[], antes=0, despues=0;
-  const vaciar=async()=>{ if(!lote.length) return; await Promise.all(lote.map(x=>fsSet('ventas',x))); lote=[]; };
-  for(const v of vs){
-    let fc=0, completo=true; const supuestos=[];
-    (v.items||[]).forEach(i=>{ const r=costoRenglonVenta(i);
-      if(r.costo!=null) fc+=r.costo*(i.qty||0); if(!r.completo) completo=false;
-      if(r.supuesto) supuestos.push({item:i.nombre||i.id,...r.supuesto}); });
-    if(!completo||(fc>v.total&&v.total>0&&!perdidaConocida(v))){siguen++;continue;}
-    const actual=D.ventas.find(x=>x.id===v.id); if(!actual||actual.anulada){siguen++;continue;}
-    antes+=actual.foodCost||0; despues+=fc;
-    const upd={...actual,foodCostPrevio:actual.foodCost??null,foodCost:r2(fc),foodCostCompleto:true,fcToppings:true,fcRecetas:marca,
-      ...(supuestos.length?{fcSupuesto:supuestos}:{})};
-    lote.push(upd); const ix=D.ventas.findIndex(x=>x.id===v.id); if(ix>=0) D.ventas[ix]=upd; ok++;
-    if(lote.length>=50) await vaciar();
-  }
-  await vaciar();
-  logAudit('ventas_recosteadas',{recosteadas:ok,siguenIncompletas:siguen,desde,costoAntes:r2(antes),costoDespues:r2(despues),
-    motivo:'Recetas corregidas el 9-nov (mozzarella en paninis, chai 20 g, empaques, cubiertos, mangas, sin servitoallas)'});
+  // 11-nov: escribir de 50 en 50 con setDoc hacía que cada tanda
+  // redibujara las 6 mil ventas; el teléfono se congelaba a media
+  // corrida ("no cargan las ventas"). Ahora se calcula todo, se escribe
+  // en lotes de 400 y la pantalla se pinta una sola vez al final.
+  let ok=0, siguen=0, antes=0, despues=0; const listos=[];
+  window._recosteando=true;
+  try{
+    for(let n=0;n<vs.length;n++){
+      const v=vs[n];
+      if(n%150===149) await new Promise(r=>setTimeout(r,0));   // que respire la pantalla
+      let fc=0, completo=true; const supuestos=[];
+      (v.items||[]).forEach(i=>{ const r=costoRenglonVenta(i);
+        if(r.costo!=null) fc+=r.costo*(i.qty||0); if(!r.completo) completo=false;
+        if(r.supuesto) supuestos.push({item:i.nombre||i.id,...r.supuesto}); });
+      if(!completo||(fc>v.total&&v.total>0&&!perdidaConocida(v))){siguen++;continue;}
+      const actual=D.ventas.find(x=>x.id===v.id); if(!actual||actual.anulada){siguen++;continue;}
+      antes+=actual.foodCost||0; despues+=fc;
+      listos.push({...actual,foodCostPrevio:actual.foodCost??null,foodCost:r2(fc),foodCostCompleto:true,fcToppings:true,fcRecetas:marca,
+        ...(supuestos.length?{fcSupuesto:supuestos}:{})});
+    }
+    for(let i=0;i<listos.length;i+=400){
+      const b=writeBatch(db);
+      listos.slice(i,i+400).forEach(u=>b.set(docRef('ventas',u.id),u));
+      await escrituraOk(b.commit());
+      toast(`Recosteando… ${Math.min(i+400,listos.length)} de ${listos.length}`,1500);
+    }
+    const porId=new Map(listos.map(u=>[u.id,u]));
+    D.ventas=D.ventas.map(v=>porId.get(v.id)||v);
+    ok=listos.length;
+  } finally { window._recosteando=false; }
+  logAudit('ventas_recosteadas',{recosteadas:ok,siguenIncompletas:siguen,desde,marca,costoAntes:r2(antes),costoDespues:r2(despues)});
   toast(`✓ ${ok} ventas recosteadas`,5000); renderAll();
   return {ok,siguen,antes:r2(antes),despues:r2(despues)};
 };
@@ -23061,6 +23080,7 @@ function updateGlobalBadges(){
 // Debounce: agrupa ráfagas de snapshots (16 colecciones) en 1 solo render
 let _renderPending=false;
 function scheduleRender(){
+  if(window._recosteando) return;   // se pinta una vez al terminar
   if(_renderPending) return;
   _renderPending=true;
   setTimeout(()=>{
