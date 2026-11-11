@@ -19798,9 +19798,12 @@ function comboComponentes(item){
 //           semillas, crutones y queso rallado 15 g
 // ═══════════════════════════════════════════════════════════
 const PREP_PORCION={
-  coctel:{'Fresa':['Fresa',60,'g'],'Plátano':['Plátano',60,'g'],'Mango':['Mango verde',60,'g'],
-    'Manzana':['Manzana',60,'g'],'Sandía':['Sandía',0.012,'pz'],'Piña':['Piña',0.06,'pz'],
-    'Pepino':['Pepino',60,'g'],'Jícama':['Jícama',60,'g'],'Zanahoria':['Zanahoria',60,'g']},
+  // Pesado el 10-nov: un coctel lleva ~248 g de fruta (el de jícama sola
+  // 244 g, el mix 248 g). Son 3 porciones de ~83 g repartidas entre lo
+  // que se elige. Antes se suponían 60 g (180 g por coctel).
+  coctel:{'Fresa':['Fresa',83,'g'],'Plátano':['Plátano',83,'g'],'Mango':['Mango verde',83,'g'],
+    'Manzana':['Manzana',83,'g'],'Sandía':['Sandía',0.0166,'pz'],'Piña':['Piña',0.083,'pz'],
+    'Pepino':['Pepino',83,'g'],'Jícama':['Jícama',83,'g'],'Zanahoria':['Zanahoria',83,'g']},
   bowl:{'Fresa':['Fresa',40,'g'],'Blueberry':['Blueberry',30,'g'],'Plátano':['Plátano',50,'g'],
     'Mango':['Mango verde',40,'g'],'Almond butter':['Crema de almendras',0.0196,'pz'],
     'Peanut butter':['Crema de cacahuate',0.0136,'pz'],   // 15 g de un frasco de 1.1 kg (ticket Costco)
