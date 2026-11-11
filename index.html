@@ -3455,9 +3455,10 @@ const GERENTES_CON_HISTORIA=[2006];   // Vale: sus KPIs sí ocupan la historia
 const sesionDePersonal=()=>typeof AUTH_PERFIL?.quien==='number'&&!GERENTES_CON_HISTORIA.includes(AUTH_PERFIL.quien);
 // 11-nov: abrir la app como dueño bajaba 25,800 documentos (12 mil de
 // conteos y 6 mil de bitácora que nadie mira enteros). El dueño baja
-// 45 días de conteos (Control usa 35) y 21 días de bitácora (se ven 60
+// 100 días de conteos (el reporte de "3 meses" usa la merma de esos días)
+// y 21 días de bitácora (se ven 60
 // renglones). Las ventas se bajan completas: los reportes las ocupan.
-const VENTANA_DUENO={invDiario:45};
+const VENTANA_DUENO={invDiario:100};
 const BITACORA_DIAS=21;
 function refEscucha(col){
   if(col==='auditLog') return query(colRef(col),where('ts','>=',Date.now()-BITACORA_DIAS*864e5));

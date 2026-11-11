@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.90'; // Carga rápida: 45 días de conteos, recosteo sin congelar
+const CACHE_NAME = 'el-huerto-v15.91'; // Dueño: 100 días de conteos (reporte de 3 meses completo)
 const ASSETS = [
   '/',
   '/index.html',
