@@ -3405,6 +3405,7 @@ async function completeInit(){
   await migPagos9Nov();
   await migFruta9Nov();
   await migRenee20322();
+  await migRecosteo11Nov();
   await migPanRenee13Oct2026();
   await migClasificaPanRenee13Oct();
   await migPanReneeConteo13Oct();
@@ -7037,6 +7038,23 @@ const RENEE_20322=[
       ['Pan con queso — Zatar ×10','Pan Tía Renee — Zatar',10,'pz',467.50],
       ['Pan con queso — solo ×10','Pan Tía Renee — Queso',10,'pz',467.50]]},
 ];
+// 11-nov — Recosteo con los pesos de Claudia (paninis: mozzarella 80 g,
+// serrano 50, chorizo 29, pavo 59, 4 Quesos solo mezcla 66 g; Pal':
+// plátano 96, leche 300 ml, proteína 20, matcha 40, chai 26; boba 90 g;
+// toppings de ensalada y granola; cocteles 83 g por fruta del 10-nov).
+// Corre solo con la sesión del dueño (migDone lo aplaza si no). La marca
+// por venta (fcRecetas) evita rehacer una venta dos veces si se corta.
+async function migRecosteo11Nov(){
+  const migKey='h5recosteo_11nov26';
+  if(await migDone(migKey)) return;
+  setTimeout(async()=>{
+    try{
+      const r=await window.recostearConRecetas('2026-10-12','recetas-11nov');
+      logAudit('ventas_recosteadas',{...r,motivo:'Pesos reales de Claudia 11-nov y porción de coctel del 10-nov'});
+      await markMig(migKey);
+    }catch(e){ console.warn('migRecosteo11Nov:',e.code||e.message); }
+  },8000);
+}
 async function migRenee20322(){
   const migKey='h5renee_20322';
   if(await migDone(migKey)) return;

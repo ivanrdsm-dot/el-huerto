@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.88'; // Toppings pesados por Claudia (11-nov)
+const CACHE_NAME = 'el-huerto-v15.89'; // Recosteo automático con pesos del 11-nov
 const ASSETS = [
   '/',
   '/index.html',
