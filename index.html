@@ -1218,6 +1218,7 @@ nav{padding-top:env(safe-area-inset-top);}
         <button class="rp-tab-btn activa" data-dbp="hoy" onclick="setDbPeriodo('hoy')">Hoy</button>
         <button class="rp-tab-btn" data-dbp="semana" onclick="setDbPeriodo('semana')">Semana</button>
         <button class="rp-tab-btn" data-dbp="mes" onclick="setDbPeriodo('mes')">Mes</button>
+        <button class="rp-tab-btn" data-dbp="todo" onclick="setDbPeriodo('todo')">Histórico</button>
       </div>
       <span id="db-fecha" style="font-size:12px;color:var(--text3);"></span>
     </div>
@@ -1225,6 +1226,8 @@ nav{padding-top:env(safe-area-inset-top);}
   <div id="db-rango" style="font-size:12.5px;color:var(--text2);margin:-6px 0 12px;"></div>
   <!-- En 10 segundos: los 4 números de hoy y lo que pide decisión -->
   <div id="db-hoy" style="margin-bottom:10px;"></div>
+  <!-- Mes por mes desde la primera venta (Mes e Histórico) -->
+  <div class="card" id="db-historico" style="display:none;margin-bottom:10px;"></div>
   <!-- Fondos y costos fijos: no dependen del período, siempre a la vista
        (en el teléfono arrancan plegados: la atención ya los resume) -->
   <details id="db-fijos-det" open style="margin-bottom:10px;">
@@ -13928,7 +13931,7 @@ function utilidadPeriodo(R){
   const ventas=D.ventas.filter(v=>!v.anulada&&R.vent.includes(v.fecha));
   const ing=r2(ventas.reduce((s,v)=>s+v.total,0));
   const gd=sinFijos(desgloseGastos(D.gastos.filter(g=>R.gast.includes(g.fecha))));
-  const base=gastoBasePeriodo(R.p,R.p==='mes'?{_mes:curM()}:{_sem:td});
+  const base=gastoBasePeriodo(R.p,R.p==='mes'?{_mes:R.mes||curM()}:{_sem:td});
   const estimado=Math.max(0,r2(base-gd.sinNomina));
   const gasto=r2(gd.sinNomina+estimado);
   const nom=nominaDevengada(R.vent);
@@ -14011,6 +14014,8 @@ function renderDbPeriodo(){
   if($('db-live-widget'))$('db-live-widget').style.display=soloHoy?'':'none';
   if($('db-pulso'))$('db-pulso').style.display=soloHoy?'flex':'none';
 
+  try{ renderDbHistorico(); }catch(e){ console.warn('histórico:',e); }
+  if(R.p==='todo'){ try{ renderDbTodo(); }catch(e){ console.warn('todo:',e); } return; }
   const U=utilidadPeriodo(R);
   const {ventas,ing,gd,base,estimado,gasto,nom,diasOper,diasCorridos,enCurso,avance,gastoDev,opexDev,comision,rentaDev,completasV,ventaCubV,pctCostoV,cogsV,coberturaV,opexReal,insumosDev,baseDev,opexNoCap,operacion,util,margen}=U;
   const dePeriodo=R.p==='mes'?'del mes':R.p==='semana'?'de la semana':'de hoy';
@@ -20842,6 +20847,10 @@ function dbRango(){
     const cm=curM(), dias=diasDelMes(cm);
     return {p:'mes',vent:dias,gast:dias,label:'Mes '+cm};
   }
+  if(DB_P==='todo'){
+    const fs=[...new Set(D.ventas.filter(v=>!v.anulada).map(v=>v.fecha))].sort();
+    return {p:'todo',vent:fs,gast:fs,label:fs.length?`Histórico · desde ${fmtFecha(fs[0])}`:'Histórico'};
+  }
   const ref=hoyOperativo();
   const wd=getWDays(ref);
   return {p:'semana',vent:wd,gast:getWDays7(ref),
@@ -21891,27 +21900,101 @@ window.dbIr=ir=>{
   if(ir==='fijos'){ const d=$('db-fijos-det'); if(d){ d.open=true; d.scrollIntoView({behavior:'smooth',block:'start'}); } return; }
   go(ir);
 };
+// ══ HISTÓRICO (11-nov) ══════════════════════════════════════
+// Mes por mes desde la primera venta: venta, tickets, ticket promedio,
+// food cost y utilidad con el MISMO cálculo del Panel (utilidadPeriodo).
+// La venta del mes suma TODOS los días, también sábados y domingos.
+function mesesConVenta(){
+  return [...new Set(D.ventas.filter(v=>!v.anulada&&v.fecha).map(v=>v.fecha.slice(0,7)))].sort();
+}
+function resumenMes(m){
+  const vs=D.ventas.filter(v=>!v.anulada&&v.fecha&&v.fecha.startsWith(m));
+  const venta=r2(vs.reduce((s,v)=>s+(v.total||0),0));
+  const cc=vs.filter(v=>v.foodCostCompleto&&v.foodCost!=null), vc=cc.reduce((s,v)=>s+(v.total||0),0);
+  const fc=vc>0?Math.round(cc.reduce((s,v)=>s+v.foodCost,0)/vc*100):null;
+  const cob=venta>0?Math.round(vc/venta*100):0;
+  const dias=diasDelMes(m);
+  let U=null; try{ U=utilidadPeriodo({p:'mes',mes:m,vent:dias,gast:dias}); }catch(e){}
+  return {m,venta,tickets:vs.length,prom:vs.length?r2(venta/vs.length):0,fc,cob,
+    diasV:new Set(vs.map(v=>v.fecha)).size,util:U?U.util:null,margen:U?U.margen:null,enCurso:m===curM()};
+}
+const MESES_ES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const mesTxt=m=>{const [y,mm]=m.split('-');return `${MESES_ES[+mm-1]} ${y}`;};
+function renderDbHistorico(){
+  const el=$('db-historico'); if(!el) return;
+  if(SESSION?.tipo!=='admin'||!['mes','todo'].includes(DB_P)){el.style.display='none';return;}
+  const filas=mesesConVenta().map(resumenMes).reverse();
+  if(!filas.length){el.style.display='none';return;}
+  const tot=filas.reduce((a,f)=>({venta:a.venta+f.venta,tickets:a.tickets+f.tickets,util:a.util+(f.util||0)}),{venta:0,tickets:0,util:0});
+  const cerr=filas.filter(f=>!f.enCurso);
+  const prom=cerr.length?r2(cerr.reduce((s,f)=>s+f.venta,0)/cerr.length):null;
+  const mx=Math.max(...filas.map(f=>f.venta),1);
+  el.style.display='';
+  el.innerHTML=`<div class="sh" style="margin-bottom:6px;"><span class="ct" style="margin-bottom:0;">Histórico mes por mes</span>
+      <span style="font-size:11.5px;color:var(--text3);">${filas.length} meses · ${fmt(r2(tot.venta))} vendidos · ${tot.tickets.toLocaleString('es-MX')} tickets${prom?` · promedio ${fmt(prom)} al mes`:''}</span></div>
+    <div class="tw"><table><thead><tr><th>Mes</th><th style="text-align:right;">Venta</th><th></th><th style="text-align:right;">Tickets</th><th style="text-align:right;">Ticket prom.</th><th style="text-align:right;">Food cost</th><th style="text-align:right;">Utilidad</th></tr></thead><tbody>
+    ${filas.map(f=>`<tr${f.enCurso?' style="background:var(--bg2,rgba(0,0,0,.03));"':''}>
+      <td style="white-space:nowrap;font-weight:600;">${mesTxt(f.m)}${f.enCurso?' <span style="font-size:10.5px;color:var(--text3);font-weight:500;">en curso</span>':''}</td>
+      <td class="mono" style="text-align:right;font-weight:650;">${fmt(f.venta)}</td>
+      <td style="width:28%;min-width:60px;"><div style="height:7px;border-radius:4px;background:var(--accent);opacity:.75;width:${Math.max(2,Math.round(f.venta/mx*100))}%;"></div></td>
+      <td class="mono" style="text-align:right;">${f.tickets}</td>
+      <td class="mono" style="text-align:right;">${fmt(f.prom)}</td>
+      <td class="mono" style="text-align:right;color:${f.fc!=null&&f.fc>35?'var(--red)':'var(--text)'};">${f.fc!=null?f.fc+'%':'—'}${f.fc!=null&&f.cob<90?`<div style="font-size:10px;color:var(--text3);">costeado ${f.cob}%</div>`:''}</td>
+      <td class="mono" style="text-align:right;color:${(f.util||0)>=0?'var(--teal)':'var(--red)'};">${f.util!=null?fmt(f.util):'—'}${f.margen!=null?`<div style="font-size:10px;color:var(--text3);">${f.margen}%</div>`:''}</td></tr>`).join('')}
+    </tbody></table></div>`;
+}
+// Tarjetas de dinero y salud cuando se mira TODO: suma de los meses.
+function renderDbTodo(){
+  const filas=mesesConVenta().map(resumenMes);
+  const venta=r2(filas.reduce((s,f)=>s+f.venta,0)), tk=filas.reduce((s,f)=>s+f.tickets,0);
+  const util=r2(filas.reduce((s,f)=>s+(f.util||0),0));
+  const vs=D.ventas.filter(v=>!v.anulada&&v.foodCostCompleto&&v.foodCost!=null), vc=vs.reduce((s,v)=>s+(v.total||0),0);
+  const fc=vc>0?Math.round(vs.reduce((s,v)=>s+v.foodCost,0)/vc*100):null;
+  const dias=new Set(D.ventas.filter(v=>!v.anulada).map(v=>v.fecha)).size||1;
+  const mejor=filas.slice().sort((a,b)=>b.venta-a.venta)[0];
+  const kc=(l,v,sub,c)=>`<div class="card" style="text-align:center;"><div class="ct">${l}</div><div class="kv" style="color:${c};">${v}</div><div style="font-size:11px;color:var(--text3);margin-top:3px;">${sub}</div></div>`;
+  if($('db-dinero'))$('db-dinero').innerHTML=
+    kc('Ventas totales',fmt(venta),`${tk.toLocaleString('es-MX')} tickets · ${filas.length} meses`,'var(--accent)')+
+    kc('Venta por día',fmt(r2(venta/dias)),`${dias} días con venta`,'var(--text)')+
+    kc('Food cost histórico',fc!=null?fc+'%':'—',vc<venta*0.9?`costeado ${Math.round(vc/venta*100)}% de la venta`:'meta ≤35%',fc!=null&&fc>35?'var(--red)':'var(--text)')+
+    kc('Utilidad acumulada',fmt(util),venta>0?`margen ${Math.round(util/venta*100)}%`:'',util>=0?'var(--teal)':'var(--red)');
+  if($('db-salud'))$('db-salud').innerHTML=
+    kc('Ticket promedio',fmt(tk?r2(venta/tk):0),`${Math.round(tk/dias)} tickets por día`,'var(--text)')+
+    kc('Mejor mes',mejor?mesTxt(mejor.m):'—',mejor?fmt(mejor.venta):'','var(--text)')+
+    kc('Promedio al mes',fmt(r2(venta/(filas.length||1))),'incluye el mes en curso','var(--text)')+
+    kc('Primera venta',fmtFecha([...D.ventas].filter(v=>v.fecha).sort((a,b)=>a.fecha<b.fecha?-1:1)[0]?.fecha||today()),'desde que hay sistema','var(--text)');
+}
 function renderDbHoy(){
   const el=$('db-hoy'); if(!el) return;
   if(SESSION?.tipo!=='admin'){el.innerHTML='';return;}
   const td=today();
   const vHoy=D.ventas.filter(v=>v.fecha===td&&!v.anulada);
+  // 11-nov: las 4 cifras de arriba siguen al selector (Iván: "en Mes
+  // se pone solo lo de hoy"). El efectivo en caja siempre es de hoy.
+  const R=dbRango(), enP=new Set(R.vent);
+  const vPer=R.p==='hoy'?vHoy:D.ventas.filter(v=>!v.anulada&&enP.has(v.fecha));
+  const ventaP=r2(vPer.reduce((s,v)=>s+(v.total||0),0));
   const venta=r2(vHoy.reduce((s,v)=>s+(v.total||0),0));
   const meta=window._equilDia||null;
   const pct=meta?Math.min(100,Math.round(venta/meta*100)):null;
+  const L={hoy:['Venta de hoy','Food cost semana','Tickets de hoy'],semana:['Venta de la semana','Food cost de la semana','Tickets de la semana'],
+    mes:['Venta del mes','Food cost del mes','Tickets del mes'],todo:['Venta histórica','Food cost histórico','Tickets totales']}[R.p]||['Venta','Food cost','Tickets'];
+  const diasV=new Set(vPer.map(v=>v.fecha)).size||1;
   const rets=D.retiros.filter(r=>r.fecha===td);
   const caja=r2(rets.filter(r=>r.tipo==='fondo').reduce((s,r)=>s+r.monto,0)+sumaEf(vHoy)
     +rets.filter(r=>r.tipo==='deposito').reduce((s,r)=>s+r.monto,0)-rets.filter(r=>r.tipo==='retiro').reduce((s,r)=>s+r.monto,0));
-  const sem=getWDays(td), vSem=D.ventas.filter(v=>sem.includes(v.fecha)&&!v.anulada&&v.foodCostCompleto&&v.foodCost!=null);
+  const sem=R.p==='hoy'?getWDays(td):R.vent, vSem=D.ventas.filter(v=>sem.includes(v.fecha)&&!v.anulada&&v.foodCostCompleto&&v.foodCost!=null);
   const vt=vSem.reduce((s,v)=>s+(v.total||0),0), fc=vt>0?Math.round(vSem.reduce((s,v)=>s+v.foodCost,0)/vt*100):null;
   const A=atencionDueno();
   const n=(t,v,sub,c)=>`<div class="card" style="padding:12px 14px;"><div style="font-size:11px;color:var(--text3);font-weight:600;">${t}</div>
     <div class="mono" style="font-size:22px;font-weight:700;color:${c||'var(--text)'};margin-top:2px;">${v}</div><div style="font-size:11px;color:var(--text3);margin-top:2px;">${sub}</div></div>`;
   el.innerHTML=`<div class="g4" style="margin-bottom:10px;">
-      ${n('Venta de hoy',fmt(venta),meta?`${pct}% de ${fmt(meta)} (equilibrio)`:`${vHoy.length} tickets`,meta&&venta>=meta?'var(--accent)':'var(--text)')}
-      ${n('Efectivo en caja',fmt(caja),'lo que debe haber ahorita')}
-      ${n('Food cost semana',fc!=null?fc+'%':'—',fc!=null?(fc<=35?'✓ meta ≤35%':'⚠ arriba de 35%'):'sin ventas costeadas',fc!=null&&fc>35?'var(--red)':'var(--text)')}
-      ${n('Tickets hoy',vHoy.length,vHoy.length?`promedio ${fmt(r2(venta/vHoy.length))}`:'—')}
+      ${R.p==='hoy'
+        ? n('Venta de hoy',fmt(venta),meta?`${pct}% de ${fmt(meta)} (equilibrio)`:`${vHoy.length} tickets`,meta&&venta>=meta?'var(--accent)':'var(--text)')
+        : n(L[0],fmt(ventaP),`${fmt(r2(ventaP/diasV))} por día · ${diasV} día${diasV===1?'':'s'} con venta`,'var(--accent)')}
+      ${n('Efectivo en caja hoy',fmt(caja),'lo que debe haber ahorita')}
+      ${n(L[1],fc!=null?fc+'%':'—',fc!=null?(fc<=35?'✓ meta ≤35%':'⚠ arriba de 35%'):'sin ventas costeadas',fc!=null&&fc>35?'var(--red)':'var(--text)')}
+      ${n(L[2],vPer.length.toLocaleString('es-MX'),vPer.length?`promedio ${fmt(r2(ventaP/vPer.length))}`:'—')}
     </div>
     <div class="card">
       <div class="ct" style="margin-bottom:4px;">${A.length?'Necesita tu atención':'Todo en orden'}</div>
