@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.94'; // Panel interactivo: gráfica que se recorre, horas pico y mezcla
+const CACHE_NAME = 'el-huerto-v15.95'; // Archivo de ventas, meta del mes y conteo antes del cierre
 const ASSETS = [
   '/',
   '/index.html',

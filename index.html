@@ -750,6 +750,18 @@ body.modo-pantalla nav,body.modo-pantalla .mnav,body.modo-pantalla #lock-screen,
 .vz-pr .v small{font-size:10.5px;color:var(--text3);font-weight:500;margin-left:3px;}
 .vz-pr .bar{grid-column:2/4;height:4px;border-radius:2px;background:var(--surface2);overflow:hidden;}
 .vz-pr .bar i{display:block;height:100%;border-radius:2px;}
+.vz-meta{background:var(--surface2);border-radius:12px;padding:11px 13px;margin:-2px 0 14px;}
+.vz-meta-top{display:flex;justify-content:space-between;align-items:center;gap:10px;font-size:12.5px;color:var(--text2);}
+.vz-meta-top b{color:var(--text);font-weight:640;font-variant-numeric:tabular-nums;}
+.vz-meta-top small{color:var(--text3);font-size:11px;}
+.vz-meta-ed{border:none;background:none;color:var(--accent);font-family:var(--ui);font-size:12px;font-weight:600;cursor:pointer;padding:2px 0;}
+.vz-meta-bar{position:relative;height:8px;border-radius:4px;background:var(--surface4);margin:8px 0 7px;overflow:visible;}
+.vz-meta-bar i{display:block;height:100%;border-radius:4px;background:var(--accent);transition:width .5s var(--ease);}
+.vz-meta-bar s{position:absolute;top:-3px;width:2px;height:14px;border-radius:1px;background:var(--text);margin-left:-1px;}
+.vz-meta-txt{font-size:12px;color:var(--text2);line-height:1.55;margin-top:2px;}
+.vz-meta-txt b{color:var(--text);font-weight:620;font-variant-numeric:tabular-nums;}
+.vz-meta-btn{display:inline-flex;align-items:center;gap:7px;border:1px dashed var(--border2);background:none;border-radius:10px;padding:8px 12px;margin:-2px 0 14px;font-family:var(--ui);font-size:12.5px;font-weight:600;color:var(--text2);cursor:pointer;}
+.vz-meta-btn .ic{width:15px;height:15px;color:var(--accent);}
 .live-card{background:var(--surface);box-shadow:var(--sh1);border-radius:var(--r);padding:16px 18px;display:flex;align-items:center;gap:15px;}
 .live-badge{width:46px;height:46px;border-radius:13px;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
 .live-badge .ic{width:23px;height:23px;stroke-width:1.9;}
@@ -1867,6 +1879,7 @@ nav{padding-top:env(safe-area-inset-top);}
         </div>
 
         <!-- Semáforo de descuadre: veredicto en vivo -->
+        <div id="corte-conteo-aviso"></div>
         <div id="corte-semaforo" style="display:none;border-radius:var(--rsm);padding:12px 14px;margin-bottom:10px;font-weight:800;font-size:14.5px;text-align:center;"></div>
         <button class="btn bp bfull" onclick="realizarCorte()" style="padding:15px;font-size:15px;font-weight:800;"><svg class="ic"><use href="#i-receipt"/></svg> Realizar Corte de Caja</button>
       </div>
@@ -3076,7 +3089,7 @@ nav{padding-top:env(safe-area-inset-top);}
 <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
 <script type="module">
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js";
-import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, getDocsFromServer, limit, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, deleteDoc, onSnapshot, getDoc, getDocFromServer, getDocFromCache, getDocsFromServer, limit, query, where, writeBatch } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js";
 import { getAuth, signInAnonymously, onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, updatePassword, signOut } from "https://www.gstatic.com/firebasejs/10.11.0/firebase-auth.js";
 
 const FB={apiKey:"AIzaSyDIHAi46hAgLttbjJe_6pF3jTMvyjQ9BbM",authDomain:"el-huerto-95801.firebaseapp.com",projectId:"el-huerto-95801",storageBucket:"el-huerto-95801.firebasestorage.app",messagingSenderId:"907900755611",appId:"1:907900755611:web:fc6ad8c3221115880fb03e"};
@@ -3242,6 +3255,7 @@ const fsSet=async(c,item)=>{
     item=pub;
   }
   if(c==='invDiario') _conteosVer++;   // el índice de conteos se rehace
+  if(c==='ventas') marcaArchivo(item); // venta de un mes archivado
   try{ await escrituraOk(setDoc(docRef(c,item.id),item)); return true; }
   catch(e){
     // Antes de que alguien entre, la sesión es anónima y las reglas
@@ -3352,7 +3366,7 @@ window.logAudit=logAudit;
 // Crítico: si Firestore RECHAZA (permisos, cuota), lanza y el carrito se
 // queda para reintentar. Si solo falta red, la venta ya está guardada
 // localmente y se da por buena.
-const fsSetCritical=async(c,item)=>{await escrituraOk(setDoc(docRef(c,item.id),item));return true;};
+const fsSetCritical=async(c,item)=>{await escrituraOk(setDoc(docRef(c,item.id),item));if(c==='ventas')marcaArchivo(item);return true;};
 const fsDel=async(c,id)=>{try{await escrituraOk(deleteDoc(docRef(c,String(id))));}catch(e){toast('⚠ Error al eliminar',3000,'error');}};
 
 async function completeInit(){
@@ -3567,7 +3581,131 @@ const sesionDePersonal=()=>typeof AUTH_PERFIL?.quien==='number'&&!GERENTES_CON_H
 // renglones). Las ventas se bajan completas: los reportes las ocupan.
 const VENTANA_DUENO={invDiario:100};
 const BITACORA_DIAS=21;
+// ══ ARCHIVO DE VENTAS (v15.95 · 12-nov) ═════════════════════
+// El dueño bajaba TODAS las ventas cada vez que abría la app: 6,400
+// documentos, y 1,300 más cada mes. Las ventas de los meses cerrados ya
+// no cambian, así que se guardan empacadas como texto en `ventasArchivo`
+// (agosto entero cabe en dos documentos). El oyente en vivo baja solo
+// desde el día 1 del mes pasado, y D.ventas sigue teniendo TODA la
+// historia: clientes recurrentes, KPIs por mes, Histórico y vendedores
+// funcionan igual.
+//  · `_indice` dice qué meses hay, en cuántas partes y con qué versión
+//    (`gen`). Las partes se leen del caché del teléfono si la versión
+//    coincide: abrir la app lee 1 documento de archivo, no miles.
+//  · El mes que sale de la ventana lo empaca solo el dueño al entrar.
+//  · Si se escribe una venta de un mes archivado, el mes se marca
+//    `sucio` y se rehace la siguiente vez que entra el dueño. Lo que se
+//    escriba por fuera de la app (REST) hay que marcarlo a mano.
+// ═══════════════════════════════════════════════════════════
+const ARCH_COL='ventasArchivo', ARCH_MAX=850000;
+let ARCHIVO_VENTAS=[], ARCH_LISTO=false, ARCH_DESDE=null, _archCargado=null, _ventasVivas=[], _archProm=null;
+function ventasDesde(){ const d=new Date(today()+'T12:00:00'); d.setDate(1); d.setMonth(d.getMonth()-1); return localDate(d); }
+const usaArchivo=()=>!!AUTH_PERFIL&&!sesionDePersonal();
+const mesSig=m=>{let [y,mm]=m.split('-').map(Number); mm++; if(mm>12){mm=1;y++;} return `${y}-${String(mm).padStart(2,'0')}`;};
+const mesAnt=m=>{let [y,mm]=m.split('-').map(Number); mm--; if(mm<1){mm=12;y--;} return `${y}-${String(mm).padStart(2,'0')}`;};
+function fundirArchivo(){
+  if(!ARCHIVO_VENTAS.length||!usaArchivo()) return;
+  const ids=new Set(_ventasVivas.map(v=>v.id));
+  D.ventas=ARCHIVO_VENTAS.filter(v=>!ids.has(v.id)).concat(_ventasVivas);
+}
+async function ventasDelMes(m){
+  const sn=await getDocsFromServer(query(colRef('ventas'),where('fecha','>=',m+'-01'),where('fecha','<=',m+'-31')));
+  return sn.docs.map(d=>d.data());
+}
+const _te=new TextEncoder();
+async function empacarMes(m,vs,meses){
+  vs=vs.slice().sort((a,b)=>(a.id||0)-(b.id||0));
+  const partes=[]; let cur=[], tam=2;
+  for(const v of vs){
+    const j=JSON.stringify(v), b=_te.encode(j).length+1;
+    if(cur.length&&tam+b>ARCH_MAX){ partes.push(cur); cur=[]; tam=2; }
+    cur.push(j); tam+=b;
+  }
+  if(cur.length||!partes.length) partes.push(cur);
+  const gen=Date.now(), antes=meses[m]?.partes||0;
+  for(let k=0;k<partes.length;k++)
+    await escrituraOk(setDoc(doc(db,ARCH_COL,`${m}_${k}`),{mes:m,parte:k,gen,n:partes[k].length,v:'['+partes[k].join(',')+']'}));
+  for(let k=partes.length;k<antes;k++){ try{ await escrituraOk(deleteDoc(doc(db,ARCH_COL,`${m}_${k}`))); }catch(e){} }
+  meses[m]={partes:partes.length,gen,n:vs.length,total:r2(vs.filter(v=>!v.anulada).reduce((a,v)=>a+(v.total||0),0)),sucio:false};
+}
+function cargarArchivoVentas(){
+  if(!usaArchivo()||!ARCH_DESDE) return Promise.resolve();
+  if(_archProm) return _archProm;
+  if(ARCH_LISTO&&_archCargado===ARCH_DESDE){ fundirArchivo(); return Promise.resolve(); }
+  _archProm=(async()=>{
+    const esDueno=AUTH_PERFIL?.quien==='admin', idxRef=doc(db,ARCH_COL,'_indice');
+    let ind=null;
+    try{ const sn=await getDocFromServer(idxRef); ind=sn.exists()?sn.data():null; }
+    catch(e){ const sn=await getDocFromCache(idxRef); ind=sn.exists()?sn.data():null; }
+    const meses={...(ind?.meses||{})}, hasta=mesAnt(ARCH_DESDE.slice(0,7));
+    let primer=ind?.primerMes||null, out=[], cambio=false;
+    if(!primer){
+      // Primera vez: todo lo anterior a la ventana, de un jalón
+      if(esDueno) toast('Armando el archivo de ventas (solo esta vez)…',4000);
+      const sn=await getDocsFromServer(query(colRef('ventas'),where('fecha','<',ARCH_DESDE)));
+      out=sn.docs.map(d=>d.data());
+      if(esDueno&&out.length){
+        const por={}; out.forEach(v=>{(por[v.fecha.slice(0,7)]??=[]).push(v);});
+        primer=Object.keys(por).sort()[0];
+        for(let m=primer;m<=hasta;m=mesSig(m)) await empacarMes(m,por[m]||[],meses);
+        cambio=true;
+      }
+    } else {
+      const lista=[]; for(let m=primer;m<=hasta;m=mesSig(m)) lista.push(m);
+      const res=await Promise.all(lista.map(async m=>{
+        const e=meses[m];
+        if(!e||e.sucio){
+          const vs=await ventasDelMes(m);
+          if(esDueno){ await empacarMes(m,vs,meses); cambio=true; }
+          return vs;
+        }
+        const ps=await Promise.all(Array.from({length:e.partes||0},async(_,k)=>{
+          const ref=doc(db,ARCH_COL,`${m}_${k}`);
+          try{ const c=await getDocFromCache(ref); if(c.exists()&&c.data().gen===e.gen) return c.data().v; }catch(x){}
+          const sn=await getDocFromServer(ref); return sn.exists()?sn.data().v:'[]';
+        }));
+        return ps.flatMap(t=>JSON.parse(t||'[]'));
+      }));
+      out=res.flat();
+    }
+    if(cambio&&esDueno) await escrituraOk(setDoc(idxRef,{primerMes:primer,meses,actualizado:Date.now()},{merge:true}));
+    ARCHIVO_VENTAS=out; ARCH_LISTO=true; _archCargado=ARCH_DESDE;
+    fundirArchivo();
+    marcaColeccionViva('historial de ventas');
+    try{ scheduleRender(); }catch(e){}
+  })().catch(e=>{
+    console.warn('archivo de ventas:',e?.code||e);
+    marcaColeccionCaida('historial de ventas',e?.code||e?.message||String(e));
+    setTimeout(()=>{ if(!ARCH_LISTO) cargarArchivoVentas(); },20000);
+  }).finally(()=>{ _archProm=null; });
+  return _archProm;
+}
+// Una venta de un mes ya archivado se acaba de escribir: la copia en
+// memoria se actualiza y el mes se marca para rehacerse.
+const _archSucios=new Set(); let _archT=0;
+function marcaArchivo(v){
+  const desde=ARCH_DESDE||ventasDesde();
+  if(!v||!v.fecha||v.fecha>=desde) return;
+  const i=ARCHIVO_VENTAS.findIndex(x=>x.id===v.id); if(i>=0) ARCHIVO_VENTAS[i]=v;
+  _archSucios.add(v.fecha.slice(0,7));
+  clearTimeout(_archT);
+  _archT=setTimeout(()=>{
+    const meses={}; _archSucios.forEach(m=>{meses[m]={sucio:true};}); _archSucios.clear();
+    setDoc(doc(db,ARCH_COL,'_indice'),{meses},{merge:true}).catch(e=>console.warn('archivo sucio:',e?.code||e));
+  },800);
+}
+// ══ META DEL MES (v15.95) ══ vive en sistema/metas para verse en todos
+// los aparatos del dueño (CFG solo vive en el teléfono donde se guardó).
+let METAS={}; try{ METAS=JSON.parse(localStorage.getItem('h5metas')||'{}')||{}; }catch(e){}
+function escucharMetas(){
+  _unsubs.push(onSnapshot(doc(db,'sistema','metas'),sn=>{
+    METAS=sn.data()?.meses||{};
+    try{ localStorage.setItem('h5metas',JSON.stringify(METAS)); }catch(e){}
+    if(READY) try{ scheduleRender(); }catch(e){}
+  },e=>console.warn('metas:',e?.code||e)));
+}
 function refEscucha(col){
+  if(col==='ventas'&&usaArchivo()){ ARCH_DESDE=ventasDesde(); return query(colRef(col),where('fecha','>=',ARCH_DESDE)); }
   if(col==='auditLog') return query(colRef(col),where('ts','>=',Date.now()-BITACORA_DIAS*864e5));
   const dias=sesionDePersonal()?VENTANA_PERSONAL[col]:VENTANA_DUENO[col];
   if(!dias) return colRef(col);
@@ -3597,6 +3735,7 @@ function listenAll(){
   cols.forEach(col=>{
     _unsubs.push(onSnapshot(refEscucha(col), async snap=>{
       D[col]=snap.docs.map(d=>d.data());
+      if(col==='ventas'){ _ventasVivas=D.ventas; fundirArchivo(); }
       if(col==='empleados'||col==='sueldos') fundirSueldos();
       marcaColeccionViva(col);
 
@@ -3642,6 +3781,9 @@ function listenAll(){
       }
     }));
   });
+  // v15.95: el dueño completa la historia con el archivo y escucha la meta
+  if(!publico&&cols.includes('ventas')&&usaArchivo()){ cargarArchivoVentas(); escucharMetas(); }
+  else if(!usaArchivo()){ ARCHIVO_VENTAS=[]; ARCH_LISTO=false; _archCargado=null; }
 }
 // ── Colecciones que se cayeron: se dice en voz alta ──────────
 // Un dato que no se pudo leer NO es un dato en cero. Mientras alguna
@@ -13100,6 +13242,7 @@ async function conciliarTarjeta({fecha=today(),forzar=false,avisar=true}={}){
     const antes=v.mpVerif?.estado;
     v.mpVerif=nuevo;
     escrituraOk(setDoc(docRef('ventas',id),{mpVerif:nuevo},{merge:true})).catch(e=>console.warn('mpVerif:',e?.code||e));
+    marcaArchivo(v);
     if(estado==='sin_cobro'&&antes!=='sin_cobro'&&avisar&&!_mpAvisados.has(id)){
       _mpAvisados.add(id);
       toast(`⚠ La venta ${v.ticket||''} de ${fmt(ventaTc(v))} (${v.hora||''}) no tiene cobro en la Point. ¿Se cobró? ¿Se tecleó otro monto?`,9000,'warn');
@@ -14748,14 +14891,49 @@ function renderDenomCaja(){
         <span class="mono"><span class="ar">−${fmt(y.falta)} en ${y.veces}</span> · +${fmt(y.sobra)}</span></div>`).join('')}
     </div>`:''}`;
 }
+// ══ SIN CONTEO NO HAY CIERRE (v15.95 · 12-nov) ══════════════
+// El 12-nov a media tarde no había ni un conteo, y la fresa y la leche
+// de almendra salían como fuga semana tras semana. Sin conteo diario no
+// se detecta nada. El cierre pide primero el conteo; si de verdad no se
+// pudo, se escribe el motivo, que queda en el corte y le llega al dueño.
+// No se bloquea la caja a secas: una caja sin cerrar es peor que un día
+// sin conteo.
+function conteoPendienteHoy(){
+  const td=today(); if(esDiaDescanso(td)) return null;
+  let toca=[]; try{ toca=invTocaHoy(); }catch(e){ return null; }
+  if(!toca.length) return null;
+  const cap=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
+  const faltan=toca.filter(i=>!cap.has(i.id));
+  return faltan.length?{faltan:faltan.length,total:toca.length,nombres:faltan.slice(0,5).map(i=>i.nombre)}:null;
+}
+window.irAConteo=()=>{
+  go('inventario');
+  setTimeout(()=>{ try{ setInvMode('captura'); }catch(e){} try{ if(invFiltroEstado!=='pendiente') setInvEstadoFiltro('pendiente'); }catch(e){} },300);
+};
+function candadoConteo(){
+  const p=conteoPendienteHoy(); if(!p) return {ok:true};
+  const ir=confirm(`Falta el conteo de inventario: ${p.faltan} de ${p.total} artículos.\n\n${p.nombres.join(', ')}${p.faltan>5?'…':''}\n\nSin conteo no se detectan faltantes.\n\nAceptar: ir a contar ahora.\nCancelar: cerrar sin conteo (hay que decir por qué).`);
+  if(ir){ irAConteo(); return {ok:false}; }
+  const motivo=(prompt('¿Por qué no se hizo el conteo hoy? Le llega al dueño.')||'').trim();
+  if(motivo.length<5){ toast('Para cerrar sin conteo hay que escribir el motivo',3500,'warn'); return {ok:false}; }
+  return {ok:true,sinConteo:{faltan:p.faltan,total:p.total,motivo}};
+}
+function avisoConteoHtml(){
+  const p=conteoPendienteHoy(); if(!p) return '';
+  return `<div onclick="irAConteo()" style="cursor:pointer;display:flex;gap:10px;align-items:center;background:var(--surface2);border-radius:var(--rsm);padding:11px 13px;margin-bottom:10px;">
+    <svg class="ic" style="width:20px;height:20px;color:var(--gold);flex:none;"><use href="#i-list"/></svg>
+    <div style="flex:1;min-width:0;"><div style="font-size:13.5px;font-weight:650;">Antes de cerrar: falta el conteo</div>
+    <div style="font-size:12px;color:var(--text2);">${p.faltan} de ${p.total} artículos sin contar · toca para ir</div></div>
+    <span style="color:var(--text3);font-size:16px;">›</span></div>`;
+}
 // ══ CIERRE A CIEGAS ════════════════════════════════════════
 // La cajera cuenta sin ver cuánto debería haber ni cuánto se vendió: si
 // lo ve, puede hacer que cuadre. El resultado lo ve solo el dueño.
 function renderCierre(){
   renderMovHoy();
   const hoy=D.caja.find(c=>c.fecha===today());
-  if($('cierre-estado')) $('cierre-estado').innerHTML=hoy?.corteHora
-    ?`<div style="font-size:13px;color:var(--teal);font-weight:600;margin-bottom:10px;">✓ Último cierre guardado a las ${esc(hoy.corteHora)}</div>`:'';
+  if($('cierre-estado')) $('cierre-estado').innerHTML=avisoConteoHtml()+(hoy?.corteHora
+    ?`<div style="font-size:13px;color:var(--teal);font-weight:600;margin-bottom:10px;">✓ Último cierre guardado a las ${esc(hoy.corteHora)}</div>`:'');
 }
 window.cierreSuma=()=>{
   const t=denomSuma(leerDenom('.cierre-bill','cierre-monedas'));
@@ -14767,9 +14945,11 @@ window.guardarCierre=async()=>{
   const contado=denomSuma(denom);
   const tcReal=parseFloat($('cierre-terminal')?.value)||0;
   const propinas=parseFloat($('cierre-propinas')?.value)||0;
+  const cand=candadoConteo(); if(!cand.ok) return;
   if(!confirm(`Vas a guardar el cierre:\n\nEfectivo contado: ${fmt(contado)}\n${denomTxt(denom)||'Sin billetes'}\nTerminal: ${fmt(tcReal)}\n\n¿Lo contaste bien?`)) return;
   const {corte,cajaData}=armarCorte({td:today(),contado,tcReal,propinas,denomContado:denom,
     nota:$('cierre-nota')?.value?.trim()||'',cerroNombres:[SESSION.nombre],cerroE1:false,cerroE2:false,realizadoPor:SESSION.nombre,ciego:true});
+  if(cand.sinConteo){ corte.sinConteo=cand.sinConteo; logAudit('corte_sin_conteo',{...cand.sinConteo,cerro:SESSION.nombre}); }
   await fsSetCritical('cortes',corte);
   await fsSet('caja',cajaData);
   logAudit('corte_realizado',{ciego:true,contado,cerro:SESSION.nombre});
@@ -14778,7 +14958,8 @@ window.guardarCierre=async()=>{
     `Contó ${fmt(corte.contado)} · se esperaba ${fmt(corte.esperado)}`
     +(corte.denomDif&&Object.keys(corte.denomDif).length?`\nBilletes: ${denomDifTxt(corte.denomDif)}`:'')
     +(tcReal>0?`\nTerminal ${fmt(tcReal)} · POS ${fmt(corte.ventasTc)}`:'')
-    +(corte.nota?`\nNota: ${corte.nota}`:''),'cierre');
+    +(corte.nota?`\nNota: ${corte.nota}`:'')
+    +(corte.sinConteo?`\nSIN CONTEO (${corte.sinConteo.faltan} de ${corte.sinConteo.total}): ${corte.sinConteo.motivo}`:''),'cierre');
   document.querySelectorAll('.cierre-bill').forEach(el=>el.value='');
   ['cierre-monedas','cierre-terminal','cierre-propinas','cierre-nota'].forEach(id=>{if($(id))$(id).value='';});
   cierreSuma();
@@ -15195,6 +15376,7 @@ window.calcCorteTC=()=>{
 };
 // Progreso visual del wizard: cada paso se ilumina al completarse
 window.actualizarProgresoCorte=()=>{
+  try{ if($('corte-conteo-aviso')) $('corte-conteo-aviso').innerHTML=avisoConteoHtml(); }catch(e){}
   const p1=(parseFloat($('corte-contado')?.value)||0)>0;
   const p2=(parseFloat($('corte-tc-real')?.value)||0)>0;
   const p3=$('cdc')?.checked||$('ccc')?.checked;
@@ -15281,6 +15463,7 @@ window.realizarCorte=async()=>{
 
   // ══ CORTE GUIADO: descuadre grande exige motivo escrito (va a bitácora) ══
   const notaCorte=$('corte-nota')?.value?.trim()||'';
+  const cand=candadoConteo(); if(!cand.ok) return;
   if(Math.abs(diferencia)>CORTE_UMBRAL_DESCUADRE && !notaCorte){
     toast(`🚨 ${diferencia<0?'FALTAN':'SOBRAN'} ${fmt(Math.abs(diferencia))}. Escribe el motivo en la Nota para poder cerrar el corte.`,5500,'error');
     const n=$('corte-nota');
@@ -15297,6 +15480,7 @@ window.realizarCorte=async()=>{
   const {corte,cajaData,ventasTotalReal}=armarCorte({td,contado,tcReal:tcRealV,propinas:propinasV,nota:notaCorte,
     denomContado:leerDenom('.corte-bill','corte-monedas'),cerroNombres:nombresCerro,
     cerroE1:$('cdc')?.checked||false,cerroE2:$('ccc')?.checked||false,realizadoPor:SESSION?.nombre||activeVend?.nombre||'Admin'});
+  if(cand.sinConteo){ corte.sinConteo=cand.sinConteo; logAudit('corte_sin_conteo',{...cand.sinConteo,cerro:corte.realizadoPor}); }
   await fsSet('cortes',corte);
   // A4: bitácora inmutable del corte
   logAudit('corte_realizado',{esperado:corte.esperado,contado:corte.contado,diferencia:corte.diferencia,motivo:corte.nota||'—',cerro:corte.cerroNombres?.join(' y ')||corte.realizadoPor,tcReal:corte.tcReal||0,tcDiff:corte.tcDiff||0,ventasTotalReal:corte.ventasTotalReal||corte.ventasTotal});
@@ -20531,6 +20715,7 @@ window.recostearConRecetas=async(desde,marca)=>{
     }
     const porId=new Map(listos.map(u=>[u.id,u]));
     D.ventas=D.ventas.map(v=>porId.get(v.id)||v);
+    listos.forEach(marcaArchivo);
     ok=listos.length;
   } finally { window._recosteando=false; }
   logAudit('ventas_recosteadas',{recosteadas:ok,siguenIncompletas:siguen,desde,marca,costoAntes:r2(antes),costoDespues:r2(despues)});
@@ -21990,6 +22175,12 @@ function atencionDueno(){
     const fu=Object.values(porArt).filter(a=>a.n>=3&&a.falta>=Math.ceil(a.n*0.6)&&a.pesos<=-50).sort((a,b)=>a.pesos-b.pesos).slice(0,2);
     if(fu.length) out.push({sev:1,txt:`Fuga esta semana: ${fu.map(a=>a.inv.nombre).join(' y ')}`,det:fu.map(a=>`faltó ${a.falta} de ${a.n} conteos · ${fmt(Math.abs(r2(a.pesos)))}`).join(' · '),ir:'inventario'});
   }catch(e){}
+  try{
+    const hace3=localDate(new Date(Date.now()-3*864e5));
+    const sc=D.cortes.filter(c=>c.sinConteo&&c.fecha>=hace3).sort((a,b)=>b.id-a.id);
+    if(sc.length) out.push({sev:1,txt:`Cerraron sin conteo: ${sc.map(c=>fmtFecha(c.fecha)).join(', ')}`,
+      det:sc.slice(0,2).map(c=>`${c.cerroNombres?.[0]||c.realizadoPor||'—'}: "${c.sinConteo.motivo}"`).join(' · '),ir:'inventario'});
+  }catch(e){}
   const h=new Date().getHours();
   if(h>=14&&!esDiaDescanso(td)){
     const toca=invTocaHoy(), cap=new Set(D.invDiario.filter(c=>c.fecha===td).map(c=>c.productoId));
@@ -22031,6 +22222,7 @@ function resumenMes(m){
     cerrado:m!==curM()&&vs.length<MES_CERRADO_TICKETS};
 }
 const MESES_ES=['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic'];
+const MESES_LARGO=['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 const mesTxt=m=>{const [y,mm]=m.split('-');return `${MESES_ES[+mm-1]} ${y}`;};
 function renderDbHistorico(){
   const el=$('db-historico'); if(!el) return;
@@ -22176,6 +22368,7 @@ function vzSerie(R){
     const prom=corr?r2(total/corr):0, proy=corr&&corr<hab.length?r2(prom*hab.length):null;
     const lineas=[]; if(prom) lineas.push({v:prom,label:'promedio'});
     if(window._equilDia&&window._equilDia<prom*3) lineas.push({v:window._equilDia,label:'equilibrio'});
+    try{ const A=metaAvance(); if(A&&A.porDia>0&&A.porDia<Math.max(prom,1)*3) lineas.push({v:A.porDia,label:'meta'}); }catch(e){}
     return {tipo:'barras',pts,ventas:pts.flatMap(p=>p.ventas),lineas,
       resumen:{tit:`${mesTxt(cm)} · día ${hoyN}`,num:total,
         sub:prevHoy>0?vzPill(vzPct(total,prevHoy),`contra ${MESES_ES[+pm.slice(5)-1]} al mismo día (${fmt0(prevHoy)})`):`${pts.reduce((s,p)=>s+p.tk,0)} tickets`},
@@ -22199,7 +22392,7 @@ function vzSerie(R){
   const act=pts.find(p=>p.enCurso), proyAct=act?(act.ghost||act.val):0;
   return {tipo:'barras',pts,ghostEstilo:'dash',lineas:prom?[{v:prom,label:'promedio'}]:[],
     resumen:{tit:pts.length?`Histórico · desde ${mesTxt(pts[0].mes)}`:'Histórico',num:total,
-      sub:`${tk.toLocaleString('es-MX')} tickets · promedio ${fmt0(prom)} al mes (${abiertos.length} meses completos)`},
+      sub:usaArchivo()&&!ARCH_LISTO?'Cargando los meses anteriores…':`${tk.toLocaleString('es-MX')} tickets · promedio ${fmt0(prom)} al mes (${abiertos.length} meses completos)`},
     lado:act&&prom?{l:`${mesTxt(act.mes)} va para`,v:fmt0(proyAct),s:vzPill(vzPct(proyAct,prom),'vs promedio')}:null,
     leer:p=>({tit:p.titulo+(p.enCurso?' · en curso':''),num:p.val,
       sub:p.cerrado?'cerrado por vacaciones':`${p.tk.toLocaleString('es-MX')} tickets · ticket ${fmt0(p.tk?p.val/p.tk:0)}${prom?` · ${vzPill(vzPct(p.enCurso?(p.ghost||p.val):p.val,prom),p.enCurso?'proyectado vs promedio':'vs promedio')}`:''}`}),
@@ -22268,6 +22461,65 @@ function vzLinea(S){
   const labs=S.pts.map((p,i)=>`<span style="position:absolute;left:${X(i)}%;transform:translateX(-50%)">${i%cada===0?p.lab:''}</span>`).join('');
   return {chart,labs};
 }
+// ── Meta del mes (v15.95) ──
+// Iván: el Panel solo comparaba contra el equilibrio, que es el mínimo.
+// La meta dice cuánto toca vender cada día hábil que queda para llegar.
+// Si el mes no tiene meta propia, hereda la del último mes que tuvo.
+function metaMes(m){
+  if(METAS[m]) return {v:+METAS[m],propia:true};
+  const prev=Object.keys(METAS).filter(k=>k<m&&METAS[k]).sort().pop();
+  return prev?{v:+METAS[prev],propia:false,de:prev}:null;
+}
+function metaAvance(){
+  const cm=curM(), td=today(), M=metaMes(cm); if(!M) return null;
+  const hab=diasDelMes(cm).filter(f=>!esDiaDescanso(f));
+  let total=0, antes=0, hoyV=0;
+  for(const v of D.ventas){ if(v.anulada||!v.fecha||!v.fecha.startsWith(cm)) continue; total+=v.total||0; if(v.fecha<td) antes+=v.total||0; else if(v.fecha===td) hoyV+=v.total||0; }
+  const rest=hab.filter(f=>f>=td).length, corr=hab.filter(f=>f<=td).length;
+  const porDia=rest?Math.max(0,(M.v-antes)/rest):0;
+  const proy=corr?total/corr*hab.length:0;
+  return {M,cm,total:r2(total),hoyV:r2(hoyV),rest,porDia:r2(porDia),proy:r2(proy),
+    pct:Math.min(100,total/M.v*100),ritmo:hab.length?Math.min(100,hab.filter(f=>f<td).length/hab.length*100):0,
+    hoyHabil:!esDiaDescanso(td)};
+}
+function vzMetaHtml(R){
+  if(SESSION?.tipo!=='admin'||!['hoy','semana','mes'].includes(R.p)) return '';
+  const cm=curM(), mesL=MESES_LARGO[+cm.slice(5)-1], A=metaAvance();
+  if(!A) return `<button class="vz-meta-btn" onclick="vzMeta()"><svg class="ic"><use href="#i-target"/></svg> Ponle una meta a ${mesL}</button>`;
+  const falta=r2(Math.max(0,A.M.v-A.total));
+  const estado=A.total>=A.M.v?`<span class="vz-pill up">✓ meta cumplida</span> llevas ${fmt0(A.total-A.M.v)} de más`
+    :A.proy>=A.M.v?`<span class="vz-pill up">▲ vas en camino</span> a este ritmo cierras en ${fmt0(A.proy)}`
+    :`<span class="vz-pill down">▼ abajo del ritmo</span> a este ritmo cierras en ${fmt0(A.proy)}, ${fmt0(A.M.v-A.proy)} abajo`;
+  const hoy=R.p==='hoy'&&A.hoyHabil&&A.porDia>0
+    ?`<div class="vz-meta-txt">Hoy toca <b>${fmt0(A.porDia)}</b> · llevas <b>${fmt0(A.hoyV)}</b> (${Math.round(A.hoyV/A.porDia*100)}%)${A.hoyV>=A.porDia?' · ✓ ya la hiciste':` · faltan ${fmt0(A.porDia-A.hoyV)}`}</div>`:'';
+  return `<div class="vz-meta">
+    <div class="vz-meta-top"><span>Meta de ${mesL} <b>${fmt0(A.M.v)}</b>${A.M.propia?'':` <small>(la de ${MESES_LARGO[+A.M.de.slice(5)-1]})</small>`}</span>
+      <button class="vz-meta-ed" onclick="vzMeta()">Cambiar</button></div>
+    <div class="vz-meta-bar" title="La rayita es donde deberías ir a inicio de hoy"><i style="width:${A.pct.toFixed(1)}%"></i><s style="left:${A.ritmo.toFixed(1)}%"></s></div>
+    <div class="vz-meta-txt">Llevas <b>${fmt0(A.total)}</b> (${Math.round(A.pct)}%)${falta>0?` · faltan <b>${fmt0(falta)}</b> · toca <b>${fmt0(A.porDia)}</b> por día en los ${A.rest} día${A.rest===1?'':'s'} hábil${A.rest===1?'':'es'} que quedan`:''}</div>
+    ${hoy}
+    <div class="vz-meta-txt">${estado}</div>
+  </div>`;
+}
+window.vzMeta=async()=>{
+  if(SESSION?.tipo!=='admin') return;
+  const cm=curM(), mesL=MESES_LARGO[+cm.slice(5)-1], M=metaMes(cm);
+  let sug=M?.v;
+  if(!sug){ // 10% arriba del promedio de los meses completos
+    const por={}; for(const v of D.ventas){ if(v.anulada||!v.fecha) continue; const m=v.fecha.slice(0,7); if(m===cm) continue; const a=(por[m]??={v:0,t:0}); a.v+=v.total||0; a.t++; }
+    const ab=Object.values(por).filter(a=>a.t>=MES_CERRADO_TICKETS);
+    if(ab.length) sug=Math.round(ab.reduce((s,a)=>s+a.v,0)/ab.length*1.1/5000)*5000;
+  }
+  const r=prompt(`Meta de venta para ${mesL}, en pesos:`,sug?String(sug):'');
+  if(r==null) return;
+  const n=Math.round(parseFloat(String(r).replace(/[^0-9.]/g,'')));
+  if(!n||n<1000){ toast('Escribe la meta en pesos, por ejemplo 110000',3500,'warn'); return; }
+  METAS={...METAS,[cm]:n};
+  try{ localStorage.setItem('h5metas',JSON.stringify(METAS)); }catch(e){}
+  try{ await escrituraOk(setDoc(doc(db,'sistema','metas'),{meses:{[cm]:n}},{merge:true})); logAudit('meta_mes',{mes:cm,meta:n}); toast('✓ Meta de '+mesL+': '+fmt0(n)); }
+  catch(e){ toast('⚠ No se pudo guardar la meta',3500,'error'); }
+  renderDashboard();
+};
 function vzLado(l){ return l?`<div class="vz-lado"><span>${l.l}</span><b>${l.v}</b><span>${l.s||''}</span></div>`:''; }
 function vzLeyenda(S){
   const sw=c=>c==='dash'?'<i class="lg-dash"></i>':c==='dashb'?'<i class="lg-dashb"></i>':c==='ghost'?'<i class="lg-ghost"></i>':c==='mut'?'<i class="lg-mut"></i>':c==='line'?'<i class="lg-line"></i>':`<i style="background:${c}"></i>`;
@@ -22296,6 +22548,7 @@ function renderDbViz(){
       </div>
       ${vzLado(S.lado)}
     </div>
+    ${vzMetaHtml(R)}
     <div class="vz-chart${S.tipo==='linea'?' linea':''}${cambio?' vz-anim':''}" id="vz-chart" onpointermove="vzMove(event)" onpointerleave="vzLeave()" onclick="vzTap(event)">${G.chart}</div>
     <div class="vz-labs${S.tipo==='linea'?' abs':''}">${G.labs}</div>
     <div class="vz-leg">${vzLeyenda(S)}<span class="vz-ayuda">${S.ayuda}</span></div>
