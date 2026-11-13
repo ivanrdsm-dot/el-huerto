@@ -1,5 +1,5 @@
 // Service Worker — El Huerto v13.1
-const CACHE_NAME = 'el-huerto-v15.93'; // Histórico: junio y julio cerrados por vacaciones
+const CACHE_NAME = 'el-huerto-v15.94'; // Panel interactivo: gráfica que se recorre, horas pico y mezcla
 const ASSETS = [
   '/',
   '/index.html',
